@@ -1,0 +1,419 @@
+/* Human Benchmark style: blue test panel, white type, yellow buttons. */
+.page {
+  display: grid;
+  gap: 18px;
+  --hb: #2b87d1;
+}
+
+.back {
+  justify-self: start;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.back:hover {
+  color: var(--text);
+}
+
+.hero {
+  position: relative;
+  min-height: 460px;
+  display: grid;
+  place-items: center;
+  padding: 28px 16px;
+  background: #2b87d1;
+  color: #fff;
+  border-radius: min(var(--radius-sm), 10px);
+  overflow: hidden;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  user-select: none;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.red {
+  background: #ce2636;
+}
+
+.green {
+  background: #4bdb6a;
+}
+
+.center {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.center p {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.icon {
+  font-size: 84px;
+  line-height: 1;
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.title {
+  margin: 4px 0;
+  font-size: clamp(36px, 5vw, 60px);
+  font-weight: 400;
+}
+
+.big {
+  font-size: clamp(44px, 6vw, 80px);
+  line-height: 1.05;
+}
+
+.mid {
+  font-size: 30px;
+  letter-spacing: 0.06em;
+}
+
+.label {
+  font-size: 18px;
+  opacity: 0.8;
+}
+
+.hint {
+  font-size: 16px !important;
+  opacity: 0.8;
+}
+
+.q {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 400;
+}
+
+.btn {
+  margin-top: 8px;
+  padding: 12px 34px;
+  border-radius: 4px;
+  background: #ffd154;
+  color: #333;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+}
+
+.btn:hover {
+  background: #ffdc7a;
+}
+
+.btns {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.saved {
+  font-size: 16px;
+  opacity: 0.85;
+}
+
+.levelBar {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 24px;
+}
+
+.stats {
+  display: flex;
+  gap: 40px;
+  font-size: 24px;
+  justify-content: center;
+}
+
+.stats b {
+  font-weight: 700;
+}
+
+.vgrid + .stats,
+.hero > .stats {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  right: 0;
+}
+
+.seq {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(70px, 110px));
+  gap: 14px;
+  margin-top: 30px;
+}
+
+.seq button {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  transition: background-color 0.12s;
+}
+
+.seq button[data-lit="true"] {
+  background: #fff;
+}
+
+.target {
+  position: absolute;
+  width: 92px;
+  height: 92px;
+  margin: -46px 0 0 -46px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 14%, #95c3e8 14% 30%, #fff 30% 46%, #95c3e8 46% 62%, #fff 62%);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+.number {
+  font-size: clamp(48px, 8vw, 96px);
+  letter-spacing: 0.08em;
+  font-weight: 400;
+}
+
+.timer {
+  width: min(360px, 70vw);
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.timer i {
+  display: block;
+  height: 100%;
+  background: #fff;
+  animation: drain linear forwards;
+}
+
+@keyframes drain {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.input {
+  width: min(380px, 80vw);
+  height: 54px;
+  border: 0;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 30px;
+  color: #333;
+  background: #fff;
+  outline: 0;
+}
+
+.wrong {
+  color: #ffd154;
+  text-decoration: line-through;
+}
+
+.word {
+  font-size: clamp(42px, 6vw, 66px);
+  margin: 18px 0;
+}
+
+.chimp {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(36px, 76px));
+  gap: 10px;
+}
+
+.chimp button {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  font-size: 30px;
+  color: #fff;
+  font-family: inherit;
+  visibility: hidden;
+}
+
+.chimp button[data-on="true"] {
+  visibility: visible;
+  border: 4px solid rgba(255, 255, 255, 0.85);
+}
+
+.chimp button[data-on="true"]:empty {
+  background: #fff;
+}
+
+.vgrid {
+  display: grid;
+  gap: 8px;
+  width: min(420px, 82vw);
+  margin-top: 40px;
+}
+
+.vgrid button {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  transition: background-color 0.15s;
+}
+
+.vgrid button[data-state="on"] {
+  background: #fff;
+}
+
+.vgrid button[data-state="bad"] {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.typeBox {
+  position: relative;
+  width: min(760px, 86vw);
+  margin-top: 10px;
+  padding: 18px 20px;
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  text-align: left;
+  font-size: 22px;
+  line-height: 1.5;
+}
+
+.typeBox span[data-s="ok"] { color: #1a7f37; }
+.typeBox span[data-s="bad"] { color: #d1242f; background: #ffd8dc; }
+.typeBox span[data-s="cur"] { border-left: 2px solid #2b87d1; }
+
+.typeBox textarea {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  resize: none;
+}
+
+.below {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.below h3 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.dim {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.statWrap {
+  display: grid;
+  gap: 14px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.kpis > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.kpis span,
+.kpis small {
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.kpis b {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.charts > div {
+  display: grid;
+  gap: 8px;
+}
+
+.home {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 26px 18px;
+  text-align: center;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: #2b87d1;
+}
+
+.cardIcon {
+  font-size: 46px;
+  line-height: 1.1;
+  color: #2b87d1;
+  font-weight: 700;
+}
+
+.card b {
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.card small {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.card em {
+  font-style: normal;
+  font-size: 12px;
+  color: #2b87d1;
+}
+
+@media (max-width: 820px) {
+  .below,
+  .charts {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    min-height: 400px;
+  }
+
+  .chimp {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}

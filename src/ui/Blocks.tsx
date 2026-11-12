@@ -8,6 +8,9 @@ import { useOptions } from "./useOptions";
 import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./Blocks2";
 import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
 import { AnalysisBoard, GameReview, OpeningTrainer, Puzzles } from "@/chess/ChessBlocks";
+import { DeepStats } from "./DeepStats";
+import { Benchmark } from "./Benchmark";
+import { PokerTable } from "@/poker/PokerTable";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -55,7 +58,7 @@ export function Spark({ series, area, h = 56, markers }: { series: Series; area?
   );
 }
 
-function Bars({ series, h = 140 }: { series: Series; h?: number }) {
+export function Bars({ series, h = 140 }: { series: Series; h?: number }) {
   if (!series.length) return <NoData />;
   const max = Math.max(...series.map((s) => s.value), 1);
   return (
@@ -444,9 +447,12 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "cards": return <CardMemory ctx={ctx} />;
     case "streaks": return <Streaks p={p} />;
     case "countdown": return <Countdown p={p} ctx={ctx} />;
-    case "chessboard": return <AnalysisBoard />;
+    case "chessboard": return <AnalysisBoard ctx={ctx} p={p} />;
     case "openings": return <OpeningTrainer ctx={ctx} />;
     case "puzzles": return <Puzzles ctx={ctx} />;
     case "gamereview": return <GameReview ctx={ctx} p={p} />;
+    case "deepstats": return <DeepStats p={p} />;
+    case "benchmark": return <Benchmark ctx={ctx} p={p} />;
+    case "poker": return <PokerTable ctx={ctx} />;
   }
 }

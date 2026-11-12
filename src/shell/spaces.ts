@@ -64,11 +64,11 @@ export const SPACES: Space[] = [
   ] },
   { id: "mind", name: "Mind sports", icon: "mind", blurb: "Chess, poker, geography, brain tests, memory, programming", subs: [
     { id: "chess", name: "Chess", blurb: "chess.com sync, ratings and results" },
-    { id: "analysis", name: "Analysis", blurb: "Board with Stockfish; play against it" },
+    { id: "analysis", name: "Play & analyse", blurb: "Play Stockfish at any Elo, from any position; analyse with the engine" },
     { id: "openings", name: "Openings", blurb: "Drill opening theory move by move" },
     { id: "puzzles", name: "Puzzles", blurb: "Tactics from Lichess and from your own games" },
     { id: "review", name: "Game review", blurb: "Brilliant to blunder, move by move" },
-    { id: "poker", name: "Poker", blurb: "Sessions, P&L, hand review" },
+    { id: "poker", name: "Poker", blurb: "Practice table vs human-like bots, stats, home games" },
     { id: "geography", name: "Geography", blurb: "Flags, capitals, sizes" },
     { id: "brain", name: "Brain tests", blurb: "Reaction, memory, typing and more" },
     { id: "memory", name: "Memory sports", blurb: "Numbers, cards, memory palaces" },
@@ -89,6 +89,7 @@ export const SPACES: Space[] = [
   ] },
   { id: "stats", name: "Stats", icon: "stats", blurb: "Scores computed from your logs", subs: [
     { id: "scores", name: "Scores", blurb: "Weekly scores and history" },
+    { id: "deep", name: "Deep dives", blurb: "In-depth stats for every area" },
     { id: "usage", name: "Apollo usage", blurb: "Tokens and plan usage" },
   ] },
   { id: "inbox", name: "Inbox", icon: "inbox", blurb: "Teams, OneNote, deadlines, reports" },

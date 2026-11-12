@@ -8,6 +8,7 @@ export const BLOCK_TYPES = [
   "review", "ask", "scores", "brain", "geo", "sync",
   "timetable", "agenda", "tile", "insights", "history", "inbox", "cards",
   "streaks", "countdown", "chessboard", "openings", "puzzles", "gamereview",
+  "deepstats", "benchmark", "poker",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -29,7 +30,7 @@ export const BindSchema = z.object({
   upcoming: z.object({ field: z.string(), days: z.number().int().min(1).max(366) }).optional(),
   dateField: z.string().optional(),
   agg: z.object({
-    fn: z.enum(["count", "sum", "avg", "max", "min", "last"]),
+    fn: z.enum(["count", "sum", "avg", "max", "min", "last", "pct", "per100"]),
     field: z.string().optional(),
     /** Group into a series: one value per day, or per distinct value of a field. */
     by: z.union([z.literal("day"), z.literal("week"), z.object({ field: z.string() })]).optional(),

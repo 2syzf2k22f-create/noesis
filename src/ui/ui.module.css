@@ -1275,3 +1275,54 @@
   border-top: 1px solid var(--border);
   font-size: 13px;
 }
+
+.deep {
+  display: grid;
+  gap: 14px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.kpis > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: min(var(--radius-sm), 10px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.kpis b {
+  font-family: var(--font-display), sans-serif;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.kpis small,
+.delta {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.delta[data-good="true"] {
+  color: var(--good);
+}
+
+.delta[data-good="false"] {
+  color: var(--danger);
+}
+
+.deepCharts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.deepCharts > div {
+  display: grid;
+  gap: 8px;
+}

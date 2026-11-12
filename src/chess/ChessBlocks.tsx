@@ -35,15 +35,27 @@ const sansOf = (pgnOrMoves: string) => {
 };
 
 /* ======================= analysis board / play vs engine ======================= */
-export function AnalysisBoard() {
+const ELOS = [400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400, 2700, 3000];
+const CLOCKS: { label: string; base: number; inc: number }[] = [
+  { label: "No clock", base: 0, inc: 0 }, { label: "3 + 2", base: 180, inc: 2 }, { label: "5 + 0", base: 300, inc: 0 },
+  { label: "10 + 0", base: 600, inc: 0 }, { label: "15 + 10", base: 900, inc: 10 }, { label: "30 + 0", base: 1800, inc: 0 },
+];
+type Play = { elo: number; me: "w" | "b"; clock: { base: number; inc: number }; startFen: string; over: string | null };
+const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, "0")}`;
+
+export function AnalysisBoard({ ctx, p }: { ctx?: BlockCtx; p?: P }) {
   const engine = useEngine();
   const [start, setStart] = useState(new Chess().fen());
   const [moves, setMoves] = useState<string[]>([]);
   const [idx, setIdx] = useState(0);
   const [flip, setFlip] = useState(false);
   const [an, setAn] = useState<Analysis | null>(null);
-  const [vs, setVs] = useState<null | number>(null); // engine skill when playing
   const [load, setLoad] = useState("");
+  const [play, setPlay] = useState<Play | null>(null);
+  const [setup, setSetup] = useState({ elo: 1200, color: "w" as "w" | "b" | "random", clock: 0 });
+  const [clocks, setClocks] = useState<{ w: number; b: number }>({ w: 0, b: 0 });
+  const [thinking, setThinking] = useState(false);
+  const saved = useRef(false);
   const pos = useMemo(() => {
     const g = new Chess(start);
     for (const m of moves.slice(0, idx)) g.move(m);
@@ -51,73 +63,156 @@ export function AnalysisBoard() {
   }, [start, moves, idx]);
   const fen = pos.fen();
   const last = useMemo(() => { const h = pos.history({ verbose: true }); return h.length ? { from: h[h.length - 1].from, to: h[h.length - 1].to } : null; }, [pos]);
+  const playing = !!play && !play.over;
 
+  // live analysis (only when not playing, so it can't help you)
   useEffect(() => {
-    if (!engine || pos.isGameOver()) return;
+    if (!engine || pos.isGameOver() || play) return;
     let live = true;
     engine.analyse(fen, { depth: 16, multipv: 3, onUpdate: (a) => { if (live) setAn(a); } }).then((a) => { if (live) setAn(a); });
     return () => { live = false; engine.stop(); };
-  }, [engine, fen, pos]);
+  }, [engine, fen, pos, play]);
 
   const push = useCallback((san: string) => { setMoves((ms) => [...ms.slice(0, idx), san]); setIdx((i) => i + 1); }, [idx]);
-  // engine replies when playing against it
+
+  const finish = useCallback((result: string, how: string) => {
+    setPlay((pl) => (pl ? { ...pl, over: `${how}` } : pl));
+    if (saved.current || !play) return;
+    saved.current = true;
+    const score = result === "draw" ? 0.5 : result === "win" ? 1 : 0;
+    void ctx?.write("create", "chess_practice", { elo: play.elo, color: play.me === "w" ? "white" : "black", result, score, how, moves: moves.slice(0, idx).join(" "), start_fen: play.startFen, plies: idx });
+  }, [ctx, play, moves, idx]);
+
+  // game end detection
   useEffect(() => {
-    if (vs == null || !engine || pos.isGameOver()) return;
-    const engineColor = flip ? "w" : "b";
-    if (pos.turn() !== engineColor) return;
+    if (!playing || !play) return;
+    if (pos.isCheckmate()) queueMicrotask(() => finish(pos.turn() === play.me ? "loss" : "win", pos.turn() === play.me ? "Checkmated" : "You won by checkmate"));
+    else if (pos.isDraw()) queueMicrotask(() => finish("draw", pos.isStalemate() ? "Draw by stalemate" : pos.isThreefoldRepetition() ? "Draw by repetition" : "Draw"));
+  }, [pos, playing, play, finish]);
+
+  // engine replies
+  useEffect(() => {
+    if (!playing || !play || !engine || pos.isGameOver() || pos.turn() === play.me) return;
     let live = true;
-    engine.play(fen, vs).then((u) => {
-      if (!live || !u) return;
-      const g = new Chess(fen);
-      try { push(g.move(uciMove(u)).san); } catch {}
+    queueMicrotask(() => setThinking(true));
+    const t0 = Date.now();
+    engine.humanMove(fen, play.elo).then(({ move, thinkMs }) => {
+      const wait = Math.max(0, thinkMs - (Date.now() - t0));
+      setTimeout(() => {
+        if (!live || !move) return;
+        setThinking(false);
+        if (play.clock.base) setClocks((c) => { const side = play.me === "w" ? "b" : "w"; return { ...c, [side]: c[side] - (Date.now() - t0) / 1000 + play.clock.inc }; });
+        const g = new Chess(fen);
+        try { push(g.move(uciMove(move)).san); } catch {}
+      }, wait);
     });
     return () => { live = false; };
-  }, [vs, engine, fen, pos, flip, push]);
+  }, [playing, play, engine, fen, pos, push]);
+
+  // your clock ticks on your turn
+  useEffect(() => {
+    if (!playing || !play?.clock.base || pos.turn() !== play.me) return;
+    const id = setInterval(() => setClocks((c) => {
+      const v = c[play.me] - 0.2;
+      if (v <= 0) { queueMicrotask(() => finish("loss", "Lost on time")); return { ...c, [play.me]: 0 }; }
+      return { ...c, [play.me]: v };
+    }), 200);
+    return () => clearInterval(id);
+  }, [playing, play, pos, finish]);
 
   const onMove = (from: string, to: string) => {
+    if (playing && pos.turn() !== play!.me) return;
+    if (playing && idx !== moves.length) return; // can't move while browsing back in a game
     const g = new Chess(fen);
-    try { push(g.move({ from, to, promotion: "q" }).san); } catch {}
+    try {
+      push(g.move({ from, to, promotion: "q" }).san);
+      if (playing && play!.clock.inc) setClocks((c) => ({ ...c, [play!.me]: c[play!.me] + play!.clock.inc }));
+    } catch {}
+  };
+  const startGame = (fromHere: boolean) => {
+    const me = setup.color === "random" ? (Math.random() < 0.5 ? "w" : "b") : setup.color;
+    const sf = fromHere ? fen : new Chess().fen();
+    const clock = CLOCKS[setup.clock];
+    saved.current = false;
+    setStart(sf); setMoves([]); setIdx(0); setFlip(me === "b");
+    setClocks({ w: clock.base, b: clock.base });
+    setPlay({ elo: setup.elo, me, clock: { base: clock.base, inc: clock.inc }, startFen: sf, over: null });
   };
   const top = an?.lines[0];
-  const pct = winPct(top);
+  const pct = play ? 50 : winPct(top);
   return (
     <div className={c.wrap}>
       <div className={c.boardCol}>
-        <EvalBar pct={pct} label={fmtEval(top)} />
-        <Board fen={fen} orientation={flip ? "black" : "white"} onMove={onMove} lastMove={last}
-          hint={vs == null && an?.best ? { from: an.best.slice(0, 2), to: an.best.slice(2, 4) } : null} />
+        {!play && <EvalBar pct={pct} label={fmtEval(top)} />}
+        <div style={{ flex: 1, display: "grid", gap: 6 }}>
+          {play && play.clock.base > 0 && <div className={c.clock} data-active={playing && pos.turn() !== play.me}>Stockfish {play.elo} · {mmss(clocks[play.me === "w" ? "b" : "w"])}</div>}
+          <Board fen={fen} orientation={flip ? "black" : "white"} onMove={onMove} lastMove={last}
+            hint={!play && an?.best ? { from: an.best.slice(0, 2), to: an.best.slice(2, 4) } : null} />
+          {play && play.clock.base > 0 && <div className={c.clock} data-active={playing && pos.turn() === play.me}>You · {mmss(clocks[play.me])}</div>}
+        </div>
       </div>
       <div className={c.side}>
-        <div className="label">{pos.isCheckmate() ? "Checkmate" : pos.isDraw() ? "Draw" : `${pos.turn() === "w" ? "White" : "Black"} to move`} · eval {fmtEval(top)}{top ? ` · depth ${top.depth}` : ""}</div>
-        {vs == null && an?.lines.map((l, i) => (
-          <div key={i} className={c.msg}><b>{fmtEval(l)}</b> {(() => { const g = new Chess(fen); return l.pv.slice(0, 8).map((u) => { try { return g.move(uciMove(u)).san; } catch { return ""; } }).join(" "); })()}</div>
-        ))}
+        {play ? (
+          <>
+            <div className={c.msg} data-tone={play.over ? (play.over.includes("won") ? "good" : play.over.startsWith("Draw") ? undefined : "bad") : undefined}>
+              {play.over ?? (thinking ? `Stockfish (${play.elo}) is thinking…` : `Your move (${play.me === "w" ? "White" : "Black"}) vs Stockfish ${play.elo}`)}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {playing && <button className="pill" onClick={() => finish("loss", "You resigned")}>Resign</button>}
+              {playing && <button className="pill" onClick={() => finish("draw", "Draw agreed")}>Offer draw</button>}
+              {play.over && <button className="pill" data-active="true" onClick={() => startGame(false)}>Rematch</button>}
+              {play.over && <button className="pill" onClick={() => { setPlay(null); }}>Analyse this game</button>}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="label">{pos.isCheckmate() ? "Checkmate" : pos.isDraw() ? "Draw" : `${pos.turn() === "w" ? "White" : "Black"} to move`} · eval {fmtEval(top)}{top ? ` · depth ${top.depth}` : ""}</div>
+            {an?.lines.map((l, i) => (
+              <div key={i} className={c.msg}><b>{fmtEval(l)}</b> {(() => { const g = new Chess(fen); return l.pv.slice(0, 8).map((u) => { try { return g.move(uciMove(u)).san; } catch { return ""; } }).join(" "); })()}</div>
+            ))}
+          </>
+        )}
         <div className={c.moves}>
-          {moves.map((m, i) => (
-            <button key={i} data-on={i + 1 === idx} onClick={() => setIdx(i + 1)}>{i % 2 === 0 && <em>{i / 2 + 1}.</em>}{m}</button>
-          ))}
+          {moves.map((m, i) => {
+            const [, side, , , , full] = start.split(" ");
+            const ply = (Number(full) - 1) * 2 + (side === "b" ? 1 : 0) + i;
+            const label = ply % 2 === 0 ? `${ply / 2 + 1}.` : i === 0 ? `${(ply - 1) / 2 + 1}...` : "";
+            return <button key={i} data-on={i + 1 === idx} onClick={() => setIdx(i + 1)}>{label && <em>{label}</em>}{m}</button>;
+          })}
         </div>
-        <div className="row" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button className="pill" onClick={() => setIdx(0)}>⏮</button>
           <button className="pill" onClick={() => setIdx((i) => Math.max(0, i - 1))}>◀</button>
           <button className="pill" onClick={() => setIdx((i) => Math.min(moves.length, i + 1))}>▶</button>
           <button className="pill" onClick={() => setFlip((f) => !f)}>Flip</button>
-          <button className="pill" onClick={() => { setMoves([]); setIdx(0); setStart(new Chess().fen()); }}>New</button>
+          {!playing && <button className="pill" onClick={() => { setPlay(null); setMoves([]); setIdx(0); setStart(new Chess().fen()); }}>New board</button>}
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="label">Play vs Stockfish</span>
-          <select className={c.sel} value={vs ?? ""} onChange={(e) => setVs(e.target.value === "" ? null : Number(e.target.value))}>
-            <option value="">Off (analysis)</option>
-            {[[0, "Beginner"], [5, "Club"], [10, "Strong"], [15, "Expert"], [20, "Max"]].map(([v, l]) => <option key={v} value={v}>{l} (skill {v})</option>)}
-          </select>
-        </div>
-        <textarea className={c.input} rows={2} placeholder="Paste a PGN or FEN to load it" value={load} onChange={(e) => setLoad(e.target.value)} />
-        <button className="pill" onClick={() => {
-          const t = load.trim();
-          if (/^([rnbqkpRNBQKP1-8]+\/){7}/.test(t)) { try { new Chess(t); setStart(t); setMoves([]); setIdx(0); } catch {} }
-          else { const ms = sansOf(t); setStart(new Chess().fen()); setMoves(ms); setIdx(ms.length); }
-          setLoad("");
-        }}>Load</button>
+        {!playing && (
+          <div className={c.playBox}>
+            <div className="label">Play Stockfish</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <select className={c.sel} value={setup.elo} onChange={(e) => setSetup({ ...setup, elo: Number(e.target.value) })}>{ELOS.map((e) => <option key={e} value={e}>{e} Elo</option>)}</select>
+              <select className={c.sel} value={setup.color} onChange={(e) => setSetup({ ...setup, color: e.target.value as "w" | "b" | "random" })}><option value="w">I play White</option><option value="b">I play Black</option><option value="random">Random colour</option></select>
+              <select className={c.sel} value={setup.clock} onChange={(e) => setSetup({ ...setup, clock: Number(e.target.value) })}>{CLOCKS.map((k, i) => <option key={k.label} value={i}>{k.label}</option>)}</select>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button className="pill" data-active="true" onClick={() => startGame(false)}>New game</button>
+              <button className="pill" onClick={() => startGame(true)} title="Start a game from the position on the board">Play from this position</button>
+            </div>
+          </div>
+        )}
+        {!play && (
+          <>
+            <textarea className={c.input} rows={2} placeholder="Paste a PGN or FEN to load it (then analyse, or play from it)" value={load} onChange={(e) => setLoad(e.target.value)} />
+            <button className="pill" onClick={() => {
+              const t = load.trim();
+              if (/^([rnbqkpRNBQKP1-8]+\/){7}/.test(t)) { try { new Chess(t); setStart(t); setMoves([]); setIdx(0); } catch {} }
+              else { const ms = sansOf(t); setStart(new Chess().fen()); setMoves(ms); setIdx(ms.length); }
+              setLoad("");
+            }}>Load</button>
+          </>
+        )}
+        {p?.note && <small className="label">{String(p.note)}</small>}
       </div>
     </div>
   );

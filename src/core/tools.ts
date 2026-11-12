@@ -22,6 +22,7 @@ export const WRITABLE = [
   "books", "reading_logs", "weekly_reports",
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
+  "chess_practice", "poker_practice",
 ] as const;
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
 const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events"]);

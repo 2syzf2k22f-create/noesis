@@ -254,3 +254,27 @@
   outline: 0;
   font: 12px var(--font-mono), monospace;
 }
+
+.clock {
+  justify-self: stretch;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font: 600 15px var(--font-mono), monospace;
+  max-width: min(560px, 78vh);
+}
+
+.clock[data-active="true"] {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.playBox {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}

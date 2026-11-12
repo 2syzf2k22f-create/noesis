@@ -94,6 +94,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "form", title: "Log time manually", span: 6, props: { table: "study_sessions", submit: "Log", fields: [
         { name: "subject", type: "select", options: SUBJ }, { name: "topic" }, { name: "minutes", type: "number", required: true },
       ] } },
+      { type: "deepstats", title: "Revision in depth", span: 12, props: { table: "study_sessions", field: "minutes", unit: "min", groupBy: "subject" } },
       { type: "table", title: "Recent sessions", span: 12, bind: { table: "study_sessions", limit: 15 }, props: { columns: ["created_at", "subject", "topic", "minutes"] } },
     ],
   },
@@ -255,6 +256,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "line", title: "Squat best per day", span: 6, bind: { table: "sets", where: { exercise: "Squat" }, days: 90, agg: { fn: "max", field: "weight_kg", by: "day" } } },
       { type: "line", title: "Bench press best per day", span: 6, bind: { table: "sets", where: { exercise: "Bench press" }, days: 90, agg: { fn: "max", field: "weight_kg", by: "day" } } },
       { type: "bar", title: "Weekly volume (kg), 12 weeks", span: 12, bind: { table: "sets", days: 84, agg: { fn: "sum", field: "volume", by: "week" } } },
+      { type: "deepstats", title: "Volume per set in depth", span: 12, props: { table: "sets", field: "volume", unit: "kg", groupBy: "exercise" } },
+      { type: "deepstats", title: "Weight lifted in depth", span: 12, props: { table: "sets", field: "weight_kg", unit: "kg", groupBy: "exercise" } },
     ],
   },
   "fitness--routines": {
@@ -306,6 +309,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "form", title: "Log something else", span: 6, props: { table: "meals", fields: [
         { name: "name", required: true }, { name: "kcal", type: "number" }, { name: "protein_g", label: "Protein (g)", type: "number" },
       ] } },
+      { type: "deepstats", title: "Protein in depth", span: 12, props: { table: "meals", field: "protein_g", unit: "g", groupBy: "name" } },
       { type: "table", title: "Recent meals", span: 12, bind: { table: "meals", limit: 20 }, props: { columns: ["created_at", "name", "kcal", "protein_g"] } },
     ],
   },
@@ -331,6 +335,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "stat", title: "7-day average", span: 4, props: { unit: "h", goal: 8 }, bind: { table: "sleep_logs", days: 7, agg: { fn: "avg", field: "hours" } } },
       { type: "ring", title: "vs 8 h", span: 4, props: { goal: 8, unit: "h" }, bind: { table: "sleep_logs", days: 7, agg: { fn: "avg", field: "hours" } } },
       { type: "line", title: "Hours, 30 days", span: 12, bind: { table: "sleep_logs", days: 30, agg: { fn: "avg", field: "hours", by: "day" } } },
+      { type: "deepstats", title: "Sleep in depth", span: 12, props: { table: "sleep_logs", field: "hours", unit: "h" } },
     ],
   },
   "nutrition--screentime": {
@@ -410,13 +415,20 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "donut", title: "Results, 30 days", span: 4, bind: { table: "chess_games", days: 30, agg: { fn: "count", by: { field: "result" } } } },
       { type: "line", title: "Rating, 60 days", span: 8, bind: { table: "chess_games", days: 60, agg: { fn: "last", field: "rating", by: "day" } } },
       { type: "donut", title: "Time controls, 60 days", span: 4, bind: { table: "chess_games", days: 60, agg: { fn: "count", by: { field: "time_class" } } } },
+      { type: "deepstats", title: "Rating in depth", span: 12, props: { table: "chess_games", field: "rating", groupBy: "result" } },
       { type: "list", title: "Recent games", span: 12, bind: { table: "chess_games", limit: 15 }, props: { primary: "opponent", secondary: ["result", "time_class", "rating", "created_at"], link: "{url}" } },
     ],
   },
   "mind--analysis": {
-    title: "Analysis",
-    subtitle: "Stockfish 18 running on your device. Best lines show as you move; switch on Play vs Stockfish to play a game.",
-    blocks: [{ type: "chessboard", span: 12 }],
+    title: "Play & analyse",
+    subtitle: "Play Stockfish from 400 to 3000 Elo with human-like moves and thinking time, from the start or any position you set up. Analysis shows when you're not playing.",
+    blocks: [
+      { type: "chessboard", span: 12 },
+      { type: "bar", title: "Your score vs Stockfish by Elo (1 = win)", span: 6, bind: { table: "chess_practice", agg: { fn: "avg", field: "score", by: { field: "elo" } } } },
+      { type: "donut", title: "Results", span: 3, bind: { table: "chess_practice", agg: { fn: "count", by: { field: "result" } } } },
+      { type: "stat", title: "Games, 12 weeks", span: 3, bind: { table: "chess_practice", agg: { fn: "count", by: "week" }, days: 84 } },
+      { type: "table", title: "Recent practice games", span: 12, bind: { table: "chess_practice", limit: 15 }, props: { columns: ["created_at", "elo", "color", "result", "how", "plies"] } },
+    ],
   },
   "mind--openings": {
     title: "Openings",
@@ -434,6 +446,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "puzzles", span: 9, bind: { table: "chess_puzzles", limit: 200 } },
       { type: "stat", title: "Solved, 7 days", span: 3, bind: { table: "puzzle_attempts", where: { solved: true }, days: 7, agg: { fn: "count", by: "day" } } },
       { type: "donut", title: "Solved vs missed, 30 days", span: 3, bind: { table: "puzzle_attempts", days: 30, agg: { fn: "count", by: { field: "solved" } } } },
+      { type: "stat", title: "Solve rate %", span: 3, bind: { table: "puzzle_attempts", agg: { fn: "pct", field: "solved" } } },
+      { type: "bar", title: "Solve rate by theme %", span: 9, bind: { table: "puzzle_attempts", agg: { fn: "pct", field: "solved", by: { field: "themes" } } } },
+      { type: "deepstats", title: "Puzzle ratings attempted", span: 12, props: { table: "puzzle_attempts", field: "rating", groupBy: "solved" } },
     ],
   },
   "mind--review": {
@@ -443,16 +458,24 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "mind--poker": {
     title: "Poker",
-    subtitle: "Home games and play money only.",
+    subtitle: "Practice table with play chips only, against human-like bots. Real-money sites (PokerStars and the like) are 18+ for every account, so they aren't connected.",
     blocks: [
-      { type: "form", title: "Log a session", span: 5, props: { table: "poker_sessions", submit: "Log", fields: [
+      { type: "poker", span: 12 },
+      { type: "stat", title: "Hands played", span: 2, bind: { table: "poker_practice", agg: { fn: "count", by: "day" }, days: 30 } },
+      { type: "stat", title: "Win rate (bb/100)", span: 2, bind: { table: "poker_practice", agg: { fn: "per100", field: "net_bb" } } },
+      { type: "stat", title: "VPIP %", span: 2, bind: { table: "poker_practice", agg: { fn: "pct", field: "vpip" } } },
+      { type: "stat", title: "PFR %", span: 2, bind: { table: "poker_practice", agg: { fn: "pct", field: "pfr" } } },
+      { type: "stat", title: "Hands won %", span: 2, bind: { table: "poker_practice", agg: { fn: "pct", field: "won" } } },
+      { type: "stat", title: "Showdown won %", span: 2, bind: { table: "poker_practice", where: { showdown: true }, agg: { fn: "pct", field: "won" } } },
+      { type: "line", title: "Net big blinds per day", span: 6, bind: { table: "poker_practice", days: 30, agg: { fn: "sum", field: "net_bb", by: "day" } } },
+      { type: "bar", title: "Win rate by table size (bb/100)", span: 6, bind: { table: "poker_practice", agg: { fn: "per100", field: "net_bb", by: { field: "opponents" } } } },
+      { type: "deepstats", title: "Practice in depth: big blinds per hand", span: 12, props: { table: "poker_practice", field: "net_bb", unit: "bb", groupBy: "opponents" } },
+      { type: "form", title: "Home game session", span: 6, props: { table: "poker_sessions", submit: "Log session", fields: [
         { name: "game", type: "select", options: ["Home game", "Play money"] }, { name: "buy_in", type: "number" }, { name: "cash_out", type: "number" }, { name: "notes", type: "textarea" },
       ] } },
-      { type: "stat", title: "All-time P&L", span: 3, bind: { table: "poker_sessions", agg: { fn: "sum", field: "profit" } } },
-      { type: "bar", title: "P&L by week", span: 4, bind: { table: "poker_sessions", days: 90, agg: { fn: "sum", field: "profit", by: "week" } } },
-      { type: "form", title: "Hand review", span: 6, props: { table: "poker_hands", submit: "Save hand", fields: [{ name: "hand", label: "Hand (e.g. AsKd, BTN vs BB, 100bb)", required: true }, { name: "notes", label: "Action and thoughts", type: "textarea" }] } },
       { type: "ask", title: "Review a hand with Apollo", span: 6, props: { submit: "Review", rows: 5, template: "Review this poker hand (home game / play money) like a coach: ranges, sizing, mistakes, better lines.\n{text}", fields: [{ name: "text", label: "The hand", type: "textarea" }] } },
-      { type: "list", title: "Saved hands", span: 12, bind: { table: "poker_hands", limit: 20 }, props: { primary: "hand", secondary: ["notes"] } },
+      { type: "bar", title: "Home-game P&L by week", span: 6, bind: { table: "poker_sessions", days: 180, agg: { fn: "sum", field: "profit", by: "week" } } },
+      { type: "list", title: "Saved hands", span: 6, bind: { table: "poker_hands", limit: 20 }, props: { primary: "hand", secondary: ["notes"] } },
     ],
   },
   "mind--geography": {
@@ -467,8 +490,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "mind--brain": {
     title: "Brain tests",
+    subtitle: "Human Benchmark-style tests. Pick one; your statistics appear under each test.",
     blocks: [
-      { type: "brain", title: "Tests", span: 8 },
+      { type: "benchmark", span: 12 },
       { type: "bar", title: "Best per test, 90 days", span: 4, bind: { table: "brain_test_results", days: 90, agg: { fn: "max", field: "score", by: { field: "test" } } } },
       { type: "line", title: "Reaction (ms), 60 days", span: 6, bind: { table: "brain_test_results", where: { test: "reaction" }, days: 60, agg: { fn: "min", field: "score", by: "day" } } },
       { type: "line", title: "Typing (wpm), 60 days", span: 6, bind: { table: "brain_test_results", where: { test: "typing" }, days: 60, agg: { fn: "max", field: "score", by: "day" } } },
@@ -607,6 +631,26 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "history", title: "Last 8 weeks", span: 12 },
       { type: "ask", title: "Change a target", span: 12, props: { submit: "Save", template: "Set my weekly target {target} to {value} (settings.data.targets).",
         fields: [{ name: "target", type: "select", options: ["revision_minutes", "sets", "sleep_hours", "protein_g", "flashcard_reviews", "reading_pages", "chess_games", "language_reviews"] }, { name: "value", type: "text" }] } },
+    ],
+  },
+  "stats--deep": {
+    title: "Deep dives",
+    subtitle: "Totals, averages, medians, records, trends, consistency, weekday and time-of-day patterns and distributions, computed in code. Switch the period on each.",
+    blocks: [
+      { type: "deepstats", title: "Revision minutes", span: 12, props: { table: "study_sessions", field: "minutes", unit: "min", groupBy: "subject" } },
+      { type: "deepstats", title: "Flashcard reviews", span: 12, props: { table: "reviews", groupBy: "deck" } },
+      { type: "deepstats", title: "Training volume per set", span: 12, props: { table: "sets", field: "volume", unit: "kg", groupBy: "exercise" } },
+      { type: "deepstats", title: "Sleep", span: 12, props: { table: "sleep_logs", field: "hours", unit: "h" } },
+      { type: "deepstats", title: "Protein per meal", span: 12, props: { table: "meals", field: "protein_g", unit: "g" } },
+      { type: "deepstats", title: "Calories per meal", span: 12, props: { table: "meals", field: "kcal", unit: "kcal" } },
+      { type: "deepstats", title: "Screen time", span: 12, props: { table: "screentime_days", field: "minutes", unit: "min", better: "lower" } },
+      { type: "deepstats", title: "Past-paper scores", span: 12, props: { table: "past_papers", field: "pct", unit: "%", groupBy: "subject" } },
+      { type: "deepstats", title: "Reading", span: 12, props: { table: "reading_logs", field: "pages", unit: "pages", groupBy: "book" } },
+      { type: "deepstats", title: "Reaction time", span: 12, props: { table: "brain_test_results", field: "score", unit: "ms", better: "lower", where: { test: "reaction" } } },
+      { type: "deepstats", title: "Chess rating (synced games)", span: 12, props: { table: "chess_games", field: "rating", groupBy: "time_class" } },
+      { type: "deepstats", title: "Practice poker (big blinds per hand)", span: 12, props: { table: "poker_practice", field: "net_bb", unit: "bb" } },
+      { type: "deepstats", title: "Energy (check-ins)", span: 12, props: { table: "checkins", field: "energy", unit: "/5" } },
+      { type: "deepstats", title: "Apollo tokens in", span: 12, props: { table: "usage_log", field: "tokens_in", better: "lower", groupBy: "feature" } },
     ],
   },
   "stats--usage": {

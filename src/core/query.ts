@@ -16,6 +16,7 @@ export const BINDABLE = new Set([
   "subjects", "spec_topics", "resource_links", "sources", "geo_attempts", "chess_evals",
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
+  "chess_practice", "poker_practice",
 ]);
 const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities", "notes", "events"]);
 
@@ -34,6 +35,8 @@ function reduce(fn: string, vals: number[]): number | null {
   if (!vals.length) return null;
   if (fn === "sum") return vals.reduce((a, b) => a + b, 0);
   if (fn === "avg") return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100;
+  if (fn === "pct") return Math.round((vals.filter((v) => v > 0).length / vals.length) * 1000) / 10;
+  if (fn === "per100") return Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100 * 10) / 10;
   if (fn === "max") return Math.max(...vals);
   if (fn === "min") return Math.min(...vals);
   return vals[vals.length - 1];
@@ -77,7 +80,7 @@ export async function runBind(store: Store, b: Bind, opts: { owner?: boolean } =
   if (!b.agg) return { rows: rows.slice(0, b.limit ?? 50) };
 
   const { fn, field, by } = b.agg;
-  const num = (r: Row) => (field ? Number(r[field]) : 1);
+  const num = (r: Row) => (field ? (typeof r[field] === "boolean" ? (r[field] ? 1 : 0) : Number(r[field])) : 1);
   const valid = rows.filter((r) => fn === "count" || Number.isFinite(num(r)));
   if (!by) return { value: reduce(fn, valid.map(num)) };
 
