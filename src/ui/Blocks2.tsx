@@ -7,6 +7,8 @@ import { previewLabel, GRADES, type Grade } from "@/core/srsCore";
 import { useApollo } from "@/shell/apollo";
 import COUNTRIES from "@/data/countries.json";
 import type { BlockCtx } from "./Blocks";
+import { useOptions } from "./useOptions";
+import { Chimp, Verbal, Visual } from "./Blocks3";
 import u from "./ui.module.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -16,6 +18,22 @@ type Card = { id: string; [k: string]: any };
 const NoData = ({ children }: { children?: React.ReactNode }) => <div className={u.nodata}>{children ?? "no data"}</div>;
 
 /* ---------- spaced repetition ---------- */
+// Offline: grades made without a connection are queued on this device and sent when back online.
+const QKEY = "noesis.reviewQueue";
+function queueOffline(body: string) {
+  try { const q = JSON.parse(localStorage.getItem(QKEY) ?? "[]"); q.push(body); localStorage.setItem(QKEY, JSON.stringify(q)); } catch {}
+}
+async function flushOffline() {
+  let q: string[] = [];
+  try { q = JSON.parse(localStorage.getItem(QKEY) ?? "[]"); } catch { return; }
+  if (!q.length || !navigator.onLine) return;
+  const left: string[] = [];
+  for (const body of q) {
+    const ok = await fetch("/api/review", { method: "POST", headers: { "content-type": "application/json" }, body }).then((r) => r.ok).catch(() => false);
+    if (!ok) left.push(body);
+  }
+  try { localStorage.setItem(QKEY, JSON.stringify(left)); } catch {}
+}
 export function Review({ p }: { p: P }) {
   const decks: string[] = p.decks ?? (p.deck ? [p.deck] : []);
   const decksKey = decks.join(",");
@@ -36,8 +54,16 @@ export function Review({ p }: { p: P }) {
     if (!card) return;
     setFlip(false);
     setState((s) => (s ? { ...s, cards: g === 0 ? [...s.cards.slice(1), card] : s.cards.slice(1), due: g === 0 ? s.due : s.due - 1 } : s));
-    await fetch("/api/review", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: card.id, grade: g }) });
+    const body = JSON.stringify({ id: card.id, grade: g });
+    const ok = await fetch("/api/review", { method: "POST", headers: { "content-type": "application/json" }, body }).then((r) => r.ok).catch(() => false);
+    if (!ok) queueOffline(body);
   };
+  useEffect(() => {
+    const flush = () => void flushOffline();
+    window.addEventListener("online", flush);
+    flush();
+    return () => window.removeEventListener("online", flush);
+  }, []);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest?.("input,textarea,select")) return;
@@ -78,24 +104,33 @@ export function Review({ p }: { p: P }) {
 }
 
 /* ---------- ask Apollo (templated prompt, optional mode) ---------- */
+function AskSelect({ f }: { f: { name: string; options?: string[]; optionsFrom?: { table: string; field: string } } }) {
+  const opts = useOptions(f.optionsFrom, f.options ?? []);
+  return <select name={f.name}>{opts.map((o) => <option key={o}>{o}</option>)}</select>;
+}
 export function AskBlock({ p }: { p: P }) {
   const { submit, reply } = useApollo();
-  const fields: { name: string; label?: string; type?: string; options?: string[] }[] = p.fields ?? [{ name: "text", label: p.placeholder ?? "Your question", type: "textarea" }];
+  const fields: { name: string; label?: string; type?: string; options?: string[]; optionsFrom?: { table: string; field: string } }[] = p.fields ?? [{ name: "text", label: p.placeholder ?? "Your question", type: "textarea" }];
   const [sent, setSent] = useState(false);
   return (
     <form className={u.form} onSubmit={(e) => {
       e.preventDefault();
       const fd = new FormData(e.currentTarget);
       let text = String(p.template ?? "{text}");
-      for (const f of fields) text = text.replaceAll(`{${f.name}}`, String(fd.get(f.name) ?? ""));
-      submit(text, { mode: p.mode, model: p.model });
+      let thread: string | undefined = p.thread;
+      for (const f of fields) {
+        const v = String(fd.get(f.name) ?? "");
+        text = text.replaceAll(`{${f.name}}`, v);
+        thread = thread?.replaceAll(`{${f.name}}`, v);
+      }
+      submit(text, { mode: p.mode, model: p.model, thread });
       setSent(true);
       (e.target as HTMLFormElement).reset();
     }}>
       {fields.map((f) => (
         <label key={f.name} data-wide={f.type === "textarea"}>
           <span className="label">{f.label ?? f.name}</span>
-          {f.type === "select" ? <select name={f.name}>{(f.options ?? []).map((o) => <option key={o}>{o}</option>)}</select>
+          {f.type === "select" ? <AskSelect f={f} />
             : f.type === "textarea" ? <textarea name={f.name} rows={p.rows ?? 3} required /> : <input name={f.name} required />}
         </label>
       ))}
@@ -274,12 +309,12 @@ function Typing({ ctx }: { ctx: BlockCtx }) {
 }
 
 export function BrainGame({ p, ctx }: { p: P; ctx: BlockCtx }) {
-  const tests = ["reaction", "numbers", "sequence", "typing"] as const;
+  const tests = ["reaction", "numbers", "sequence", "chimp", "verbal", "visual", "typing"] as const;
   const [t, setT] = useState<(typeof tests)[number]>(p.test ?? "reaction");
   return (
     <div className={u.games}>
       {!p.test && <div className={u.row}>{tests.map((x) => <button key={x} className="pill" aria-pressed={x === t} onClick={() => setT(x)}>{x}</button>)}</div>}
-      {t === "reaction" ? <Reaction ctx={ctx} /> : t === "numbers" ? <NumberMemory ctx={ctx} /> : t === "sequence" ? <Sequence ctx={ctx} /> : <Typing ctx={ctx} />}
+      {t === "reaction" ? <Reaction ctx={ctx} /> : t === "numbers" ? <NumberMemory ctx={ctx} /> : t === "sequence" ? <Sequence ctx={ctx} /> : t === "chimp" ? <Chimp ctx={ctx} /> : t === "verbal" ? <Verbal ctx={ctx} /> : t === "visual" ? <Visual ctx={ctx} /> : <Typing ctx={ctx} />}
     </div>
   );
 }

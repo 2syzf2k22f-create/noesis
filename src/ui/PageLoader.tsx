@@ -7,12 +7,13 @@ import { parseSpec, type PageSpec } from "./spec";
 import { SpecView } from "./SpecView";
 import s from "@/shell/shell.module.css";
 import { PageHead } from "@/shell/PageHead";
+import { SubNav } from "@/shell/SubNav";
 
 /**
  * A space or generated page. Spaces use Apollo's stored layout when there is one,
  * otherwise their built-in layout. Refetches when Apollo changes something.
  */
-export function PageLoader({ slug, fallbackTitle, blurb, children }: { slug: string; fallbackTitle: string; blurb?: string; children?: React.ReactNode }) {
+export function PageLoader({ slug, fallbackTitle, blurb, space, crumb, children }: { slug: string; fallbackTitle: string; blurb?: string; space?: string; crumb?: string; children?: React.ReactNode }) {
   const { changes } = useApollo();
   const [stored, setStored] = useState<{ spec: PageSpec; version: number } | null | "missing">(null);
 
@@ -32,8 +33,9 @@ export function PageLoader({ slug, fallbackTitle, blurb, children }: { slug: str
   const spec = stored && stored !== "missing" ? stored.spec : DEFAULT_SPECS[slug];
   return (
     <article className={s.space} data-ui="page">
-      <PageHead slug={slug} title={spec?.title ?? fallbackTitle} sub={spec?.subtitle ?? blurb}
-        kicker={stored && stored !== "missing" ? `Apollo layout · v${stored.version}` : "Space"} />
+      <PageHead slug={space ?? slug} title={spec?.title ?? fallbackTitle} sub={spec?.subtitle ?? blurb}
+        kicker={`${crumb ?? "Space"}${stored && stored !== "missing" ? ` · Apollo layout v${stored.version}` : ""}`} />
+      {space && <SubNav space={space} />}
       {children}
       {stored === null ? null : spec ? <div className={s.spaceBody}><SpecView spec={spec} /></div> : (
         <div className={s.spaceEmpty}><span className="label">Status</span><span>This page doesn&apos;t exist (yet). Ask Apollo to make it.</span></div>

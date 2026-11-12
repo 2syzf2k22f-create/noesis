@@ -20,5 +20,5 @@ export default async function SpacePage({ params }: { params: Promise<{ space: s
         <Chats />
       </article>
     );
-  return <PageLoader slug={sp.id} fallbackTitle={sp.name} blurb={sp.blurb} />;
+  return <PageLoader slug={sp.id} space={sp.subs ? sp.id : undefined} fallbackTitle={sp.name} blurb={sp.blurb} crumb={sp.subs ? `${sp.name} · overview` : "Space"} />;
 }

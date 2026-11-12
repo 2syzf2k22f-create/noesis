@@ -9,7 +9,13 @@ type Ctx = {
   setTheme: (id: string) => void;
   /** Re-read Apollo's custom themes from the server. */
   reloadThemes: () => Promise<void>;
+  auto: AutoTheme;
+  setAuto: (a: AutoTheme) => void;
 };
+
+export type AutoTheme = { on: boolean; day: string; night: string; from: number; to: number };
+const AUTO_KEY = "noesis.autotheme";
+const AUTO_DEFAULT: AutoTheme = { on: false, day: "iridescent", night: "midnight", from: 7, to: 19 };
 
 const ThemeCtx = createContext<Ctx | null>(null);
 export const CUSTOM_CSS_KEY = "noesis.customcss";
@@ -50,6 +56,10 @@ const ls = {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const id = useSyncExternalStore(subscribe, read, readServer);
   const [custom, setCustom] = useState<ThemePreset[]>([]);
+  const [auto, setAutoState] = useState<AutoTheme>(AUTO_DEFAULT);
+  useEffect(() => {
+    try { const a = JSON.parse(ls.get(AUTO_KEY) ?? "null"); if (a) queueMicrotask(() => setAutoState({ ...AUTO_DEFAULT, ...a })); } catch {}
+  }, []);
 
   const presets = useMemo(() => [...PRESETS, ...custom], [custom]);
 
@@ -102,9 +112,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     void fetch("/api/themes").then((r) => (r.ok ? r.json() : [])).then((rows: Custom[]) => apply([...PRESETS, ...install(rows)], next));
   }, [apply, install, presets]);
 
+  const setAuto = useCallback((a: AutoTheme) => { setAutoState(a); ls.set(AUTO_KEY, JSON.stringify(a)); }, []);
+  // switch by time of day (checked every minute)
+  useEffect(() => {
+    if (!auto.on) return;
+    const tick = () => {
+      const h = new Date().getHours();
+      const want = h >= auto.from && h < auto.to ? auto.day : auto.night;
+      if (read() !== want && presets.some((p) => p.id === want)) apply(presets, want);
+    };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, [auto, presets, apply]);
+
   const value = useMemo(
-    () => ({ preset: presets.find((p) => p.id === id) ?? PRESETS[0], presets, setTheme, reloadThemes }),
-    [id, presets, setTheme, reloadThemes],
+    () => ({ preset: presets.find((p) => p.id === id) ?? PRESETS[0], presets, setTheme, reloadThemes, auto, setAuto }),
+    [id, presets, setTheme, reloadThemes, auto, setAuto],
   );
   return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
 }

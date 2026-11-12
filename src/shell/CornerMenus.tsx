@@ -14,14 +14,14 @@ type Open = "pages" | "style" | null;
 /** Two small fold-out menus in the top-right corner: pages and styles. No Apollo needed. */
 export function CornerMenus() {
   const [open, setOpen] = useState<Open>(null);
-  const { preset, presets, setTheme } = useTheme();
+  const { preset, presets, setTheme, auto, setAuto } = useTheme();
   const pathname = usePathname();
   const ref = useRef<HTMLDivElement>(null);
   const { changes } = useApollo();
   const [made, setMade] = useState<{ slug: string; title: string }[]>([]);
   useEffect(() => {
     fetch("/api/pages").then((r) => (r.ok ? r.json() : [])).then((rows: { slug: string; title: string; space: string | null }[]) =>
-      setMade(rows.filter((p) => !SPACES.some((sp) => sp.id === p.slug)))).catch(() => {});
+      setMade(rows.filter((p) => !SPACES.some((sp) => sp.id === p.slug.split("--")[0])))).catch(() => {});
   }, [changes, open]);
 
   // close on navigation, outside click, Escape
@@ -56,9 +56,18 @@ export function CornerMenus() {
                 <b data-ui="idx">00</b><Icon name="orb" /><span>Apollo<small data-ui="blurb">Home · the orb</small></span>
               </Link>
               {SPACES.map((sp) => (
-                <Link key={sp.id} href={`/s/${sp.id}`} role="menuitem" className={s.row} data-ui="menu-item" aria-current={pathname === `/s/${sp.id}` ? "page" : undefined}>
-                  <b data-ui="idx">{String(SPACES.indexOf(sp) + 1).padStart(2, "0")}</b><Icon name={sp.icon} /><span>{sp.name}<small data-ui="blurb">{sp.blurb}</small></span>
-                </Link>
+                <div key={sp.id} data-ui="menu-group">
+                  <Link href={`/s/${sp.id}`} role="menuitem" className={s.row} data-ui="menu-item" aria-current={pathname === `/s/${sp.id}` ? "page" : undefined}>
+                    <b data-ui="idx">{String(SPACES.indexOf(sp) + 1).padStart(2, "0")}</b><Icon name={sp.icon} /><span>{sp.name}<small data-ui="blurb">{sp.blurb}</small></span>
+                  </Link>
+                  {sp.subs && (
+                    <div data-ui="menu-subs">
+                      {sp.subs.map((x) => (
+                        <Link key={x.id} href={`/s/${sp.id}/${x.id}`} role="menuitem" aria-current={pathname === `/s/${sp.id}/${x.id}` ? "page" : undefined}>{x.name}</Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
               {made.length > 0 && <div className={`label ${s.cornerSub}`}>Made by Apollo</div>}
               {made.map((p) => (
@@ -68,7 +77,8 @@ export function CornerMenus() {
               ))}
             </>
           ) : (
-            presets.map((p) => (
+            <>
+            {presets.map((p) => (
               <button key={p.id} role="menuitemradio" aria-checked={p.id === preset.id} className={s.row} data-ui="menu-item" onClick={() => setTheme(p.id)}>
                 <span className={s.chip} style={{ background: p.swatch[0] }}>
                   <i style={{ background: p.swatch[1] }} />
@@ -76,7 +86,19 @@ export function CornerMenus() {
                 </span>
                 <span>{p.name}<small>{p.note}</small></span>
               </button>
-            ))
+            ))}
+            <div className={s.autoTheme} data-ui="auto-theme">
+              <label><input type="checkbox" checked={auto.on} onChange={(e) => setAuto({ ...auto, on: e.target.checked })} /> Switch by time of day</label>
+              {auto.on && (
+                <div>
+                  <span>Day {auto.from}:00</span>
+                  <select value={auto.day} onChange={(e) => setAuto({ ...auto, day: e.target.value })}>{presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                  <span>Night {auto.to}:00</span>
+                  <select value={auto.night} onChange={(e) => setAuto({ ...auto, night: e.target.value })}>{presets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                </div>
+              )}
+            </div>
+            </>
           )}
         </div>
       )}

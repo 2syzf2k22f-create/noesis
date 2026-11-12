@@ -6,6 +6,7 @@ export const BLOCK_TYPES = [
   "heading", "text", "stat", "sparkline", "ring", "donut", "bar", "line", "area", "heatmap",
   "table", "list", "form", "kanban", "timer", "flashcards", "quiz", "media", "wave", "custom",
   "review", "ask", "scores", "brain", "geo", "sync",
+  "timetable", "agenda", "tile", "insights", "history", "inbox", "cards",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -21,6 +22,10 @@ export const BindSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
   /** Only rows from the last N days (by created_at, or `dateField`). */
   days: z.number().int().min(1).max(366).optional(),
+  /** Rows whose date field is now or earlier (e.g. flashcards due). includeNull counts never-scheduled rows too. */
+  due: z.object({ field: z.string(), includeNull: z.boolean().optional() }).optional(),
+  /** Rows whose date field falls in the next N days (e.g. homework due soon). */
+  upcoming: z.object({ field: z.string(), days: z.number().int().min(1).max(366) }).optional(),
   dateField: z.string().optional(),
   agg: z.object({
     fn: z.enum(["count", "sum", "avg", "max", "min", "last"]),

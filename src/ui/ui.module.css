@@ -689,3 +689,389 @@
   border: 1px solid var(--border);
   border-radius: min(var(--radius-sm), 10px);
 }
+
+/* ---- dashboard blocks ---- */
+.ttToday {
+  display: grid;
+  gap: 14px;
+}
+
+.ttNow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ttNow > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: min(var(--radius-sm), 10px);
+  background: var(--surface-2);
+}
+
+.ttNow b {
+  font-family: var(--font-display), sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.ttNow small,
+.ttLesson small,
+.ttList small {
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.ttList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ttList li {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+}
+
+.ttList li span {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ttList li[data-state="past"] {
+  opacity: 0.45;
+}
+
+.ttList li[data-state="now"] b {
+  color: var(--accent);
+}
+
+.tt {
+  display: grid;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.tt > div {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.tt > div[data-today="true"] > :global(.label) {
+  color: var(--accent);
+}
+
+.ttLesson {
+  display: grid;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: min(var(--radius-sm), 8px);
+  font-size: 13px;
+}
+
+.ttLesson[data-now="true"] {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.agenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.agenda li > * {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  column-gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  font-size: 13.5px;
+}
+
+.agenda li:first-child > * {
+  border-top: 0;
+}
+
+.agenda span {
+  grid-row: span 2;
+  font-family: var(--font-mono), monospace;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.agenda span[data-when="today"],
+.agenda span[data-when="tomorrow"] {
+  color: var(--accent);
+}
+
+.agenda span[data-when="overdue"] {
+  color: var(--danger);
+}
+
+.agenda small {
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.agenda a:hover b {
+  color: var(--accent);
+}
+
+.tile {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  min-height: 92px;
+}
+
+.tile b {
+  font-size: clamp(24px, 2.4vw, 34px);
+}
+
+.tile small {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.tile i {
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-style: normal;
+  color: var(--text-dim);
+  transition: transform 0.2s, color 0.2s;
+}
+
+.tile:hover i {
+  transform: translateX(4px);
+  color: var(--accent);
+}
+
+.insights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.insights li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--chart-1);
+  background: var(--surface);
+  font-size: 13.5px;
+}
+
+.insights li[data-tone="good"] {
+  border-left-color: var(--good);
+}
+
+.insights li[data-tone="bad"] {
+  border-left-color: var(--danger);
+}
+
+.insights small {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+.stackBars {
+  display: flex;
+  gap: 6px;
+  height: 150px;
+  align-items: stretch;
+}
+
+.stackBars > div {
+  flex: 1;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stackCol {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  gap: 1px;
+}
+
+.stackCol i {
+  display: block;
+  border-radius: 2px;
+}
+
+.stackBars small {
+  text-align: center;
+  font: 9.5px var(--font-mono), monospace;
+  color: var(--text-dim);
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.inbox {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.inbox li {
+  display: grid;
+  gap: 3px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.inbox li:first-child {
+  border-top: 0;
+}
+
+.inbox li[data-read="true"] {
+  opacity: 0.55;
+}
+
+.inbox p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.inbox .row {
+  gap: 4px;
+}
+
+.chimp {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+}
+
+.chimp button {
+  aspect-ratio: 1;
+  border-radius: min(var(--radius-sm), 8px);
+  font-size: 18px;
+  visibility: hidden;
+}
+
+.chimp button[data-on="true"] {
+  visibility: visible;
+  border: 1px solid var(--text);
+  background: var(--surface-2);
+}
+
+.vgrid {
+  display: grid;
+  gap: 6px;
+  width: min(300px, 100%);
+}
+
+.vgrid button {
+  aspect-ratio: 1;
+  border-radius: min(var(--radius-sm), 8px);
+  background: var(--surface-2);
+  transition: background-color 0.15s;
+}
+
+.vgrid button[data-lit="true"] {
+  background: var(--accent);
+}
+
+.card {
+  display: inline-grid;
+  place-items: center;
+  width: 96px;
+  height: 132px;
+  margin: 8px auto;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+  font: 600 32px var(--font-body), sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.card[data-red="true"],
+.cardGrid button[data-red="true"] {
+  color: #d1202a;
+}
+
+.cardRecall {
+  display: grid;
+  gap: 10px;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(13, 1fr);
+  gap: 3px;
+}
+
+.cardGrid button {
+  padding: 6px 0;
+  font-size: 12px;
+  border-radius: 4px;
+  background: #fff;
+  color: #111;
+}
+
+.cardGrid button:disabled {
+  opacity: 0.2;
+}
+
+@media (max-width: 820px) {
+  .cardGrid {
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  .chimp {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .ttNow {
+    grid-template-columns: 1fr;
+  }
+}

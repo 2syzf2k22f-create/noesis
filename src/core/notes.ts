@@ -1,6 +1,6 @@
 // Notes and revision websites: ingest (fetch, robots.txt, extract, chunk, tag) and search.
 // Search is keyword-ranked for now; pgvector embeddings (on the relay) can replace the ranking later.
-import type { Store } from "./store";
+import type { Row, Store } from "./store";
 import type { ToolCtx } from "./tools";
 
 const UA = "NOESIS-personal-revision-bot/1.0";
@@ -74,7 +74,11 @@ const words = (s: string) => s.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
 export async function searchNotes(store: Store, query: string, subject?: string, limit = 6) {
   const q = [...new Set(words(query))];
   if (!q.length) return [];
-  const rows = await store.list("note_chunks", { eq: subject ? { subject } : undefined, limit: 20000 });
+  const chunks = await store.list("note_chunks", { eq: subject ? { subject } : undefined, limit: 20000 });
+  // Reg's own lesson/topic notes are searched too
+  const own = (await store.list("notes", { eq: subject ? { subject } : undefined, isNull: ["deleted_at"], limit: 5000 }).catch(() => []))
+    .map((n) => ({ ...n, text: `${n.title ?? ""}\n${n.body ?? ""}`, source_title: `My ${n.kind ?? "topic"} notes: ${n.title ?? n.topic ?? ""}` }));
+  const rows: Row[] = [...own, ...chunks];
   return rows
     .map((r) => {
       const t = String(r.text).toLowerCase();

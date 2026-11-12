@@ -7,6 +7,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { useApollo } from "./apollo";
 import { ApolloPanel } from "./ApolloPanel";
 import { WidgetPanel } from "@/ui/WidgetPanel";
+import { PanelBlock } from "@/ui/PanelBlock";
 import { Icon } from "./Icon";
 import { panelStore, type Panel } from "./panelStore";
 import { SPACES } from "./spaces";
@@ -45,6 +46,8 @@ function Body({ kind, widget }: { kind: Panel["kind"]; widget?: string }) {
     );
   if (kind === "apollo") return <ApolloPanel />;
   if (kind === "widget" && widget) return <WidgetPanel id={widget} />;
+  if (kind === "inbox") return <PanelBlock block={{ type: "inbox", bind: { table: "inbox_items", where: { read_at: null }, limit: 30 } }} />;
+  if (kind === "stats") return <PanelBlock block={{ type: "scores", props: { report: false } }} />;
   if (kind === "orb")
     return (
       <div className={s.pills}>
@@ -55,12 +58,7 @@ function Body({ kind, widget }: { kind: Panel["kind"]; widget?: string }) {
         ))}
       </div>
     );
-  return (
-    <div className={s.empty}>
-      <div className="display">no data</div>
-      <p>{kind === "inbox" ? "Nothing has been connected to the inbox yet." : "Scores appear once there are logs to compute them from."}</p>
-    </div>
-  );
+  return null;
 }
 
 function PanelView({ p, z }: { p: Panel; z: number }) {

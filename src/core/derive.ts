@@ -8,5 +8,6 @@ export function derive(table: string, data: Record<string, unknown>) {
     const b = Number(data.buy_in), c = Number(data.cash_out);
     if (Number.isFinite(b) && Number.isFinite(c)) data.profit = Math.round((c - b) * 100) / 100;
   }
+  if (table === "timetable" && typeof data.day === "string") data.day = parseInt(data.day, 10) || 1;
   return data;
 }

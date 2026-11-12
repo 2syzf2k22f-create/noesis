@@ -1,6 +1,7 @@
 // The spaces and their thin-line icons (24x24, 1.5 stroke). Pure data: Apollo can reorder it later.
 
-export type Space = { id: string; name: string; icon: string; blurb: string };
+export type Sub = { id: string; name: string; blurb: string };
+export type Space = { id: string; name: string; icon: string; blurb: string; subs?: Sub[] };
 
 export const ICONS = {
   home: "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M12 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5z",
@@ -22,22 +23,76 @@ export const ICONS = {
   ask: "M5 12h13 M13 7l5 5l-5 5",
   menu: "M4 7h16 M4 12h16 M4 17h10",
   grid: "M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z",
+  clock: "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z M12 7v5l3 2",
+  file: "M6 3h8l4 4v14H6z M14 3v4h4",
   undo: "M9 14L4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
 } as const;
 
 export type IconName = keyof typeof ICONS;
 
 export const SPACES: Space[] = [
-  { id: "school", name: "School", icon: "school", blurb: "Revision hub, tutor, OneNote, opportunities" },
-  { id: "fitness", name: "Fitness", icon: "fitness", blurb: "Training, progress, recovery" },
-  { id: "nutrition", name: "Nutrition and sleep", icon: "nutrition", blurb: "Meals, recipes, sleep, screen time" },
-  { id: "projects", name: "Projects", icon: "projects", blurb: "Status, notes, links, files, a chat per project" },
-  { id: "mind", name: "Mind sports", icon: "mind", blurb: "Chess, poker, geography, brain tests, memory, programming" },
-  { id: "languages", name: "Languages", icon: "languages", blurb: "Mandarin, Spanish, French, English" },
-  { id: "library", name: "Library", icon: "library", blurb: "Books, journal, files, weekly reports" },
-  { id: "stats", name: "Stats", icon: "stats", blurb: "Scores computed from your logs" },
+  { id: "dashboard", name: "Dashboard", icon: "grid", blurb: "Today: timetable, inbox, what's due, your numbers" },
+  { id: "school", name: "School", icon: "school", blurb: "Revision hub, tutor, notes, homework, timetable", subs: [
+    { id: "flashcards", name: "Flashcards", blurb: "Spaced repetition by subject" },
+    { id: "revise", name: "Revise", blurb: "Timer and revision stats" },
+    { id: "tutor", name: "Tutor", blurb: "Step-by-step help aimed at full marks" },
+    { id: "notes", name: "Notes", blurb: "Lesson and topic notes, notes to flashcards, websites" },
+    { id: "homework", name: "Homework", blurb: "What's set and when it's due" },
+    { id: "timetable", name: "Timetable", blurb: "Lessons, exams and deadlines" },
+    { id: "resources", name: "Resources", blurb: "Links and videos per topic" },
+    { id: "opportunities", name: "Opportunities", blurb: "Weekly extracurricular search" },
+    { id: "subjects", name: "Subjects", blurb: "Boards, options and spec topics" },
+  ] },
+  { id: "fitness", name: "Fitness", icon: "fitness", blurb: "Training, progress, recovery", subs: [
+    { id: "log", name: "Log", blurb: "Log sets as you train" },
+    { id: "progress", name: "Progress", blurb: "Lifts, records and volume" },
+    { id: "routines", name: "Routines", blurb: "Push, pull, legs templates" },
+    { id: "recovery", name: "Recovery", blurb: "Soreness, energy and sleep" },
+  ] },
+  { id: "nutrition", name: "Nutrition and sleep", icon: "nutrition", blurb: "Meals, recipes, sleep, screen time", subs: [
+    { id: "meals", name: "Meals", blurb: "One-tap logging" },
+    { id: "recipes", name: "Recipes", blurb: "Saved recipes, never regenerated" },
+    { id: "sleep", name: "Sleep", blurb: "Hours and quality" },
+    { id: "screentime", name: "Screen time", blurb: "Daily phone use" },
+  ] },
+  { id: "projects", name: "Projects", icon: "projects", blurb: "Status, notes, links, files, a chat per project", subs: [
+    { id: "notes", name: "Notes", blurb: "Notes per project" },
+    { id: "links", name: "Links", blurb: "Links per project" },
+    { id: "chat", name: "Chat", blurb: "A chat per project, with its context" },
+  ] },
+  { id: "mind", name: "Mind sports", icon: "mind", blurb: "Chess, poker, geography, brain tests, memory, programming", subs: [
+    { id: "chess", name: "Chess", blurb: "chess.com sync and results" },
+    { id: "poker", name: "Poker", blurb: "Sessions, P&L, hand review" },
+    { id: "geography", name: "Geography", blurb: "Flags, capitals, sizes" },
+    { id: "brain", name: "Brain tests", blurb: "Reaction, memory, typing and more" },
+    { id: "memory", name: "Memory sports", blurb: "Numbers, cards, memory palaces" },
+    { id: "coding", name: "Programming", blurb: "Codeforces and Advent of Code" },
+  ] },
+  { id: "languages", name: "Languages", icon: "languages", blurb: "Mandarin, Spanish, French, English", subs: [
+    { id: "mandarin", name: "Mandarin", blurb: "Characters, tones, HSK 1" },
+    { id: "spanish", name: "Spanish", blurb: "From A1" },
+    { id: "french", name: "French", blurb: "Refresh, then beyond" },
+    { id: "english", name: "English", blurb: "Vocabulary" },
+    { id: "conversation", name: "Conversation", blurb: "Practise with Apollo" },
+  ] },
+  { id: "library", name: "Library", icon: "library", blurb: "Books, journal, files, weekly reports", subs: [
+    { id: "books", name: "Books", blurb: "Reading list and log" },
+    { id: "journal", name: "Journal", blurb: "Private by default" },
+    { id: "files", name: "Files", blurb: "Things made with Apollo or Claude" },
+    { id: "reports", name: "Reports", blurb: "Weekly reports" },
+  ] },
+  { id: "stats", name: "Stats", icon: "stats", blurb: "Scores computed from your logs", subs: [
+    { id: "scores", name: "Scores", blurb: "Weekly scores and history" },
+    { id: "usage", name: "Apollo usage", blurb: "Tokens and plan usage" },
+  ] },
   { id: "inbox", name: "Inbox", icon: "inbox", blurb: "Teams, OneNote, deadlines, reports" },
   { id: "chats", name: "Chats", icon: "chats", blurb: "Saved conversations with Apollo" },
 ];
 
+/** Stored-page slug for a space or subpage: "school" or "school--flashcards". */
+export const pageSlug = (space: string, sub?: string) => (sub ? `${space}--${sub}` : space);
+export const pageHref = (space: string, sub?: string) => (sub ? `/s/${space}/${sub}` : `/s/${space}`);
+export const ALL_PAGE_IDS = SPACES.flatMap((s) => [s.id, ...(s.subs ?? []).map((x) => `${s.id}/${x.id}`)]);
+
 export const getSpace = (id: string) => SPACES.find((s) => s.id === id);
+export const getSub = (space: string, sub: string) => getSpace(space)?.subs?.find((x) => x.id === sub);

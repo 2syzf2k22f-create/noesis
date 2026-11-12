@@ -774,3 +774,190 @@ html[data-skin="signal"] [data-ui="orbits"] ellipse {
     display: none;
   }
 }
+
+/* ================= subpage tabs per skin ================= */
+html[data-skin="midnight"] [data-ui="subnav"] {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  background: var(--surface);
+}
+
+html[data-skin="midnight"] [data-ui="subnav-item"] {
+  border: 0 !important;
+  margin: 0 !important;
+  border-radius: 999px;
+  padding: 7px 14px !important;
+}
+
+html[data-skin="midnight"] [data-ui="subnav-item"][aria-current="page"] {
+  background: var(--accent);
+  color: var(--on-accent) !important;
+  box-shadow: var(--glow);
+}
+
+html[data-skin="iridescent"] [data-ui="subnav"] {
+  border-bottom: 0;
+  gap: 18px;
+}
+
+html[data-skin="iridescent"] [data-ui="subnav-item"] {
+  padding: 8px 0 !important;
+  font-size: 15px !important;
+}
+
+html[data-skin="iridescent"] [data-ui="subnav-item"] [data-ui="idx"],
+html[data-skin="ember"] [data-ui="subnav-item"] [data-ui="idx"],
+html[data-skin="signal"] [data-ui="subnav-item"] [data-ui="idx"] {
+  display: inline;
+  font: 400 10px var(--font-mono), monospace;
+  color: var(--text-dim);
+}
+
+html[data-skin="iridescent"] [data-ui="subnav-item"][aria-current="page"] {
+  border-bottom-color: var(--text) !important;
+}
+
+html[data-skin="ember"] [data-ui="subnav"] {
+  border: 1px solid var(--border);
+  gap: 0;
+}
+
+html[data-skin="ember"] [data-ui="subnav-item"] {
+  border-right: 1px solid var(--border) !important;
+  border-bottom: 0 !important;
+  margin: 0 !important;
+  font: 400 11px var(--font-mono), monospace !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+html[data-skin="ember"] [data-ui="subnav-item"][aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--accent) !important;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+html[data-skin="mono"] [data-ui="subnav"] {
+  justify-content: center;
+  border-bottom: 0;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+html[data-skin="mono"] [data-ui="subnav-item"] {
+  border: 1px solid var(--border) !important;
+  border-radius: 999px;
+  margin: 0 !important;
+  padding: 6px 14px !important;
+}
+
+html[data-skin="mono"] [data-ui="subnav-item"][aria-current="page"] {
+  background: var(--text);
+  color: var(--bg) !important;
+}
+
+html[data-skin="signal"] [data-ui="subnav"] {
+  border-bottom: 1px solid var(--text);
+  gap: 0;
+}
+
+html[data-skin="signal"] [data-ui="subnav-item"] {
+  font: 400 15px var(--font-display), monospace !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 !important;
+  border: 0 !important;
+  color: var(--text) !important;
+}
+
+html[data-skin="signal"] [data-ui="subnav-item"] [data-ui="idx"] {
+  color: var(--accent);
+}
+
+html[data-skin="signal"] [data-ui="subnav-item"][aria-current="page"] {
+  background: var(--text);
+  color: #000 !important;
+}
+
+/* ================= subpage links in the Pages menu ================= */
+[data-ui="menu-subs"] {
+  display: none;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding: 0 10px 8px 44px;
+}
+
+[data-ui="menu-subs"] a {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+[data-ui="menu-subs"] a:hover,
+[data-ui="menu-subs"] a[aria-current="page"] {
+  color: var(--accent);
+}
+
+html[data-skin="iridescent"] [data-ui="menu-subs"],
+html[data-skin="ember"] [data-ui="menu-subs"],
+html[data-skin="mono"] [data-ui="menu-subs"],
+html[data-skin="signal"] [data-ui="menu-subs"] {
+  display: flex;
+}
+
+html[data-skin="iridescent"] [data-ui="menu-group"] {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+html[data-skin="iridescent"] [data-ui="menu-group"] [data-ui="menu-item"] {
+  border-bottom: 0;
+}
+
+html[data-skin="iridescent"] [data-ui="menu-subs"] {
+  padding-left: 30px;
+}
+
+html[data-skin="mono"] [data-ui="menu-subs"] {
+  justify-content: center;
+  padding: 0 0 6px;
+}
+
+html[data-skin="signal"] [data-ui="menu-subs"] {
+  padding: 2px 8px 8px 96px;
+}
+
+html[data-skin="signal"] [data-ui="menu-subs"] a {
+  font: 400 14px var(--font-display), monospace;
+  text-transform: uppercase;
+  color: #9a9a9a;
+}
+
+html[data-skin="signal"] [data-ui="menu-subs"] a::before {
+  content: "› ";
+  color: var(--accent);
+}
+
+html[data-skin="ember"] [data-ui="menu-subs"] {
+  padding-left: 72px;
+}
+
+html[data-skin="ember"] [data-ui="menu-subs"] a {
+  font: 400 10.5px var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* the Pages menu gets long with subpages: let the overlay menus use columns and scroll */
+html[data-skin="mono"] [data-ui="menu"][data-menu="pages"],
+html[data-skin="signal"] [data-ui="menu"][data-menu="pages"] {
+  overflow-y: auto;
+  align-content: start;
+}
+
+html[data-skin="mono"] [data-ui="menu"][data-menu="pages"] {
+  padding-top: 90px;
+}

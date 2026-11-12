@@ -14,8 +14,9 @@ export const BINDABLE = new Set([
   "chess_games", "chess_ratings", "poker_sessions", "brain_test_results", "memory_sessions", "coding_stats",
   "vocab_items", "vocab_reviews",
   "subjects", "spec_topics", "resource_links", "sources", "geo_attempts", "chess_evals",
+  "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
 ]);
-const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities"]);
+const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities", "notes", "events"]);
 
 export type Series = { label: string; value: number }[];
 export type QueryResult = { rows?: Row[]; value?: number | null; series?: Series; error?: string };
@@ -46,6 +47,15 @@ export async function runBind(store: Store, b: Bind, opts: { owner?: boolean } =
     order: b.order ?? { col: dateField, asc: !!b.agg },
     limit: b.agg ? 5000 : (b.limit ?? 50),
   });
+  if (b.due) {
+    const now = new Date().toISOString(), f = b.due.field;
+    rows = rows.filter((r) => (r[f] == null ? !!b.due!.includeNull : String(r[f]) <= now));
+  }
+  if (b.upcoming) {
+    const now = new Date(), f = b.upcoming.field;
+    const start = new Date(now.getTime() - 864e5 / 2).toISOString(), end = new Date(now.getTime() + b.upcoming.days * 864e5).toISOString();
+    rows = rows.filter((r) => r[f] != null && String(r[f]) >= start && String(r[f]) <= end).sort((a, c) => String(a[f]).localeCompare(String(c[f])));
+  }
   if (b.whereIn) for (const [k, vals] of Object.entries(b.whereIn)) rows = rows.filter((r) => vals.includes(r[k] ?? null));
   if (b.table === "journal_entries" && !opts.owner) rows = rows.filter((r) => r.shareable);
   if (b.days) {

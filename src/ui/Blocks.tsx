@@ -4,7 +4,9 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { QueryResult, Series } from "@/core/query";
 import type { Block } from "./spec";
 import u from "./ui.module.css";
+import { useOptions } from "./useOptions";
 import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./Blocks2";
+import { Agenda, CardMemory, InboxList, Insights, ScoreHistory, Tile, Timetable } from "./Blocks3";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -116,7 +118,12 @@ function Heatmap({ series }: { series: Series }) {
 
 /* ---------- interactive ---------- */
 
-type Field = { name: string; label?: string; type?: "text" | "number" | "date" | "select" | "textarea" | "checkbox"; options?: string[]; required?: boolean };
+type Field = { name: string; label?: string; type?: "text" | "number" | "date" | "datetime-local" | "time" | "select" | "textarea" | "checkbox"; options?: string[]; optionsFrom?: { table: string; field: string }; required?: boolean };
+
+function SelectField({ f }: { f: Field }) {
+  const opts = useOptions(f.optionsFrom, f.options ?? []);
+  return <select name={f.name} required={f.required}>{opts.map((o) => <option key={o}>{o}</option>)}</select>;
+}
 
 function Form({ p, ctx }: { p: P; ctx: BlockCtx }) {
   const fields: Field[] = p.fields ?? [];
@@ -134,7 +141,7 @@ function Form({ p, ctx }: { p: P; ctx: BlockCtx }) {
           const v = fd.get(f.name);
           if (f.type === "checkbox") data[f.name] = v === "on";
           else if (v === null || v === "") continue;
-          else data[f.name] = f.type === "number" ? Number(v) : f.type === "date" ? new Date(String(v)).toISOString() : String(v);
+          else data[f.name] = f.type === "number" ? Number(v) : f.type === "date" || f.type === "datetime-local" ? new Date(String(v)).toISOString() : String(v);
         }
         setBusy(true);
         await ctx.write("create", p.table, data);
@@ -148,7 +155,7 @@ function Form({ p, ctx }: { p: P; ctx: BlockCtx }) {
         <label key={f.name} data-wide={f.type === "textarea"}>
           <span className="label">{f.label ?? nice(f.name)}</span>
           {f.type === "select" ? (
-            <select name={f.name} required={f.required}>{(f.options ?? []).map((o) => <option key={o}>{o}</option>)}</select>
+            <SelectField f={f} />
           ) : f.type === "textarea" ? (
             <textarea name={f.name} rows={3} required={f.required} />
           ) : (
@@ -171,7 +178,9 @@ function List({ p, rows, ctx, table }: { p: P; rows: Row[]; ctx: BlockCtx; table
       {rows.map((r) => (
         <li key={r.id}>
           <div>
-            <span>{cell(r[prim])}</span>
+            {p.link ? (
+              <a href={String(p.link).replace(/\{(\w+)\}/g, (_: string, k: string) => encodeURIComponent(String(r[k] ?? "")))} target={String(p.link).startsWith("/") ? undefined : "_blank"} rel="noreferrer">{cell(r[prim])}</a>
+            ) : <span>{cell(r[prim])}</span>}
             {p.secondary && <small>{([] as string[]).concat(p.secondary).map((k) => cell(r[k])).filter((x) => x !== "—").join(" · ")}</small>}
           </div>
           {act && (
@@ -212,7 +221,9 @@ function Kanban({ p, rows, ctx, table }: { p: P; rows: Row[]; ctx: BlockCtx; tab
           <div className="label">{c}</div>
           {rows.filter((r) => String(r[field]) === c).map((r) => (
             <div key={r.id} className={u.card}>
-              <span>{cell(r[prim])}</span>
+              {p.link ? (
+              <a href={String(p.link).replace(/\{(\w+)\}/g, (_: string, k: string) => encodeURIComponent(String(r[k] ?? "")))} target={String(p.link).startsWith("/") ? undefined : "_blank"} rel="noreferrer">{cell(r[prim])}</a>
+            ) : <span>{cell(r[prim])}</span>}
               <span className={u.moves}>
                 {ci > 0 && <button aria-label="Move left" onClick={() => ctx.write("update", table!, { [field]: cols[ci - 1] }, r.id)}>‹</button>}
                 {ci < cols.length - 1 && <button aria-label="Move right" onClick={() => ctx.write("update", table!, { [field]: cols[ci + 1] }, r.id)}>›</button>}
@@ -423,5 +434,12 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "brain": return <BrainGame p={p} ctx={ctx} />;
     case "geo": return <GeoQuiz p={p} ctx={ctx} />;
     case "sync": return <SyncBlock p={p} ctx={ctx} />;
+    case "timetable": return <Timetable p={p} ctx={ctx} />;
+    case "agenda": return <Agenda p={p} />;
+    case "tile": return <Tile p={p} ctx={ctx} />;
+    case "insights": return <Insights />;
+    case "history": return <ScoreHistory />;
+    case "inbox": return <InboxList p={p} ctx={ctx} />;
+    case "cards": return <CardMemory ctx={ctx} />;
   }
 }

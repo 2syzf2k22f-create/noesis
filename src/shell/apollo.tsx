@@ -47,7 +47,7 @@ type Ctx = {
   actions: Action[];
   runAction: (a: Action) => void;
   /** Site commands run instantly in the browser; anything else goes to Apollo via the relay. */
-  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string }) => void;
+  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string }) => void;
   toggleMic: () => void;
   /** Push-to-talk: start on press, stop (and send) on release. */
   startListening: () => void;
@@ -222,7 +222,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [startListening, stopListening]);
 
   const applyUi = useCallback((ui: UiAction) => {
-    if (ui.type === "navigate") router.push(ui.to === "home" ? "/" : SPACES.some((s) => s.id === ui.to) ? `/s/${ui.to}` : `/p/${ui.to}`);
+    if (ui.type === "navigate") {
+      const [space, sub] = ui.to.split("--");
+      router.push(ui.to === "home" ? "/" : SPACES.some((s) => s.id === space) ? (sub ? `/s/${space}/${sub}` : `/s/${space}`) : `/p/${ui.to}`);
+    }
     else if (ui.type === "open_panel" && ui.kind === "widget" && ui.widget) panelStore.open("widget", ui.widget);
     else if (ui.type === "open_panel" && (PANEL_KINDS as string[]).includes(ui.kind)) panelStore.open(ui.kind as PanelKind);
     else if (ui.type === "set_theme") setTheme(ui.id);
@@ -236,6 +239,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       keywords: [s.id, s.name.toLowerCase(), ...s.name.toLowerCase().split(" and ")],
       done: `Opened ${s.name}.`, run: () => router.push(`/s/${s.id}`),
     })),
+    ...SPACES.flatMap((s) => (s.subs ?? []).map((x) => ({
+      id: `go:${s.id}/${x.id}`, group: "Go to", label: `${s.name} › ${x.name}`, hint: x.blurb, icon: s.icon,
+      keywords: [x.name.toLowerCase(), `${s.id} ${x.id}`, `${s.name.toLowerCase()} ${x.name.toLowerCase()}`],
+      done: `Opened ${x.name}.`, run: () => router.push(`/s/${s.id}/${x.id}`),
+    }))),
     ...(["voice", "always", "never"] as SpeakPref[]).map((p) => ({
       id: `speak:${p}`, group: "Voice", label: `Spoken replies: ${p === "voice" ? "when I talk" : p}`, icon: "orb",
       keywords: [`speak ${p}`, p === "never" ? "mute" : p === "always" ? "unmute" : "voice replies"],
@@ -295,7 +303,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     settle({ text: a.done }, 4200);
   }, [clearTimers, micOn, settle, stopMic]);
 
-  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string) => {
+  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string) => {
     const my = ++runId.current;
     clearTimers();
     if (micOn) stopMic();
@@ -311,7 +319,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setReply({ text: "", pending: true, ask: text });
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, conversationId: ls.get(CHAT_KEY) }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY) }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
@@ -319,7 +327,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const notConfigured = res?.body?.error === "not_configured";
       return settle({ text: notConfigured ? "My database isn't connected yet, so I can't answer. Site commands still work." : "Couldn't reach the site's server.", tone: "error" });
     }
-    openChat(res.body.conversationId);
+    if (!thread) openChat(res.body.conversationId);
     if (!res.body.relayOnline) {
       setReply({ text: "Your PC's relay is offline. I've queued this and will answer when it's back.", pending: true, ask: text, tone: "info" });
     }
@@ -367,17 +375,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUi, clearTimers, micOn, openChat, refreshStatus, settle, stopMic]);
 
-  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string }) => {
+  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string }) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
     if (!q) return;
-    if (!opts?.model && !opts?.mode) {
+    if (!opts?.model && !opts?.mode && !opts?.thread) {
       const bare = q.replace(VERBS, "").replace(/\s+(panel|space|page|style|theme|preset)$/, (m) => (m.trim() === "panel" ? m : ""));
       const find = (t: string) => actions.find((a) => a.label.toLowerCase() === t || a.keywords.includes(t));
       const hit = find(q) ?? find(bare);
       if (hit) return runAction(hit);
     }
     setPaletteOpen(false);
-    void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken), opts?.mode);
+    void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken), opts?.mode, opts?.thread);
   }, [actions, ask, model, runAction, speakPref]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 

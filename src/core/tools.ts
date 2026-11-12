@@ -3,6 +3,7 @@
 // and undo/rollback replay the log backwards. No confirmation prompts by design.
 import { z } from "zod";
 import { PRESETS } from "../theme/presets";
+import { ALL_PAGE_IDS } from "../shell/spaces";
 import { BlockSchema, parseSpec } from "../ui/spec";
 import { derive } from "./derive";
 import { runBind } from "./query";
@@ -19,12 +20,15 @@ export const WRITABLE = [
   "subjects", "spec_topics", "flashcards", "study_sessions", "resource_links", "homework", "assignments", "opportunities", "sources",
   "chess_games", "poker_sessions", "brain_test_results", "memory_sessions", "coding_stats",
   "books", "reading_logs", "weekly_reports",
+  "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
 ] as const;
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
-const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities"]);
+const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events"]);
 /** What the user's own forms may write (the journal is private: Apollo can't write or read it). */
 export const USER_WRITABLE = new Set<string>([...WRITABLE, "journal_entries", "geo_attempts", "memory_sessions"]);
-const SPACE_IDS = ["school", "fitness", "nutrition", "projects", "mind", "languages", "library", "stats", "inbox", "chats"];
+/** Built-in pages: spaces ("school") and subpages ("school/flashcards", stored as slug "school--flashcards"). */
+const SPACE_IDS = ALL_PAGE_IDS.map((x) => x.replace("/", "--"));
+const normPage = (to: string) => to.toLowerCase().trim().replace(/^\/?s\//, "").replace("/", "--");
 const PANEL_KINDS = ["spaces", "style", "orb", "inbox", "stats", "apollo", "widget"] as const;
 const SPEC_HELP = `Spec: {title, subtitle?, blocks:[{type, title?, span(1-12 of a 12-col grid)?, props?, bind?}]}. Types: heading(text), text(markdown), stat(unit?, goal?), sparkline, ring(goal), donut, bar, line, area, heatmap, table(columns?), list(primary, secondary?), form(table, fields:[{name,label?,type:text|number|date|select|textarea,options?}], defaults?), kanban(table, statusField, columns), timer(minutes, logTo?), flashcards(table?), quiz(questions:[{q,choices,answer}]), media(src,kind:image|video|youtube), wave, custom(html: sandboxed, receives data via window "message" {type:"noesis:data",rows}). bind: {table, where?, whereIn?{field:[values]}, order?{col,asc}, limit?, days?, dateField?, agg?{fn:count|sum|avg|max|min|last, field?, by?:"day"|"week"|{field}}}. Numbers must come from bind, never typed in. Tables (fields): projects(name,status idea|active|paused|done,summary,link), project_notes(project,text), sets(routine push|pull|legs|other,exercise,weight_kg,reps,volume=auto weight×reps), sleep_logs(hours,quality 1-5), meals(name,kcal,protein_g,recipe_id), recipes(name,servings,kcal,protein_g,tags,ingredients,steps), screentime_days(minutes), inbox_items(title,body,source,link,due_at,read_at), flashcards(deck = subject or language,topic,front,back; scheduling fields are automatic), study_sessions(subject,topic,minutes), homework(title,subject,due_at,status 'to do'|'done'), resource_links(title,url,subject,topic), opportunities(title,url,summary,subject,deadline), books(title,author,pages,status 'to read'|'reading'|'finished'), reading_logs(book,pages), poker_sessions(game,buy_in,cash_out,profit=auto), brain_test_results(test,score,unit), chess_games(result,time_class,rating,opponent), weekly_reports(week,overall,grade,commentary). Extra block types: review(decks[]), ask(template with {field}, fields, mode tutor|conversation|flashcards), scores, brain(test?), geo(kind?), sync(service chess|codeforces). Every row has id and created_at.`;
 
@@ -173,10 +177,10 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "navigate",
-    description: `Open a page for the user: "home", a space (${SPACE_IDS.join(", ")}), or the slug of a generated page.`,
+    description: `Open a page for the user: "home", a built-in page (${ALL_PAGE_IDS.join(", ")}), or the slug of a generated page.`,
     input: { to: z.string() },
     async run(ctx, a) {
-      const to = String(a.to).toLowerCase();
+      const to = normPage(String(a.to));
       const page = to !== "home" && !SPACE_IDS.includes(to) ? (await ctx.store.list("pages", { eq: { slug: to }, isNull: ["deleted_at"], limit: 1 }))[0] : null;
       if (to !== "home" && !SPACE_IDS.includes(to) && !page) return { error: `unknown page ${a.to}` };
       await pushUi(ctx, { type: "navigate", to });
@@ -195,7 +199,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "create_page",
-    description: `Make a new page (or replace a space's layout by using its id as slug: ${SPACE_IDS.join(", ")}). ${SPEC_HELP}`,
+    description: `Make a new page, or replace a built-in page's layout by using its slug (subpages use "space--sub", e.g. "school--flashcards"; all: ${SPACE_IDS.join(", ")}). Built-in pages keep their place in the navigation. ${SPEC_HELP}`,
     input: { slug: z.string().regex(/^[a-z0-9-]{2,40}$/), spec: z.record(z.string(), z.unknown()), space: z.string().optional(), open: z.boolean().optional() },
     async run(ctx, a) {
       const p = parseSpec(a.spec);
@@ -340,6 +344,26 @@ export const TOOLS: ToolDef[] = [
         await log(ctx, "add_inbox_item", "inbox_items", row.id, null, row);
       }
       return { saved: fresh.length, skipped: a.items.length - fresh.length };
+    },
+  },
+  {
+    name: "save_file",
+    description: "Save a text file you made for Reg (notes, essay plan, code, summary, markdown) into his Library → Files, optionally tied to a project. Use this whenever you produce something worth keeping.",
+    input: { name: z.string(), content: z.string().max(200000), mime: z.string().optional(), project: z.string().optional() },
+    async run(ctx, a) {
+      const row = await ctx.store.insert("files", { name: a.name, content: a.content, mime: a.mime ?? (a.name.endsWith(".md") ? "text/markdown" : "text/plain"), size_bytes: a.content.length, project: a.project ?? null, source: ctx.actor ?? "apollo", deleted_at: null });
+      await log(ctx, "save_file", "files", row.id, null, { ...row, content: `${String(a.content).slice(0, 200)}…` });
+      return { id: row.id, url: `/api/files/${row.id}` };
+    },
+  },
+  {
+    name: "get_week_summary",
+    description: "Compact precomputed stats for a week (scores per area plus the previous week) to talk about progress without reading raw logs.",
+    input: { weeks_ago: z.number().int().min(0).max(52).optional() },
+    async run({ store }, a) {
+      const w = a.weeks_ago ?? 0;
+      const [now, prev] = await Promise.all([weeklyScores(store, w), weeklyScores(store, w + 1)]);
+      return { week: now.week, overall: now.overall, grade: now.grade, areas: now.areas.map((x) => ({ area: x.area, score: x.score, actual: x.actual, target: x.target, unit: x.unit, last_week: prev.areas.find((p) => p.area === x.area)?.score ?? null })) };
     },
   },
   {
