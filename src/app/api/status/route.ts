@@ -1,3 +1,4 @@
+import { envReport } from "@/core/getStore";
 import { connection } from "next/server";
 import { relayOnline, storeOr503 } from "@/core/api";
 
@@ -6,7 +7,7 @@ const DAY = 864e5;
 export async function GET() {
   await connection();
   const s = storeOr503();
-  if (s instanceof Response) return Response.json({ configured: false });
+  if (s instanceof Response) return Response.json({ configured: false, env: envReport() });
   const { row, online } = await relayOnline(s);
   const queued = await s.count("jobs", { eq: { status: "queued" } });
   const now = Date.now();
