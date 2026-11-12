@@ -1,0 +1,30 @@
+// Opening repertoire for the trainer: main lines in SAN (validated by scripts/check-openings).
+export type Opening = { id: string; name: string; eco: string; side: "white" | "black"; moves: string; idea: string };
+
+export const OPENINGS: Opening[] = [
+  { id: "italian", name: "Italian Game (Giuoco Piano)", eco: "C54", side: "white", moves: "e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+ Bd2 Bxd2+ Nbxd2 d5", idea: "Build a big centre with c3 and d4, develop fast and aim at f7." },
+  { id: "two-knights", name: "Two Knights (Ng5 line)", eco: "C59", side: "white", moves: "e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5 Bb5+ c6 dxc6 bxc6 Be2 h6 Nf3 e4 Ne5", idea: "Attack f7 early; Black gives a pawn for fast development." },
+  { id: "ruy-lopez", name: "Ruy Lopez (Closed)", eco: "C84", side: "white", moves: "e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3", idea: "Pressure the e5 pawn through c6, then build slowly with c3, d4 and Nbd2." },
+  { id: "scotch", name: "Scotch Game", eco: "C45", side: "white", moves: "e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5 Be3 Qf6 c3 Nge7", idea: "Open the centre immediately and play for quick development." },
+  { id: "vienna", name: "Vienna Gambit", eco: "C29", side: "white", moves: "e4 e5 Nc3 Nf6 f4 d5 fxe5 Nxe4 Nf3 Be7", idea: "Strike with f4 for space and kingside play." },
+  { id: "kings-gambit", name: "King's Gambit Accepted", eco: "C39", side: "white", moves: "e4 e5 f4 exf4 Nf3 g5 h4 g4 Ne5", idea: "Give a pawn for rapid development and an open f-file." },
+  { id: "london", name: "London System", eco: "D02", side: "white", moves: "d4 d5 Bf4 Nf6 e3 c5 c3 Nc6 Nd2 e6 Ngf3 Bd6 Bg3 O-O", idea: "A solid setup: bishop to f4 early, pawns on c3-d4-e3, then plan e4 or a kingside attack." },
+  { id: "qgd", name: "Queen's Gambit Declined", eco: "D53", side: "white", moves: "d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4", idea: "Pressure d5 and pin the f6 knight; aim for the minority attack." },
+  { id: "catalan", name: "Catalan", eco: "E05", side: "white", moves: "d4 Nf6 c4 e6 g3 d5 Bg2 Be7 Nf3 O-O O-O dxc4 Qc2 a6", idea: "A fianchettoed bishop on the long diagonal; win back c4 with long-term pressure." },
+  { id: "english", name: "English Opening", eco: "A29", side: "white", moves: "c4 e5 Nc3 Nf6 Nf3 Nc6 g3 d5 cxd5 Nxd5 Bg2 Nb6", idea: "A reversed Sicilian: control d5 and use the g2 bishop." },
+  { id: "najdorf", name: "Sicilian Najdorf", eco: "B90", side: "black", moves: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6", idea: "...a6 keeps options; ...e5 grabs space; play for ...d5 or queenside play." },
+  { id: "dragon", name: "Sicilian Dragon", eco: "B76", side: "black", moves: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6", idea: "A fianchettoed bishop on the long diagonal; race on opposite wings." },
+  { id: "alapin-black", name: "Sicilian vs Alapin", eco: "B22", side: "black", moves: "e4 c5 c3 Nf6 e5 Nd5 d4 cxd4 Nf3 Nc6 cxd4 d6", idea: "Hit the e5 pawn and develop quickly against c3." },
+  { id: "french-advance", name: "French Advance", eco: "C02", side: "black", moves: "e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6", idea: "Hit d4 with ...c5, ...Nc6 and ...Qb6; Black's plan is to undermine the pawn chain." },
+  { id: "caro-kann", name: "Caro-Kann Classical", eco: "B18", side: "black", moves: "e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7", idea: "Solid structure; develop the light-squared bishop before ...e6." },
+  { id: "scandi", name: "Scandinavian", eco: "B01", side: "black", moves: "e4 d5 exd5 Qxd5 Nc3 Qa5 d4 Nf6 Nf3 Bf5", idea: "Challenge e4 at once; queen to a5, bishop out before ...e6." },
+  { id: "pirc", name: "Pirc Defence", eco: "B09", side: "black", moves: "e4 d6 d4 Nf6 Nc3 g6 f4 Bg7 Nf3 O-O", idea: "Let White build the centre, then strike it with ...c5 or ...e5." },
+  { id: "alekhine", name: "Alekhine Defence", eco: "B05", side: "black", moves: "e4 Nf6 e5 Nd5 d4 d6 Nf3 Bg4 Be2 e6 O-O Be7", idea: "Provoke pawn advances, then attack the overextended centre." },
+  { id: "petrov", name: "Petrov Defence", eco: "C42", side: "black", moves: "e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3", idea: "Symmetrical and solid; don't copy too long (watch for Qe2 pins)." },
+  { id: "kid", name: "King's Indian Defence", eco: "E97", side: "black", moves: "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7", idea: "Allow the centre, then counter with ...e5 and a kingside pawn storm." },
+  { id: "nimzo", name: "Nimzo-Indian", eco: "E32", side: "black", moves: "d4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O a3 Bxc3+ Qxc3", idea: "Pin the c3 knight to fight for e4; trade the bishop for doubled pawns or the bishop pair." },
+  { id: "grunfeld", name: "Grünfeld", eco: "D85", side: "black", moves: "d4 Nf6 c4 g6 Nc3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 Bg7 Nf3 c5", idea: "Give White the centre, then attack it with ...c5 and the g7 bishop." },
+  { id: "slav", name: "Slav Defence", eco: "D15", side: "black", moves: "d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5", idea: "Support d5 with ...c6 and develop the light-squared bishop actively." },
+  { id: "qga", name: "Queen's Gambit Accepted", eco: "D27", side: "black", moves: "d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5 O-O a6", idea: "Take on c4, then hit the centre with ...c5 while White regains the pawn." },
+  { id: "dutch", name: "Dutch Leningrad", eco: "A87", side: "black", moves: "d4 f5 g3 Nf6 Bg2 g6 Nf3 Bg7 O-O O-O c4 d6", idea: "Control e4 with ...f5 and fianchetto; play for ...e5 and kingside activity." },
+];

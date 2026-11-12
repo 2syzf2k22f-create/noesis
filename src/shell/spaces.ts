@@ -35,6 +35,8 @@ export const SPACES: Space[] = [
   { id: "school", name: "School", icon: "school", blurb: "Revision hub, tutor, notes, homework, timetable", subs: [
     { id: "flashcards", name: "Flashcards", blurb: "Spaced repetition by subject" },
     { id: "revise", name: "Revise", blurb: "Timer and revision stats" },
+    { id: "planner", name: "Planner", blurb: "Exam countdown and a day-by-day revision plan" },
+    { id: "papers", name: "Past papers", blurb: "Marks by paper and topic, weak-topic finder" },
     { id: "tutor", name: "Tutor", blurb: "Step-by-step help aimed at full marks" },
     { id: "notes", name: "Notes", blurb: "Lesson and topic notes, notes to flashcards, websites" },
     { id: "homework", name: "Homework", blurb: "What's set and when it's due" },
@@ -61,7 +63,11 @@ export const SPACES: Space[] = [
     { id: "chat", name: "Chat", blurb: "A chat per project, with its context" },
   ] },
   { id: "mind", name: "Mind sports", icon: "mind", blurb: "Chess, poker, geography, brain tests, memory, programming", subs: [
-    { id: "chess", name: "Chess", blurb: "chess.com sync and results" },
+    { id: "chess", name: "Chess", blurb: "chess.com sync, ratings and results" },
+    { id: "analysis", name: "Analysis", blurb: "Board with Stockfish; play against it" },
+    { id: "openings", name: "Openings", blurb: "Drill opening theory move by move" },
+    { id: "puzzles", name: "Puzzles", blurb: "Tactics from Lichess and from your own games" },
+    { id: "review", name: "Game review", blurb: "Brilliant to blunder, move by move" },
     { id: "poker", name: "Poker", blurb: "Sessions, P&L, hand review" },
     { id: "geography", name: "Geography", blurb: "Flags, capitals, sizes" },
     { id: "brain", name: "Brain tests", blurb: "Reaction, memory, typing and more" },

@@ -6,7 +6,8 @@ import type { Block } from "./spec";
 import u from "./ui.module.css";
 import { useOptions } from "./useOptions";
 import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./Blocks2";
-import { Agenda, CardMemory, InboxList, Insights, ScoreHistory, Tile, Timetable } from "./Blocks3";
+import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
+import { AnalysisBoard, GameReview, OpeningTrainer, Puzzles } from "@/chess/ChessBlocks";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
@@ -141,7 +142,7 @@ function Form({ p, ctx }: { p: P; ctx: BlockCtx }) {
           const v = fd.get(f.name);
           if (f.type === "checkbox") data[f.name] = v === "on";
           else if (v === null || v === "") continue;
-          else data[f.name] = f.type === "number" ? Number(v) : f.type === "date" || f.type === "datetime-local" ? new Date(String(v)).toISOString() : String(v);
+          else data[f.name] = f.type === "number" ? Number(v) : f.type === "datetime-local" ? new Date(String(v)).toISOString() : String(v);
         }
         setBusy(true);
         await ctx.write("create", p.table, data);
@@ -441,5 +442,11 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "history": return <ScoreHistory />;
     case "inbox": return <InboxList p={p} ctx={ctx} />;
     case "cards": return <CardMemory ctx={ctx} />;
+    case "streaks": return <Streaks p={p} />;
+    case "countdown": return <Countdown p={p} ctx={ctx} />;
+    case "chessboard": return <AnalysisBoard />;
+    case "openings": return <OpeningTrainer ctx={ctx} />;
+    case "puzzles": return <Puzzles ctx={ctx} />;
+    case "gamereview": return <GameReview ctx={ctx} p={p} />;
   }
 }

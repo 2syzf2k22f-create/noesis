@@ -31,8 +31,16 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       tile("Calories, 24 h", "/s/nutrition/meals", { table: "meals", days: 1, agg: { fn: "sum", field: "kcal" } }, "kcal"),
       tile("Sets this week", "/s/fitness/log", { table: "sets", days: 7, agg: { fn: "count" } }, "logged"),
       tile("Unread", "/s/inbox", { table: "inbox_items", where: { read_at: null }, agg: { fn: "count" } }, "inbox items"),
-      { type: "scores", title: "This week", span: 7, props: { report: false } },
-      { type: "insights", title: "Patterns", span: 5 },
+      { type: "countdown", title: "Exams", span: 3, props: { kind: "exam" }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 10 } },
+      { type: "list", title: "Today's plan", span: 5, bind: { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, limit: 10 },
+        props: { primary: "topic", secondary: ["subject", "minutes"], action: { label: "Done", op: "update", data: { done: true } } } },
+      { type: "form", title: "Check-in", span: 4, props: { table: "checkins", submit: "Check in", fields: [
+        { name: "kind", type: "select", options: ["morning", "evening"] }, { name: "energy", label: "Energy 1-5", type: "select", options: ["1", "2", "3", "4", "5"] },
+        { name: "mood", type: "select", options: ["great", "good", "ok", "low", "bad"] }, { name: "note", label: "Intention (morning) / win of the day (evening)", type: "textarea" },
+      ] } },
+      { type: "streaks", title: "Streaks", span: 4 },
+      { type: "scores", title: "This week", span: 5, props: { report: false } },
+      { type: "insights", title: "Patterns", span: 3 },
     ],
   },
 
@@ -48,6 +56,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "timetable", title: "Today", span: 4, bind: { table: "timetable", limit: 200 } },
       { type: "agenda", title: "Due soon", span: 4, props: { days: 14, limit: 6 } },
       { type: "donut", title: "Revision by subject, 28 days", span: 4, bind: { table: "study_sessions", days: 28, agg: { fn: "sum", field: "minutes", by: { field: "subject" } } } },
+      { type: "countdown", title: "Exams", span: 4, props: { kind: "exam" }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 10 } },
+      tile("Planner", "/s/school/planner", { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, agg: { fn: "count" } }, "sessions left today", undefined, 4),
+      tile("Past papers", "/s/school/papers", { table: "past_papers", days: 90, agg: { fn: "avg", field: "pct" } }, "average %, 90 days", "%", 4),
       tile("Tutor", "/s/school/tutor", undefined, "step-by-step help", undefined, 3),
       tile("Timetable", "/s/school/timetable", { table: "events", upcoming: { field: "at", days: 30 }, agg: { fn: "count" } }, "exams & events in 30 days", undefined, 3),
       tile("Resources", "/s/school/resources", { table: "resource_links", agg: { fn: "count" } }, "saved links", undefined, 3),
@@ -84,6 +95,42 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
         { name: "subject", type: "select", options: SUBJ }, { name: "topic" }, { name: "minutes", type: "number", required: true },
       ] } },
       { type: "table", title: "Recent sessions", span: 12, bind: { table: "study_sessions", limit: 15 }, props: { columns: ["created_at", "subject", "topic", "minutes"] } },
+    ],
+  },
+  "school--planner": {
+    title: "Planner",
+    subtitle: "Apollo turns your exams, weak topics and free time into a plan; you tick sessions off.",
+    blocks: [
+      { type: "countdown", title: "Exam countdown", span: 4, props: { kind: "exam", limit: 6 }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 20 } },
+      { type: "list", title: "Today", span: 4, bind: { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, limit: 20 },
+        props: { primary: "topic", secondary: ["subject", "minutes", "kind"], action: { label: "Done", op: "update", data: { done: true } } } },
+      { type: "ring", title: "Plan done this week", span: 4, props: { goal: 100, label: "sessions done" }, bind: { table: "plan_items", where: { done: true }, days: 7, dateField: "date", agg: { fn: "count" } } },
+      { type: "ask", title: "Plan my revision", span: 6, props: { submit: "Make the plan", rows: 3, model: "sonnet",
+        template: "Make me a revision plan from today until {until}. Use my exams (events, kind exam), weakest topics (past_paper_topics with the lowest pct, then spec_topics), and free time around my timetable, about {mins} minutes a day, mixing subjects (interleaving) and putting topics before each exam. Save each session to plan_items (date as ISO date, subject, topic, minutes, kind 'learn'|'practice'|'past paper'|'review', done false). Keep existing done items. Reply with a 2-line summary. {extra}",
+        fields: [{ name: "until", label: "Until (date or 'my last exam')", type: "text" }, { name: "mins", label: "Minutes per day", type: "select", options: ["60", "90", "120", "180", "240"] }, { name: "extra", label: "Anything else", type: "text" }] } },
+      { type: "table", title: "Next 7 days", span: 6, bind: { table: "plan_items", upcoming: { field: "date", days: 7 }, limit: 60 }, props: { columns: ["date", "subject", "topic", "minutes", "done"] } },
+      { type: "form", title: "Add a session yourself", span: 6, props: { table: "plan_items", submit: "Add", defaults: { done: false, kind: "practice" }, fields: [
+        { name: "date", type: "date", required: true }, { name: "subject", type: "select", options: SUBJ }, { name: "topic", required: true }, { name: "minutes", type: "number" },
+      ] } },
+      { type: "list", title: "Overdue", span: 6, bind: { table: "plan_items", where: { done: false }, due: { field: "date" }, limit: 20 }, props: { primary: "topic", secondary: ["subject", "date"], action: { label: "Done", op: "update", data: { done: true } } } },
+    ],
+  },
+  "school--papers": {
+    title: "Past papers",
+    blocks: [
+      { type: "form", title: "Log a past paper", span: 6, props: { table: "past_papers", submit: "Log paper", fields: [
+        { name: "subject", type: "select", options: SUBJ }, { name: "paper", label: "Paper (e.g. Pure 1)", required: true }, { name: "year" },
+        { name: "marks", type: "number", required: true }, { name: "total", type: "number", required: true }, { name: "notes", type: "textarea" },
+      ] } },
+      { type: "form", title: "Marks by topic (for the weak-topic finder)", span: 6, props: { table: "past_paper_topics", submit: "Log topic", fields: [
+        { name: "subject", type: "select", options: SUBJ }, { name: "topic", required: true }, { name: "marks", type: "number", required: true }, { name: "total", type: "number", required: true },
+      ] } },
+      { type: "bar", title: "Average % by subject", span: 4, bind: { table: "past_papers", agg: { fn: "avg", field: "pct", by: { field: "subject" } } } },
+      { type: "bar", title: "Average % by topic (lowest = weakest)", span: 8, bind: { table: "past_paper_topics", agg: { fn: "avg", field: "pct", by: { field: "topic" } } } },
+      { type: "line", title: "Paper scores over time (%)", span: 6, bind: { table: "past_papers", days: 180, agg: { fn: "avg", field: "pct", by: "week" } } },
+      { type: "ask", title: "Fix my weak topics", span: 6, props: { submit: "Do it", template: "Find my 3 weakest topics in {subject} from past_paper_topics (lowest pct). For each: make 6 targeted flashcards (deck {subject}), add a 45-minute practice session to plan_items in the next week, and tell me in 3 lines.",
+        fields: [{ name: "subject", type: "select", options: SUBJ }] } },
+      { type: "table", title: "Papers", span: 12, bind: { table: "past_papers", limit: 30 }, props: { columns: ["created_at", "subject", "paper", "year", "marks", "total", "pct"] } },
     ],
   },
   "school--tutor": {
@@ -345,6 +392,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Mind sports",
     blocks: [
       tile("Chess", "/s/mind/chess", { table: "chess_ratings", where: { time_class: "rapid" }, agg: { fn: "last", field: "rating" } }, "rapid rating", undefined, 4),
+      tile("Puzzles", "/s/mind/puzzles", { table: "puzzle_attempts", where: { solved: true }, days: 7, agg: { fn: "count" } }, "solved this week", undefined, 4),
+      tile("Openings", "/s/mind/openings", { table: "opening_drills", days: 7, agg: { fn: "count" } }, "drills this week", undefined, 4),
       tile("Poker", "/s/mind/poker", { table: "poker_sessions", agg: { fn: "sum", field: "profit" } }, "all-time P&L (play money)", undefined, 4),
       tile("Geography", "/s/mind/geography", { table: "geo_attempts", where: { correct: true }, days: 7, agg: { fn: "count" } }, "correct this week", undefined, 4),
       tile("Brain tests", "/s/mind/brain", { table: "brain_test_results", where: { test: "reaction" }, days: 30, agg: { fn: "min", field: "score" } }, "best reaction, 30 days", "ms", 4),
@@ -363,6 +412,34 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "donut", title: "Time controls, 60 days", span: 4, bind: { table: "chess_games", days: 60, agg: { fn: "count", by: { field: "time_class" } } } },
       { type: "list", title: "Recent games", span: 12, bind: { table: "chess_games", limit: 15 }, props: { primary: "opponent", secondary: ["result", "time_class", "rating", "created_at"], link: "{url}" } },
     ],
+  },
+  "mind--analysis": {
+    title: "Analysis",
+    subtitle: "Stockfish 18 running on your device. Best lines show as you move; switch on Play vs Stockfish to play a game.",
+    blocks: [{ type: "chessboard", span: 12 }],
+  },
+  "mind--openings": {
+    title: "Openings",
+    subtitle: "Play your side of the main line from memory; the trainer answers with the book reply.",
+    blocks: [
+      { type: "openings", span: 9, bind: { table: "opening_drills", limit: 500 } },
+      { type: "bar", title: "Drills per opening", span: 3, rows: 2, bind: { table: "opening_drills", agg: { fn: "count", by: { field: "name" } } } },
+      { type: "table", title: "Recent drills", span: 12, bind: { table: "opening_drills", limit: 12 }, props: { columns: ["created_at", "name", "side", "mistakes"] } },
+    ],
+  },
+  "mind--puzzles": {
+    title: "Puzzles",
+    subtitle: "Lichess tactics by theme and difficulty, plus positions from your own mistakes.",
+    blocks: [
+      { type: "puzzles", span: 9, bind: { table: "chess_puzzles", limit: 200 } },
+      { type: "stat", title: "Solved, 7 days", span: 3, bind: { table: "puzzle_attempts", where: { solved: true }, days: 7, agg: { fn: "count", by: "day" } } },
+      { type: "donut", title: "Solved vs missed, 30 days", span: 3, bind: { table: "puzzle_attempts", days: 30, agg: { fn: "count", by: { field: "solved" } } } },
+    ],
+  },
+  "mind--review": {
+    title: "Game review",
+    subtitle: "Every move classified from Stockfish (brilliant, great, best… blunder), with accuracy, an eval graph and the better line. Your mistakes become puzzles.",
+    blocks: [{ type: "gamereview", span: 12, bind: { table: "chess_games", limit: 40 } }],
   },
   "mind--poker": {
     title: "Poker",

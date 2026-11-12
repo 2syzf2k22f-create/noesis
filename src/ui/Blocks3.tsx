@@ -319,3 +319,45 @@ export function CardMemory({ ctx }: { ctx: BlockCtx }) {
     </div>
   );
 }
+
+/* ---------- habit streaks ---------- */
+type Streak = { id: string; label: string; current: number; best: number; today: boolean; last14: boolean[] };
+export function Streaks({ p }: { p: P }) {
+  const { changes } = useApollo();
+  const [list, setList] = useState<Streak[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { fetch("/api/streaks").then(async (r) => (r.ok ? setList(await r.json()) : setErr("no data (database not connected)"))).catch(() => setErr("couldn't load")); }, [changes]);
+  if (err) return <NoData>{err}</NoData>;
+  if (!list) return null;
+  const shown = p.habits ? list.filter((s) => (p.habits as string[]).includes(s.id)) : list;
+  return (
+    <ul className={u.streaks}>
+      {shown.map((s) => (
+        <li key={s.id} data-today={s.today}>
+          <span>{s.label}</span>
+          <b>{s.current}<small>d</small></b>
+          <i>{s.last14.map((d, k) => <em key={k} data-on={d} />)}</i>
+          <small>best {s.best}</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ---------- exam countdown ---------- */
+export function Countdown({ p, ctx }: { p: P; ctx: BlockCtx }) {
+  const rows = ((ctx.data?.rows ?? []) as Row[]).filter((r) => !p.kind || r.kind === p.kind).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const [now, setNow] = useState(0);
+  useEffect(() => { queueMicrotask(() => setNow(Date.now())); }, [rows.length]);
+  if (ctx.data?.error) return <NoData>{ctx.data.error}</NoData>;
+  if (!rows.length) return <NoData>No exams added yet. Add them on School → Timetable.</NoData>;
+  if (!now) return null;
+  const [first, ...rest] = rows;
+  const days = (iso: string) => Math.max(0, Math.ceil((Date.parse(iso) - now) / 864e5));
+  return (
+    <div className={u.countdown}>
+      <div><b className="display">{days(first.at)}</b><span>days to <strong>{first.title}</strong><small>{new Date(first.at).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</small></span></div>
+      {rest.slice(0, p.limit ?? 4).map((r) => <p key={r.id}><span>{r.title}</span><b>{days(r.at)} d</b></p>)}
+    </div>
+  );
+}

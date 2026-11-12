@@ -15,6 +15,7 @@ export const BINDABLE = new Set([
   "vocab_items", "vocab_reviews",
   "subjects", "spec_topics", "resource_links", "sources", "geo_attempts", "chess_evals",
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
+  "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
 ]);
 const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities", "notes", "events"]);
 
@@ -47,14 +48,25 @@ export async function runBind(store: Store, b: Bind, opts: { owner?: boolean } =
     order: b.order ?? { col: dateField, asc: !!b.agg },
     limit: b.agg ? 5000 : (b.limit ?? 50),
   });
+  // Date-only values ("2026-11-12") compare by calendar day; timestamps by instant.
+  const today = new Date().toISOString().slice(0, 10);
   if (b.due) {
     const now = new Date().toISOString(), f = b.due.field;
-    rows = rows.filter((r) => (r[f] == null ? !!b.due!.includeNull : String(r[f]) <= now));
+    rows = rows.filter((r) => {
+      if (r[f] == null) return !!b.due!.includeNull;
+      const v = String(r[f]);
+      return v.length === 10 ? v < today : v <= now; // a date-only item is overdue from the next day
+    });
   }
   if (b.upcoming) {
-    const now = new Date(), f = b.upcoming.field;
-    const start = new Date(now.getTime() - 864e5 / 2).toISOString(), end = new Date(now.getTime() + b.upcoming.days * 864e5).toISOString();
-    rows = rows.filter((r) => r[f] != null && String(r[f]) >= start && String(r[f]) <= end).sort((a, c) => String(a[f]).localeCompare(String(c[f])));
+    const now = Date.now(), f = b.upcoming.field;
+    const start = new Date(now - 864e5 / 2).toISOString(), end = new Date(now + b.upcoming.days * 864e5).toISOString();
+    const endDay = new Date(now + (b.upcoming.days - 1) * 864e5).toISOString().slice(0, 10);
+    rows = rows.filter((r) => {
+      if (r[f] == null) return false;
+      const v = String(r[f]);
+      return v.length === 10 ? v >= today && v <= endDay : v >= start && v <= end;
+    }).sort((a, c) => String(a[f]).localeCompare(String(c[f])));
   }
   if (b.whereIn) for (const [k, vals] of Object.entries(b.whereIn)) rows = rows.filter((r) => vals.includes(r[k] ?? null));
   if (b.table === "journal_entries" && !opts.owner) rows = rows.filter((r) => r.shareable);

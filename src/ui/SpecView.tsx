@@ -50,12 +50,44 @@ export function BlockFrame({ block, ctx, bare }: { block: Block; ctx: BlockCtx; 
   );
 }
 
-export function SpecView({ spec }: { spec: PageSpec }) {
+type EditOps = { onChange: (blocks: Block[]) => void };
+
+/** Grid of blocks. In edit mode: drag to reorder, resize width/height, remove. */
+export function SpecView({ spec, edit }: { spec: PageSpec; edit?: EditOps }) {
   const { data, write, refresh } = useBlockData(spec.blocks);
+  const [drag, setDrag] = useState<number | null>(null);
+  const blocks = spec.blocks;
+  const set = (i: number, patch: Partial<Block>) => edit?.onChange(blocks.map((b, k) => (k === i ? { ...b, ...patch } : b)));
+  const move = (from: number, to: number) => {
+    if (!edit || from === to || to < 0 || to >= blocks.length) return;
+    const next = [...blocks];
+    const [b] = next.splice(from, 1);
+    next.splice(to, 0, b);
+    edit.onChange(next);
+  };
+  const spanOf = (b: Block) => b.span ?? (b.type === "heading" || b.type === "text" ? 12 : 4);
   return (
-    <div className={u.grid}>
-      {spec.blocks.map((b, i) => (
-        <div key={b.id ?? i} className={u.cell} data-narrow={(b.span ?? 4) <= 3} style={{ ["--span" as string]: b.span ?? (b.type === "heading" || b.type === "text" ? 12 : 4), ["--rows" as string]: b.rows ?? 1 }}>
+    <div className={u.grid} data-editing={!!edit}>
+      {blocks.map((b, i) => (
+        <div key={(b.id ?? "") + i} className={u.cell} data-narrow={spanOf(b) <= 3}
+          style={{ ["--span" as string]: spanOf(b), ["--rows" as string]: b.rows ?? 1 }}
+          draggable={!!edit} onDragStart={() => setDrag(i)} onDragOver={(e) => { if (edit) e.preventDefault(); }}
+          onDrop={() => { if (drag != null) move(drag, i); setDrag(null); }} data-dragging={drag === i}>
+          {edit && (
+            <div className={u.editBar}>
+              <span className="label">{b.title ?? b.type}</span>
+              <span>
+                <button title="Move earlier" onClick={() => move(i, i - 1)}>←</button>
+                <button title="Move later" onClick={() => move(i, i + 1)}>→</button>
+                <button title="Narrower" onClick={() => set(i, { span: Math.max(2, spanOf(b) - 1) })}>−</button>
+                <b>{spanOf(b)}/12</b>
+                <button title="Wider" onClick={() => set(i, { span: Math.min(12, spanOf(b) + 1) })}>+</button>
+                <button title="Shorter" onClick={() => set(i, { rows: Math.max(1, (b.rows ?? 1) - 1) })}>↥</button>
+                <button title="Taller" onClick={() => set(i, { rows: Math.min(6, (b.rows ?? 1) + 1) })}>↧</button>
+                <button title="Remove" onClick={() => edit.onChange(blocks.filter((_, k) => k !== i))}>×</button>
+              </span>
+            </div>
+          )}
           <BlockFrame block={b} ctx={{ data: data[i], write, refresh }} />
         </div>
       ))}

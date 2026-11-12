@@ -24,6 +24,8 @@ npm run dev
 
 Phases 1 to 11 are built, plus a Dashboard and subpages.
 - Dashboard (`/s/dashboard`): today's timetable (now and next), what's coming up, inbox, cards due, today's numbers, weekly score and patterns.
+- Edit layout on any page: drag to reorder, resize, add from a catalogue of every box, save as a versioned custom layout, or reset.
+- Chess: Stockfish 18 (WASM, GPL-3.0, `public/engine/`) runs in the browser for the analysis board, play-vs-engine, game review (brilliant to blunder, accuracy) and puzzles from your own mistakes. Also an opening trainer (25 validated lines) and Lichess puzzles by theme.
 - Every space has an overview page and subpages (`/s/<space>/<sub>`, layouts in `src/ui/defaultSpecs.ts`). Apollo can redesign any of them.
 - Home has only the orb and the message box. Pages and Styles fold out from the top-right corner. Each theme has its own UI skin (`src/theme/skins.css`).
 - Apollo answers through the relay on your PC (`relay/README.md`) and acts only through the site tools. It works in modes: chat, tutor, language partner, flashcard maker and report writer.
