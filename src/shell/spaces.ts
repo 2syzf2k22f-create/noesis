@@ -20,6 +20,7 @@ export const ICONS = {
   pin: "M9 4h6l-1 6l3 3H7l3-3z M12 13v7",
   close: "M6 6l12 12 M18 6L6 18",
   ask: "M5 12h13 M13 7l5 5l-5 5",
+  undo: "M9 14L4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
 } as const;
 
 export type IconName = keyof typeof ICONS;

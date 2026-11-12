@@ -1,6 +1,6 @@
 // Panels that slide in around the orb. Pinned ones are remembered on this device.
 
-export type PanelKind = "spaces" | "style" | "orb" | "inbox" | "stats";
+export type PanelKind = "spaces" | "style" | "orb" | "inbox" | "stats" | "apollo";
 export type Panel = {
   id: string; kind: PanelKind; title: string;
   x: number; y: number; w: number; h: number; pinned: boolean; slot: "left" | "right" | "bottom";
@@ -14,6 +14,7 @@ const DEFS: Record<PanelKind, { title: string; slot: Panel["slot"]; w: number; h
   style: { title: "Style", slot: "right", w: 300, h: 380 },
   inbox: { title: "Inbox", slot: "right", w: 340, h: 420 },
   orb: { title: "Orb states", slot: "bottom", w: 520, h: 112 },
+  apollo: { title: "Apollo", slot: "right", w: 340, h: 520 },
 };
 export const PANEL_KINDS = Object.keys(DEFS) as PanelKind[];
 export const panelTitle = (k: PanelKind) => DEFS[k].title;

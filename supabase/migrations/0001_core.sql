@@ -1,11 +1,15 @@
--- NOESIS core schema (spec section 12, "Core").
--- NOT applied yet: creating/choosing the Supabase project and auth is the owner's call.
--- Single user. Every table has RLS: a row is visible only to the user who owns it.
+-- NOESIS core schema (spec section 12, "Core"), in its own schema so it can't collide
+-- with anything already in the revision-hub project.
+--
+-- No app login (the site sits behind Netlify team login). So: RLS is ON for every table
+-- with NO policies -> the public/anon key can read nothing. Only the server (Netlify
+-- functions) and the relay use the secret key, which bypasses RLS.
 
+create schema if not exists noesis;
 create extension if not exists pgcrypto;
 
-create table settings (
-  user_id uuid primary key default auth.uid() references auth.users on delete cascade,
+create table noesis.settings (
+  id text primary key default 'main',
   theme_id text not null default 'midnight',
   theme_by_time boolean not null default false,
   model_pref text not null default 'auto',
@@ -15,66 +19,60 @@ create table settings (
   updated_at timestamptz not null default now()
 );
 
-create table themes (
-  id text not null,
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+create table noesis.themes (
+  id text primary key,
   name text not null,
-  tokens jsonb not null,           -- css variables + orb theme object
+  tokens jsonb not null,
   version int not null default 1,
-  created_by text not null default 'user',  -- 'user' | 'apollo' | 'preset'
+  created_by text not null default 'user',
   created_at timestamptz not null default now(),
-  primary key (user_id, id)
+  updated_at timestamptz
 );
 
-create table pages (
+create table noesis.pages (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  slug text not null,
+  slug text not null unique,
   title text not null,
   space text,
-  spec jsonb not null,             -- JSON page spec (layout grid + components + bindings)
+  spec jsonb not null default '{}',
   version int not null default 1,
   pinned boolean not null default false,
   position int not null default 0,
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (user_id, slug)
+  updated_at timestamptz
 );
 
-create table page_versions (
+create table noesis.page_versions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  page_id uuid not null references pages on delete cascade,
+  page_id uuid not null references noesis.pages on delete cascade,
   version int not null,
   spec jsonb not null,
   created_at timestamptz not null default now(),
   unique (page_id, version)
 );
 
-create table widgets (
+create table noesis.widgets (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
   name text not null,
-  kind text not null,              -- library component name, or 'custom' (sandboxed iframe)
-  spec jsonb not null,
+  kind text not null,
+  spec jsonb not null default '{}',
   version int not null default 1,
   deleted_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
 );
 
-create table profile_facts (
+create table noesis.profile_facts (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  key text not null,
+  key text not null unique,
   value text not null,
-  updated_at timestamptz not null default now(),
-  unique (user_id, key)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
-create table conversations (
+create table noesis.conversations (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
   title text,
   space text,
   project_id uuid,
@@ -84,10 +82,9 @@ create table conversations (
   updated_at timestamptz not null default now()
 );
 
-create table messages (
+create table noesis.messages (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  conversation_id uuid not null references conversations on delete cascade,
+  conversation_id uuid not null references noesis.conversations on delete cascade,
   role text not null check (role in ('user', 'assistant', 'system')),
   content text not null,
   model text,
@@ -95,57 +92,55 @@ create table messages (
   tokens_out int,
   created_at timestamptz not null default now()
 );
-create index on messages (conversation_id, created_at);
+create index on noesis.messages (conversation_id, created_at);
 
-create table chat_summaries (
-  conversation_id uuid primary key references conversations on delete cascade,
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+create table noesis.chat_summaries (
+  id uuid primary key references noesis.conversations on delete cascade, -- = conversation id
   summary text not null,
   upto_message_id uuid,
+  created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create table jobs (
+create table noesis.jobs (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
   kind text not null check (kind in ('apollo', 'build')),
   status text not null default 'queued'
     check (status in ('queued', 'running', 'done', 'error', 'rate_limited', 'cancelled')),
-  conversation_id uuid references conversations on delete set null,
+  conversation_id uuid references noesis.conversations on delete set null,
   model text,
   input jsonb not null,
   output jsonb,
+  ui_actions jsonb not null default '[]',
   error text,
   retry_at timestamptz,
   created_at timestamptz not null default now(),
   started_at timestamptz,
   finished_at timestamptz
 );
-create index on jobs (status, created_at);
+create index on noesis.jobs (status, created_at);
 
-create table relay_status (
-  user_id uuid primary key default auth.uid() references auth.users on delete cascade,
+create table noesis.relay_status (
+  id text primary key default 'main',
   last_heartbeat timestamptz,
   version text,
   info jsonb not null default '{}'
 );
 
-create table usage_log (
-  id bigint generated always as identity primary key,
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  job_id uuid references jobs on delete set null,
+create table noesis.usage_log (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid references noesis.jobs on delete set null,
   feature text not null,
   model text,
   tokens_in int not null default 0,
   tokens_out int not null default 0,
   created_at timestamptz not null default now()
 );
+create index on noesis.usage_log (created_at);
 
--- Every Apollo write lands here with before/after, which is what makes Undo possible.
-create table action_log (
-  id bigint generated always as identity primary key,
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
-  job_id uuid references jobs on delete set null,
+create table noesis.action_log (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid references noesis.jobs on delete set null,
   actor text not null default 'apollo',
   tool text not null,
   table_name text,
@@ -155,33 +150,33 @@ create table action_log (
   undone_at timestamptz,
   created_at timestamptz not null default now()
 );
+create index on noesis.action_log (created_at desc);
 
-create table trash (
+create table noesis.trash (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
   table_name text not null,
   row_id text not null,
   data jsonb not null,
   deleted_at timestamptz not null default now(),
-  purge_after timestamptz not null default now() + interval '30 days'
+  purge_after timestamptz not null default now() + interval '30 days',
+  created_at timestamptz not null default now()
 );
 
-create table files (
+create table noesis.files (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
   name text not null,
-  storage_path text not null,
+  storage_path text,
   mime text,
   size_bytes bigint,
   project_id uuid,
   source text,
   deleted_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
 );
 
-create table inbox_items (
+create table noesis.inbox_items (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users on delete cascade,
   source text not null,
   title text not null,
   body text,
@@ -189,21 +184,32 @@ create table inbox_items (
   due_at timestamptz,
   read_at timestamptz,
   deleted_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
 );
 
--- RLS on every table: owner only.
+-- Lock down: RLS on, no policies; only service_role (secret key) gets in.
 do $$
 declare t text;
 begin
-  foreach t in array array[
-    'settings','themes','pages','page_versions','widgets','profile_facts','conversations',
-    'messages','chat_summaries','jobs','relay_status','usage_log','action_log','trash',
-    'files','inbox_items'
-  ] loop
-    execute format('alter table %I enable row level security', t);
-    execute format(
-      'create policy owner_all on %I for all to authenticated
-         using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
+  for t in select tablename from pg_tables where schemaname = 'noesis' loop
+    execute format('alter table noesis.%I enable row level security', t);
   end loop;
 end $$;
+
+revoke all on schema noesis from anon, authenticated;
+grant usage on schema noesis to service_role;
+grant all on all tables in schema noesis to service_role;
+alter default privileges in schema noesis grant all on tables to service_role;
+
+-- Starting memory, from the spec. Apollo keeps these up to date with remember_fact.
+insert into noesis.settings (id) values ('main');
+insert into noesis.profile_facts (key, value) values
+  ('name', 'Reg'),
+  ('age', 'under 18'),
+  ('subjects', 'Maths (OCR), Further Maths (OCR), Physics (AQA), Economics (Pearson Edexcel)'),
+  ('undecided', 'Further Maths options and the Physics optional topic'),
+  ('languages', 'Mandarin (HSK 1), Spanish (from A1), French (GCSE 9, rusty), English vocabulary'),
+  ('projects', 'Life dashboard (NOESIS), Touchline, Bluebird, RDsites, Programming'),
+  ('training', 'push / pull / legs split'),
+  ('poker', 'home games or play money only');

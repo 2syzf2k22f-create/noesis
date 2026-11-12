@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = ".next"
 
+# Runs Next.js on Netlify (server rendering, route handlers). Without it the
+# build is served as plain files and every page 404s.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
 [[headers]]
   for = "/sw.js"
   [headers.values]

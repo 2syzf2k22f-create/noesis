@@ -5,6 +5,7 @@ import { useRef, useSyncExternalStore } from "react";
 import { ORB_STATES } from "@/orb/ApolloOrb";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useApollo } from "./apollo";
+import { ApolloPanel } from "./ApolloPanel";
 import { Icon } from "./Icon";
 import { panelStore, type Panel } from "./panelStore";
 import { SPACES } from "./spaces";
@@ -41,6 +42,7 @@ function Body({ kind }: { kind: Panel["kind"] }) {
         ))}
       </div>
     );
+  if (kind === "apollo") return <ApolloPanel />;
   if (kind === "orb")
     return (
       <div className={s.pills}>

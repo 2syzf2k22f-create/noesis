@@ -6,23 +6,30 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "relay": "tsx relay/index.mts",
+    "relay:dev": "NOESIS_DEV_STORE=.dev/db.json tsx relay/index.mts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "three": "^0.187.0"
+    "server-only": "^0.0.1",
+    "three": "^0.187.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.16.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.187.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
