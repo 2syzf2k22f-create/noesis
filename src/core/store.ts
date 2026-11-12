@@ -29,7 +29,7 @@ export interface Store {
 
 export const nowIso = () => new Date().toISOString();
 
-const TEXT_ID = new Set(["settings", "relay_status", "chat_summaries"]);
+const TEXT_ID = new Set(["settings", "relay_status", "chat_summaries", "ms_auth"]);
 
 export function withDefaults(table: string, row: Partial<Row>): Row {
   const t = nowIso();

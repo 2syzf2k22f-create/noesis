@@ -8,6 +8,7 @@ import { useOptions } from "./useOptions";
 import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./Blocks2";
 import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
 import { QuestionBank } from "./QuestionBank";
+import { MicrosoftBlock } from "./MicrosoftBlock";
 import { AnalysisBoard, GameReview, OpeningTrainer, Puzzles } from "@/chess/ChessBlocks";
 import { DeepStats } from "./DeepStats";
 import { Benchmark } from "./Benchmark";
@@ -453,6 +454,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "puzzles": return <Puzzles ctx={ctx} />;
     case "gamereview": return <GameReview ctx={ctx} p={p} />;
     case "questionbank": return <QuestionBank ctx={ctx} />;
+    case "microsoft": return <MicrosoftBlock ctx={ctx} />;
     case "deepstats": return <DeepStats p={p} />;
     case "benchmark": return <Benchmark ctx={ctx} p={p} />;
     case "poker": return <PokerTable ctx={ctx} />;

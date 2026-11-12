@@ -179,11 +179,12 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "school--homework": {
     title: "Homework",
     blocks: [
+      { type: "microsoft", title: "Teams, Outlook, OneNote & Arbor", span: 12 },
       { type: "form", title: "Add homework", span: 5, props: { table: "homework", defaults: { status: "to do" }, submit: "Add", fields: [
         { name: "title", required: true }, { name: "subject", type: "select", options: SUBJ }, { name: "due_at", label: "Due", type: "date" },
       ] } },
       { type: "list", title: "To do", span: 7, bind: { table: "homework", where: { status: "to do" }, order: { col: "due_at", asc: true }, limit: 40 },
-        props: { primary: "title", secondary: ["subject", "due_at"], action: { label: "Done", op: "update", data: { status: "done" } } } },
+        props: { primary: "title", secondary: ["subject", "class_name", "due_at"], link: "{link}", action: { label: "Done", op: "update", data: { status: "done" } } } },
       { type: "list", title: "Overdue", span: 6, bind: { table: "homework", where: { status: "to do" }, due: { field: "due_at" }, limit: 20 }, props: { primary: "title", secondary: ["subject", "due_at"] } },
       { type: "list", title: "Done", span: 6, bind: { table: "homework", where: { status: "done" }, limit: 15 }, props: { primary: "title", secondary: ["subject", "due_at"] } },
     ],
@@ -191,6 +192,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "school--timetable": {
     title: "Timetable",
     blocks: [
+      { type: "microsoft", title: "Sync lessons from Outlook or Arbor", span: 12 },
       { type: "timetable", title: "This week", span: 12, props: { view: "week" }, bind: { table: "timetable", limit: 300 } },
       { type: "form", title: "Add a lesson", span: 6, props: { table: "timetable", submit: "Add lesson", fields: [
         { name: "day", type: "select", options: DAYS }, { name: "start", type: "time", required: true }, { name: "end", type: "time", required: true },
