@@ -1,0 +1,72 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useTheme } from "@/theme/ThemeProvider";
+import { Icon } from "./Icon";
+import { SPACES } from "./spaces";
+import s from "./shell.module.css";
+
+type Open = "pages" | "style" | null;
+
+/** Two small fold-out menus in the top-right corner: pages and styles. No Apollo needed. */
+export function CornerMenus() {
+  const [open, setOpen] = useState<Open>(null);
+  const { preset, presets, setTheme } = useTheme();
+  const pathname = usePathname();
+  const ref = useRef<HTMLDivElement>(null);
+
+  // close on navigation, outside click, Escape
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) { setLastPath(pathname); setOpen(null); }
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(null); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(null); };
+    window.addEventListener("pointerdown", down);
+    window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("pointerdown", down); window.removeEventListener("keydown", key); };
+  }, [open]);
+
+  const toggle = (m: Open) => setOpen((o) => (o === m ? null : m));
+
+  return (
+    <div className={s.corner} ref={ref}>
+      <button className={s.cornerBtn} aria-expanded={open === "style"} aria-label="Styles" title="Styles" onClick={() => toggle("style")}>
+        <span className={s.cornerSwatch} style={{ background: `linear-gradient(135deg, ${preset.swatch[1]}, ${preset.swatch[2]})` }} />
+      </button>
+      <button className={s.cornerBtn} aria-expanded={open === "pages"} aria-label="Pages" title="Pages" onClick={() => toggle("pages")}>
+        <Icon name={open === "pages" ? "close" : "menu"} size={17} />
+      </button>
+
+      {open && (
+        <div className={`panel ${s.cornerMenu}`} role="menu" aria-label={open === "pages" ? "Pages" : "Styles"}>
+          <div className="label">{open === "pages" ? "Pages" : "Style"}</div>
+          {open === "pages" ? (
+            <>
+              <Link href="/" role="menuitem" className={s.row} aria-current={pathname === "/" ? "page" : undefined}>
+                <Icon name="orb" /><span>Apollo</span>
+              </Link>
+              {SPACES.map((sp) => (
+                <Link key={sp.id} href={`/s/${sp.id}`} role="menuitem" className={s.row} aria-current={pathname === `/s/${sp.id}` ? "page" : undefined}>
+                  <Icon name={sp.icon} /><span>{sp.name}</span>
+                </Link>
+              ))}
+            </>
+          ) : (
+            presets.map((p) => (
+              <button key={p.id} role="menuitemradio" aria-checked={p.id === preset.id} className={s.row} onClick={() => setTheme(p.id)}>
+                <span className={s.chip} style={{ background: p.swatch[0] }}>
+                  <i style={{ background: p.swatch[1] }} />
+                  <i style={{ background: p.swatch[2] }} />
+                </span>
+                <span>{p.name}<small>{p.note}</small></span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

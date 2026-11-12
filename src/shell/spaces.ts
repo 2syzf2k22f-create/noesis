@@ -20,6 +20,8 @@ export const ICONS = {
   pin: "M9 4h6l-1 6l3 3H7l3-3z M12 13v7",
   close: "M6 6l12 12 M18 6L6 18",
   ask: "M5 12h13 M13 7l5 5l-5 5",
+  menu: "M4 7h16 M4 12h16 M4 17h10",
+  grid: "M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z",
   undo: "M9 14L4 9l5-5 M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
 } as const;
 

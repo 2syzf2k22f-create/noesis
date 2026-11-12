@@ -256,10 +256,13 @@ export function ApolloOrb({ state, theme, getLevel, small, className }: Props) {
     window.addEventListener("pointermove", onMove, { passive: true });
 
     const resize = () => {
-      const r = host.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      w = r.width; h = r.height;
-      const dpr = smallRef.current ? 1 : Math.min(window.devicePixelRatio || 1, w < 420 ? 1.75 : 2);
+      // Layout size, not getBoundingClientRect: the docked orb is shrunk with a CSS
+      // transform, and measuring that would leave the canvas tiny when it comes back.
+      const cw = host.clientWidth, ch = host.clientHeight;
+      if (!cw || !ch) return;
+      w = cw; h = ch;
+      // Docked: the transform shows it at ~92px, so render cheaply.
+      const dpr = smallRef.current ? 0.35 : Math.min(window.devicePixelRatio || 1, w < 420 ? 1.75 : 2);
       dprNow = dpr;
       renderer.setPixelRatio(dpr);
       renderer.setSize(w, h, true);

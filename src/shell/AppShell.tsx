@@ -6,7 +6,9 @@ import { useEffect, useRef } from "react";
 import { ApolloOrb } from "@/orb/ApolloOrb";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ApolloProvider, useApollo } from "./apollo";
+import { Backdrop } from "./Backdrop";
 import { CommandPalette } from "./CommandPalette";
+import { CornerMenus } from "./CornerMenus";
 import { Icon } from "./Icon";
 import { PanelLayer } from "./Panels";
 import { panelStore } from "./panelStore";
@@ -51,6 +53,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={s.shell} data-home={home}>
+      {home && <Backdrop />}
+      <CornerMenus />
       <div className={s.orbStage} data-docked={!home} ref={stageRef}>
         <ApolloOrb className={s.orb} state={orbState} theme={preset.orb} getLevel={getLevel} small={!home} />
         {!home && <Link href="/" className={s.orbHome} aria-label="Back to Apollo" />}
