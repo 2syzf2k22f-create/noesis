@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const out = await Promise.all(binds.map(async (b: unknown) => {
     const p = BindSchema.safeParse(b);
     if (!p.success) return { error: "invalid binding" };
-    try { return await runBind(s, p.data); } catch (e) { return { error: (e as Error).message }; }
+    try { return await runBind(s, p.data, { owner: true }); } catch (e) { return { error: (e as Error).message }; }
   }));
   return Response.json(out);
 }

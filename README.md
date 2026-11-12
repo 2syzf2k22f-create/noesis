@@ -22,10 +22,16 @@ npm run dev
 
 ## Status
 
-Phases 1 to 7 are built.
-- Home has only the orb and the message box. Pages and Styles fold out from the top-right corner.
-- Apollo answers through the relay on your PC (`relay/README.md`). It acts only through the site tools in `src/core/tools.ts`, and every change can be undone.
-- Generated UI (`src/ui/`): pages and widgets are JSON specs drawn by the site's component library. Numbers come from bindings computed in code (`src/core/query.ts`). Custom components run in a sandboxed iframe.
-- Voice: the browser handles speech to text, spoken replies and the wake word. Hold the mic button, or hold Space, to talk.
-- Spaces with real layouts: Projects, Fitness, Nutrition and sleep, Inbox and Stats.
-- Database: `supabase/migrations/` (its own `noesis` schema). Not applied yet.
+Phases 1 to 11 are built.
+- Home has only the orb and the message box. Pages and Styles fold out from the top-right corner. Each theme has its own UI skin (`src/theme/skins.css`).
+- Apollo answers through the relay on your PC (`relay/README.md`) and acts only through the site tools. It works in modes: chat, tutor, language partner, flashcard maker and report writer.
+- Every number comes from code: page bindings, `query_data`, weekly scores (`src/core/scores.ts`) and spaced repetition (`src/core/srsCore.ts`).
+- Spaces:
+  - School: flashcards, revision timer, tutor, notes to flashcards, homework, resources, website ingestion, opportunities.
+  - Mind sports: chess.com sync, geography quiz, brain tests, poker, Codeforces.
+  - Languages: vocab with spaced repetition, conversation practice, words of the day.
+  - Library: books, a private journal, weekly reports.
+  - Also Stats, Fitness, Nutrition and sleep, Projects, Inbox and Chats.
+- The relay runs on a schedule: the weekly report on Mondays and the opportunities search on Sundays.
+- Database: `supabase/migrations/0001-0003` (its own `noesis` schema). Not applied yet.
+- Geography data: world-countries (ODbL); see `src/data/README.md`.

@@ -71,6 +71,14 @@ The relay is how Apollo answers on your Claude Pro plan instead of a paid API ke
   - Haiku can also reply `ESCALATE`, which reruns the request on Sonnet.
 - **Pro plan usage:** the site's Apollo panel shows the real 5-hour and weekly usage percentages, which Claude Code reports after each job.
 
+## Scheduled jobs
+
+The relay checks its schedule every 10 minutes (local time):
+- **Weekly report:** every Monday from 07:00, for the week before. Scores come from code; Sonnet writes only the commentary. The report is saved to the Library and sent to the Inbox.
+- **Opportunities:** every Sunday from 18:00, a web search for competitions, summer schools and similar. This is the only job allowed to use Claude Code's WebSearch and WebFetch; it still has no shell or file access. Results include source links, and deadlines appear only when the source page states one.
+
+To turn either off, ask Apollo to set `settings.data.auto_report` or `settings.data.auto_opportunities` to false. You can also run them by hand: Stats → "Write report", or ask Apollo.
+
 ## Switching to the API later
 
 `relay/backend.mts` defines a `Backend` interface. An API backend that implements `run()` can replace `claudeCode()` in `relay/index.mts` without changing anything else.

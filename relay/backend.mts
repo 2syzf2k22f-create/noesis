@@ -20,6 +20,8 @@ export type RunOpts = {
   prompt: string;
   /** Path to an MCP config JSON; omit for a run with no tools at all. */
   mcpConfig?: string;
+  /** Built-in Claude Code tools to allow (only research jobs use this: "WebSearch,WebFetch"). */
+  builtins?: string[];
   onText?: (soFar: string) => void;
   timeoutMs?: number;
 };
@@ -41,10 +43,12 @@ export const claudeCode = (bin = process.env.CLAUDE_BIN ?? "claude"): Backend =>
       "--no-session-persistence",
       "--system-prompt", o.system,
       // No built-in tools at all (no Bash, no files, no web). Only the site's MCP tools.
-      "--tools", "",
+      "--tools", (o.builtins ?? []).join(","),
       "--strict-mcp-config",
     ];
-    if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig, "--allowedTools", "mcp__noesis");
+    const allowed = [...(o.mcpConfig ? ["mcp__noesis"] : []), ...(o.builtins ?? [])];
+    if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig);
+    if (allowed.length) args.push("--allowedTools", ...allowed);
 
     return new Promise((resolve, reject) => {
       const child = spawn(bin, args, { cwd: SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" });

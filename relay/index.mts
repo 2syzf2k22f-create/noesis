@@ -4,7 +4,9 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { getStore } from "../src/core/getStore";
-import { buildUserPrompt, ESCALATE_RULE, SYSTEM_PROMPT } from "../src/core/prompt";
+import { buildUserPrompt, systemFor } from "../src/core/prompt";
+import { isMode } from "../src/core/modes";
+import { weeklyScores, weekStart } from "../src/core/scores";
 import { ESCALATE, pickModel, type ModelPref } from "../src/core/routing";
 import { nowIso, type Row, type Store } from "../src/core/store";
 import { claudeCode, type Backend, type RunResult } from "./backend.mts";
@@ -62,7 +64,10 @@ function throttle(fn: (s: string) => void, ms: number) {
 
 async function runApollo(s: Store, job: Row) {
   const { conversation_id: convId, text, model_pref = "auto", message_id } = job.input ?? {};
+  const mode = isMode(job.input?.mode) ? job.input.mode : "chat";
   let pick = pickModel(model_pref as ModelPref, text);
+  // tutoring and flashcard-making need a stronger model than Haiku by default
+  if (pick.auto && pick.model === "haiku" && (mode === "tutor" || mode === "flashcards")) pick = { model: "sonnet", auto: true, reason: `${mode} mode` };
   const prompt = await buildUserPrompt(s, convId, text, message_id);
   const mcp = mcpConfigFor(job.id);
 
@@ -71,7 +76,7 @@ async function runApollo(s: Store, job: Row) {
       if (escalatable && ESCALATE.startsWith(t.trim().slice(0, ESCALATE.length))) return; // don't flash "ESCALATE"
       void s.update("jobs", job.id, { output: { text: t, model, streaming: true } });
     }, 250);
-    const r = await backend.run({ model, system: SYSTEM_PROMPT + (escalatable ? ESCALATE_RULE : ""), prompt, mcpConfig: mcp, onText: stream.push });
+    const r = await backend.run({ model, system: systemFor(mode, escalatable), prompt, mcpConfig: mcp, onText: stream.push });
     stream.done();
     return r;
   };
@@ -137,6 +142,8 @@ async function tick() {
     busy = true;
     log(`job ${job.id.slice(0, 8)} ${job.kind}`);
     if (job.kind === "apollo") await runApollo(store!, job);
+    else if (job.kind === "report") await runReport(store!, job);
+    else if (job.kind === "research") await runResearch(store!, job);
     else await store!.update("jobs", job.id, { status: "error", error: "Build mode isn't available yet (phase 12)", finished_at: nowIso() });
   } catch (e) {
     log("job failed:", (e as Error).message);
@@ -146,7 +153,65 @@ async function tick() {
   }
 }
 
+/** Weekly report: scores come from code; the model only writes commentary. */
+async function runReport(s: Store, job: Row) {
+  const weeksAgo = Number(job.input?.weeks_ago ?? 1);
+  const scores = await weeklyScores(s, weeksAgo);
+  const prev = await weeklyScores(s, weeksAgo + 1);
+  const compact = { week_starting: scores.week, overall: scores.overall, grade: scores.grade, areas: scores.areas, previous_week: { overall: prev.overall, areas: prev.areas.map((a) => ({ area: a.area, score: a.score })) } };
+  let commentary = "";
+  if (scores.overall != null) {
+    const r = await backend.run({ model: "sonnet", system: systemFor("report"), prompt: JSON.stringify(compact) });
+    if (r.plan) plan = r.plan;
+    if (r.rateLimited) {
+      await s.update("jobs", job.id, { status: "rate_limited", retry_at: new Date((r.rateLimited.resetsAt ?? Date.now() / 1000 + 900) * 1000).toISOString() });
+      return;
+    }
+    commentary = r.text;
+    await s.insert("usage_log", { job_id: job.id, feature: "report", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
+  } else commentary = "No data was logged this week, so there are no scores.";
+  const existing = (await s.list("weekly_reports", { eq: { week: scores.week }, limit: 1 }))[0];
+  const data = { week: scores.week, overall: scores.overall, grade: scores.grade, scores: scores.areas, commentary, title: `Week of ${scores.week}` };
+  const rep = existing ? await s.update("weekly_reports", existing.id, data) : await s.insert("weekly_reports", data);
+  await s.insert("inbox_items", { source: "weekly report", title: `Weekly report: ${scores.grade ?? "no data"} (${scores.overall ?? "–"}/100)`, body: commentary.slice(0, 600), link: "/s/library", read_at: null, deleted_at: null });
+  await s.update("jobs", job.id, { status: "done", finished_at: nowIso(), output: { text: commentary, report_id: rep!.id } });
+  log(`report for ${scores.week} saved (${scores.grade ?? "no data"})`);
+}
+
+/** Opportunities search: the only job with web access (WebSearch/WebFetch) — still no shell or files. */
+async function runResearch(s: Store, job: Row) {
+  const facts = await s.list("profile_facts", { limit: 40 });
+  const prompt = `Find 5-8 current extracurricular and super-curricular opportunities in the UK for an A-level student (competitions, olympiads, summer schools, essay prizes, MOOCs, lectures, work experience) relevant to: ${facts.map((f) => `${f.key}: ${f.value}`).join("; ")}.
+Rules: every item needs the real page url you found it on; only give a deadline if that page states it; skip anything paid or closed; no duplicates of what list_records(table "opportunities") already has. Save them with save_opportunities, then reply with one line saying how many you saved.`;
+  const r = await backend.run({ model: "sonnet", system: systemFor("chat"), prompt, mcpConfig: mcpConfigFor(job.id), builtins: ["WebSearch", "WebFetch"], timeoutMs: 10 * 60_000 });
+  if (r.plan) plan = r.plan;
+  await s.insert("usage_log", { job_id: job.id, feature: "opportunities", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
+  await s.update("jobs", job.id, { status: r.isError ? "error" : "done", finished_at: nowIso(), output: { text: r.text }, error: r.isError ? r.text : null });
+  log(`opportunities: ${r.text.slice(0, 80)}`);
+}
+
+/** Weekly schedule (local time): report for the past week on Monday from 07:00; opportunities on Sunday from 18:00. */
+async function schedule() {
+  try {
+    const now = new Date();
+    const settings = (await store!.get("settings", "main")) ?? (await store!.insert("settings", { id: "main", theme_id: "midnight", data: {} }));
+    const data = settings.data ?? {};
+    const thisWeek = weekStart(0).toISOString().slice(0, 10);
+    const queue = async (kind: string, input: object, key: string) => {
+      await store!.insert("jobs", { kind, status: "queued", input, ui_actions: [], output: null });
+      await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), [key]: thisWeek } });
+      log(`scheduled ${kind}`);
+    };
+    if (now.getDay() >= 1 && (now.getDay() > 1 || now.getHours() >= 7) && data.last_report_week !== thisWeek && data.auto_report !== false) await queue("report", { weeks_ago: 1 }, "last_report_week");
+    if (now.getDay() === 0 && now.getHours() >= 18 && data.last_opps_week !== thisWeek && data.auto_opportunities !== false) await queue("research", { topic: "opportunities" }, "last_opps_week");
+  } catch (e) {
+    log("schedule failed:", (e as Error).message);
+  }
+}
+
 log(`NOESIS relay ${VERSION} · ${store.kind} store · ${backend.name}`);
 await heartbeat();
 setInterval(heartbeat, HEARTBEAT_MS);
 setInterval(tick, POLL_MS);
+void schedule();
+setInterval(schedule, 10 * 60_000);

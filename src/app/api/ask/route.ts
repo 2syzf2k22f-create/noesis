@@ -1,6 +1,7 @@
 import { relayOnline, storeOr503, titleFrom } from "@/core/api";
 import { MODEL_PREFS, type ModelPref } from "@/core/routing";
 import { nowIso } from "@/core/store";
+import { isMode } from "@/core/modes";
 
 export async function POST(req: Request) {
   const s = storeOr503();
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   const msg = await s.insert("messages", { conversation_id: convId, role: "user", content: text });
   const job = await s.insert("jobs", {
     kind: "apollo", status: "queued", conversation_id: convId,
-    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id },
+    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat" },
     ui_actions: [], output: null,
   });
   await s.update("conversations", convId, { updated_at: nowIso() });

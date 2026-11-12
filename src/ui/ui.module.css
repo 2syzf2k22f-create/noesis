@@ -237,6 +237,17 @@
   border-top: 0;
 }
 
+.list li span {
+  white-space: pre-wrap;
+}
+
+.form input[type="checkbox"] {
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
 .list small {
   display: block;
   color: var(--text-dim);
@@ -469,4 +480,212 @@
   .cell[data-narrow="true"] {
     grid-column: span 1;
   }
+}
+
+/* ---- phase 8-11 blocks ---- */
+.askReply {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  font-size: 13.5px;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.scores {
+  display: grid;
+  gap: 14px;
+}
+
+.scoresHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scoresHead :global(.display) {
+  font-size: 48px;
+}
+
+.scoresHead small {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.scoreList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.scoreList li {
+  display: grid;
+  grid-template-columns: 96px 1fr 56px;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.scoreList li > span:nth-of-type(2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreList i {
+  height: 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.scoreList b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--chart-1), var(--chart-2));
+  transition: width 0.6s;
+}
+
+.scoreList small {
+  grid-column: 2 / -1;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: -4px;
+}
+
+.games {
+  display: grid;
+  gap: 12px;
+}
+
+.game {
+  min-height: 170px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 16px;
+  transition: background-color 0.1s;
+}
+
+.game[data-state="wait"] {
+  background: color-mix(in srgb, var(--danger) 25%, var(--surface));
+}
+
+.game[data-state="go"] {
+  background: color-mix(in srgb, var(--good) 35%, var(--surface));
+  font-size: 26px;
+}
+
+.game :global(.display) {
+  font-size: 40px;
+  letter-spacing: 0.08em;
+}
+
+.gameInput {
+  width: min(320px, 100%);
+  height: 42px;
+  padding: 0 14px;
+  text-align: center;
+  font-size: 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: min(var(--radius-sm), 10px);
+  outline: 0;
+}
+
+.gameInput:focus {
+  border-color: var(--accent);
+}
+
+.seqWrap {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.seq {
+  display: grid;
+  grid-template-columns: repeat(3, 64px);
+  gap: 8px;
+}
+
+.seq button {
+  height: 64px;
+  border-radius: min(var(--radius-sm), 10px);
+  background: var(--surface-2);
+  transition: background-color 0.12s, box-shadow 0.12s;
+}
+
+.seq button[data-lit="true"] {
+  background: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.typing {
+  display: grid;
+  gap: 12px;
+}
+
+.typing p {
+  margin: 0;
+  font: 16px/1.6 var(--font-mono), monospace;
+  color: var(--text-dim);
+}
+
+.typing span[data-s="ok"] {
+  color: var(--text);
+}
+
+.typing span[data-s="bad"] {
+  color: var(--danger);
+  text-decoration: underline;
+}
+
+.geo {
+  display: grid;
+  gap: 12px;
+}
+
+.geoQ {
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 18px;
+}
+
+.geoQ p {
+  margin: 0;
+}
+
+.geoQ img {
+  height: 120px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid var(--border);
+}
+
+.geoSel {
+  height: 34px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.timerSel {
+  height: 34px;
+  padding: 0 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: min(var(--radius-sm), 10px);
 }

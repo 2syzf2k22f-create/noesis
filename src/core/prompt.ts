@@ -2,6 +2,7 @@
 // everything that changes goes in the user turn, last.
 import type { Store } from "./store";
 import { ESCALATE } from "./routing";
+import { MODES, type Mode } from "./modes";
 
 export const SYSTEM_PROMPT = `You are Apollo, the assistant that runs Reg's private all-in-one site, NOESIS. You appear as an orb.
 
@@ -13,7 +14,12 @@ Rules:
 - To show something, prefer navigating or opening a panel over describing it.
 - Use remember_fact for durable facts about Reg (preferences, subjects, usernames), not for chit-chat.
 - Changing the site's code (Build mode) is not available yet; say so if asked.
-- Be brief: 1-3 sentences unless asked for more. Plain text only (no markdown: no **, #, or tables); use simple "- " lines for lists.`;
+- Plain text only (no markdown: no **, #, or tables); use simple "- " lines for lists.`;
+
+export function systemFor(mode: Mode, escalatable = false) {
+  const m = MODES[mode];
+  return `${SYSTEM_PROMPT}${m.prompt ? `\n\n${m.prompt}` : ""}\n\nLength: ${m.cap}${escalatable ? ESCALATE_RULE : ""}`;
+}
 
 export const ESCALATE_RULE = `\n\nIf answering well needs careful reasoning, long writing, tutoring or multi-step planning, reply with exactly ${ESCALATE} and nothing else.`;
 

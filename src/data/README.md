@@ -1,0 +1,1 @@
+`countries.json` is derived from [world-countries](https://github.com/mledoze/countries) by Mohammed Le Doze, licensed under the ODbL 1.0. Fields: n name, c capital, r region, s subregion, k ISO code, a area (km²).

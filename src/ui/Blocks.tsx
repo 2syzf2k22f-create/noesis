@@ -4,12 +4,13 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { QueryResult, Series } from "@/core/query";
 import type { Block } from "./spec";
 import u from "./ui.module.css";
+import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./Blocks2";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type P = Record<string, any>;
-export type BlockCtx = { data?: QueryResult; write: (op: "create" | "update" | "delete", table: string, data?: Row, id?: string) => Promise<void> };
+export type BlockCtx = { data?: QueryResult; write: (op: "create" | "update" | "delete", table: string, data?: Row, id?: string) => Promise<void>; refresh?: () => void };
 
 const fmt = (n: number | null | undefined, unit?: string) =>
   n == null || Number.isNaN(n) ? "no data" : `${Math.abs(n) >= 10000 ? `${(n / 1000).toFixed(1)}k` : Number.isInteger(n) ? n : n.toFixed(1)}${unit ? ` ${unit}` : ""}`;
@@ -225,7 +226,9 @@ function Kanban({ p, rows, ctx, table }: { p: P; rows: Row[]; ctx: BlockCtx; tab
 }
 
 function Timer({ p, ctx }: { p: P; ctx: BlockCtx }) {
-  const total = Math.round((p.minutes ?? 25) * 60);
+  const [mins, setMins] = useState<number>(p.minutes ?? 25);
+  const [subject, setSubject] = useState<string>((p.options ?? [])[0] ?? "");
+  const total = Math.round(mins * 60);
   const [left, setLeft] = useState(total);
   const [running, setRunning] = useState(false);
   const started = useRef<number | null>(null);
@@ -234,13 +237,13 @@ function Timer({ p, ctx }: { p: P; ctx: BlockCtx }) {
     const id = setInterval(() => setLeft((l) => {
       if (l <= 1) {
         setRunning(false);
-        if (p.logTo) void ctx.write("create", p.logTo, { minutes: Math.round(total / 60), label: p.label ?? null, ...(p.defaults ?? {}) });
+        if (p.logTo) void ctx.write("create", p.logTo, { minutes: Math.round(total / 60), label: p.label ?? null, subject: subject || null, ...(p.defaults ?? {}) });
         return 0;
       }
       return l - 1;
     }), 1000);
     return () => clearInterval(id);
-  }, [running, p.logTo, p.label, p.defaults, total, ctx]);
+  }, [running, p.logTo, p.label, p.defaults, total, ctx, subject]);
   const mm = String(Math.floor(left / 60)).padStart(2, "0"), ss = String(left % 60).padStart(2, "0");
   return (
     <div className={u.timer}>
@@ -249,7 +252,20 @@ function Timer({ p, ctx }: { p: P; ctx: BlockCtx }) {
       <div className={u.row}>
         <button className="pill" data-active={!running} onClick={() => { started.current ??= Date.now(); setRunning((r) => !r); }}>{running ? "Pause" : left === total ? "Start" : "Resume"}</button>
         <button className="pill" onClick={() => { setRunning(false); setLeft(total); }}>Reset</button>
+        {p.logTo && left < total - 59 && left > 0 && (
+          <button className="pill" onClick={() => {
+            setRunning(false);
+            void ctx.write("create", p.logTo, { minutes: Math.round((total - left) / 60), label: p.label ?? null, subject: subject || null, ...(p.defaults ?? {}) });
+            setLeft(total);
+          }}>Stop &amp; log {Math.round((total - left) / 60)} min</button>
+        )}
       </div>
+      {(p.options || p.choices) && (
+        <div className={u.row}>
+          {p.options && <select className={u.timerSel} value={subject} disabled={running} onChange={(e) => setSubject(e.target.value)}>{p.options.map((o: string) => <option key={o}>{o}</option>)}</select>}
+          {p.choices && <select className={u.timerSel} value={mins} disabled={running} onChange={(e) => { setMins(Number(e.target.value)); setLeft(Number(e.target.value) * 60); }}>{p.choices.map((m: number) => <option key={m} value={m}>{m} min</option>)}</select>}
+        </div>
+      )}
     </div>
   );
 }
@@ -401,5 +417,11 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "media": return <Media p={p} />;
     case "wave": return <Wave />;
     case "custom": return <Custom p={p} data={d} />;
+    case "review": return <Review p={p} />;
+    case "ask": return <AskBlock p={p} />;
+    case "scores": return <ScoresBlock p={p} ctx={ctx} />;
+    case "brain": return <BrainGame p={p} ctx={ctx} />;
+    case "geo": return <GeoQuiz p={p} ctx={ctx} />;
+    case "sync": return <SyncBlock p={p} ctx={ctx} />;
   }
 }

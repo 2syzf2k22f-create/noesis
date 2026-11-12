@@ -47,7 +47,7 @@ type Ctx = {
   actions: Action[];
   runAction: (a: Action) => void;
   /** Site commands run instantly in the browser; anything else goes to Apollo via the relay. */
-  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean }) => void;
+  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string }) => void;
   toggleMic: () => void;
   /** Push-to-talk: start on press, stop (and send) on release. */
   startListening: () => void;
@@ -295,7 +295,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     settle({ text: a.done }, 4200);
   }, [clearTimers, micOn, settle, stopMic]);
 
-  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean) => {
+  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string) => {
     const my = ++runId.current;
     clearTimers();
     if (micOn) stopMic();
@@ -311,7 +311,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setReply({ text: "", pending: true, ask: text });
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, conversationId: ls.get(CHAT_KEY) }),
+      body: JSON.stringify({ text, model: m, mode, conversationId: ls.get(CHAT_KEY) }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
@@ -367,17 +367,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUi, clearTimers, micOn, openChat, refreshStatus, settle, stopMic]);
 
-  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean }) => {
+  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string }) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
     if (!q) return;
-    if (!opts?.model) {
+    if (!opts?.model && !opts?.mode) {
       const bare = q.replace(VERBS, "").replace(/\s+(panel|space|page|style|theme|preset)$/, (m) => (m.trim() === "panel" ? m : ""));
       const find = (t: string) => actions.find((a) => a.label.toLowerCase() === t || a.keywords.includes(t));
       const hit = find(q) ?? find(bare);
       if (hit) return runAction(hit);
     }
     setPaletteOpen(false);
-    void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken));
+    void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken), opts?.mode);
   }, [actions, ask, model, runAction, speakPref]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 

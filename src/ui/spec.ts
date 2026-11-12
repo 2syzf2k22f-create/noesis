@@ -5,6 +5,7 @@ import { z } from "zod";
 export const BLOCK_TYPES = [
   "heading", "text", "stat", "sparkline", "ring", "donut", "bar", "line", "area", "heatmap",
   "table", "list", "form", "kanban", "timer", "flashcards", "quiz", "media", "wave", "custom",
+  "review", "ask", "scores", "brain", "geo", "sync",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
@@ -14,6 +15,8 @@ const scalar = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 export const BindSchema = z.object({
   table: z.string(),
   where: z.record(z.string(), scalar).optional(),
+  /** Only rows whose field is one of these values, e.g. {deck: ["Spanish","French"]}. */
+  whereIn: z.record(z.string(), z.array(scalar)).optional(),
   order: z.object({ col: z.string(), asc: z.boolean().optional() }).optional(),
   limit: z.number().int().min(1).max(500).optional(),
   /** Only rows from the last N days (by created_at, or `dateField`). */

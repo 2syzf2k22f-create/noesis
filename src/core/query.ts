@@ -13,8 +13,9 @@ export const BINDABLE = new Set([
   "books", "reading_logs", "journal_entries", "weekly_reports",
   "chess_games", "chess_ratings", "poker_sessions", "brain_test_results", "memory_sessions", "coding_stats",
   "vocab_items", "vocab_reviews",
+  "subjects", "spec_topics", "resource_links", "sources", "geo_attempts", "chess_evals",
 ]);
-const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries"]);
+const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities"]);
 
 export type Series = { label: string; value: number }[];
 export type QueryResult = { rows?: Row[]; value?: number | null; series?: Series; error?: string };
@@ -36,7 +37,7 @@ function reduce(fn: string, vals: number[]): number | null {
   return vals[vals.length - 1];
 }
 
-export async function runBind(store: Store, b: Bind): Promise<QueryResult> {
+export async function runBind(store: Store, b: Bind, opts: { owner?: boolean } = {}): Promise<QueryResult> {
   if (!BINDABLE.has(b.table)) return { error: `table ${b.table} is not readable` };
   const dateField = b.dateField ?? "created_at";
   let rows = await store.list(b.table, {
@@ -45,7 +46,8 @@ export async function runBind(store: Store, b: Bind): Promise<QueryResult> {
     order: b.order ?? { col: dateField, asc: !!b.agg },
     limit: b.agg ? 5000 : (b.limit ?? 50),
   });
-  if (b.table === "journal_entries") rows = rows.filter((r) => r.shareable);
+  if (b.whereIn) for (const [k, vals] of Object.entries(b.whereIn)) rows = rows.filter((r) => vals.includes(r[k] ?? null));
+  if (b.table === "journal_entries" && !opts.owner) rows = rows.filter((r) => r.shareable);
   if (b.days) {
     const since = new Date(Date.now() - b.days * 864e5).toISOString();
     rows = rows.filter((r) => String(r[dateField] ?? "") >= since.slice(0, String(r[dateField] ?? "").length || 10));
@@ -73,5 +75,7 @@ export async function runBind(store: Store, b: Bind): Promise<QueryResult> {
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k)!.push(num(r));
   }
-  return { series: [...groups].map(([label, vals]) => ({ label, value: reduce(fn, vals) ?? 0 })) };
+  // counts and sums: an empty day is a real 0. Averages, min/max, last: an empty day is a gap, not 0.
+  const zeroOk = fn === "count" || fn === "sum";
+  return { series: [...groups].filter(([, vals]) => zeroOk || vals.length).map(([label, vals]) => ({ label, value: reduce(fn, vals) ?? 0 })) };
 }
