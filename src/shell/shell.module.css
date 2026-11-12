@@ -1,0 +1,552 @@
+.shell {
+  min-height: 100dvh;
+}
+
+/* ---- the orb: centred on home, docked top-left (and still alive) on pages ---- */
+.orbStage {
+  position: fixed;
+  z-index: 1;
+  left: 50%;
+  top: 44%;
+  width: min(74vh, 98vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  transition:
+    left 0.8s cubic-bezier(0.6, 0, 0.2, 1),
+    top 0.8s cubic-bezier(0.6, 0, 0.2, 1),
+    transform 0.8s cubic-bezier(0.6, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+.orbStage[data-docked="true"] {
+  left: 46px;
+  top: 46px;
+  z-index: 20;
+  transform: translate(-50%, -50%) scale(var(--dock-scale, 0.14));
+}
+
+.orb {
+  position: absolute;
+  inset: 0;
+  /* the canvas clears to --bg; the mask hides its square edge */
+  -webkit-mask-image: radial-gradient(circle closest-side, #000 80%, transparent 100%);
+  mask-image: radial-gradient(circle closest-side, #000 80%, transparent 100%);
+}
+
+.orb canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.orb[data-fallback="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: radial-gradient(circle at 35% 30%, var(--surface-2), transparent 70%);
+}
+
+.orbHome {
+  position: absolute;
+  inset: 14%;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+
+/* ---- home: one message box ---- */
+.commandWrap {
+  position: fixed;
+  z-index: 10;
+  left: 50%;
+  bottom: max(7vh, calc(20px + env(safe-area-inset-bottom)));
+  transform: translateX(-50%);
+  width: min(600px, calc(100vw - 32px));
+  display: grid;
+  gap: 14px;
+}
+
+.reply {
+  margin: 0;
+  text-align: center;
+  font-size: 15.5px;
+  text-wrap: balance;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.4s, transform 0.4s;
+}
+
+.reply[data-show="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+.command {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 22px;
+  border-radius: var(--radius);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+:global(html[data-frame="chamfer"]) .command,
+:global(html[data-frame="square"]) .command,
+:global(html[data-frame="chamfer"]) .mic,
+:global(html[data-frame="square"]) .mic {
+  border-radius: 0;
+}
+
+.command:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.command input,
+.palette input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: none;
+  border: 0;
+  outline: 0;
+  font-size: 15px;
+}
+
+.command input::placeholder,
+.palette input::placeholder {
+  color: var(--text-dim);
+}
+
+.kbd {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  opacity: 0.7;
+}
+
+.kbd:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.mic {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  transition: color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+.mic:hover {
+  color: var(--text);
+}
+
+.mic[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--glow);
+}
+
+/* ---- shared rows (panels, palette) ---- */
+.list {
+  display: grid;
+  gap: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  font-size: 13.5px;
+  border-radius: min(var(--radius-sm), 10px);
+}
+
+.row:hover,
+.row[aria-selected="true"] {
+  background: var(--surface-2);
+}
+
+.row svg {
+  flex: none;
+  color: var(--text-dim);
+}
+
+.row[aria-selected="true"] svg {
+  color: var(--accent);
+}
+
+.row small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.chip {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: grid;
+  grid-auto-flow: column;
+  gap: 3px;
+  place-content: center;
+}
+
+.chip i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pills :global(.pill) {
+  height: 30px;
+  padding: 0 12px;
+}
+
+.empty {
+  display: grid;
+  gap: 8px;
+  padding: 6px 4px;
+  color: var(--text-dim);
+}
+
+.empty :global(.display) {
+  font-size: 34px;
+}
+
+.empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ---- panels around the orb ---- */
+.panel {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.panel[data-slot="left"] {
+  --from: -28px, 0;
+}
+
+.panel[data-slot="right"] {
+  --from: 28px, 0;
+}
+
+.panel[data-slot="bottom"] {
+  --from: 0, 28px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    translate: var(--from);
+  }
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 8px 6px 16px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.panelHead:active {
+  cursor: grabbing;
+}
+
+.panelTools {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.panel:hover .panelTools,
+.panel:focus-within .panelTools {
+  opacity: 1;
+}
+
+.panelTools button {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  border-radius: 6px;
+}
+
+.panelTools button:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.panelTools button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 10px 12px;
+}
+
+.grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+/* ---- command palette ---- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 14vh 12px 0;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fade 0.18s both;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.scrim .palette {
+  width: min(600px, 100%);
+  max-height: 64vh;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--bg) 93%, var(--text));
+  overflow: hidden;
+}
+
+.palette input {
+  flex: none;
+  height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.paletteList {
+  overflow: auto;
+  padding: 6px 8px 10px;
+}
+
+.paletteGroup {
+  padding: 12px 10px 6px;
+}
+
+/* ---- nav: only on pages. Rail or slim top bar, per style ---- */
+.nav {
+  position: fixed;
+  z-index: 15;
+  left: 8px;
+  top: 96px;
+  bottom: 0;
+  width: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.navItem {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-radius: min(var(--radius-sm), 12px);
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.navItem span {
+  display: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.navItem:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.navItem[aria-current="page"] {
+  color: var(--accent);
+  background: var(--surface-2);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+}
+
+.shell[data-home="false"] .content {
+  padding: 0 0 0 88px;
+}
+
+:global(html[data-nav="top"]) .nav {
+  top: 8px;
+  left: 100px;
+  right: 16px;
+  bottom: auto;
+  width: auto;
+  height: 76px;
+  flex-direction: row;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+:global(html[data-nav="top"]) .navItem {
+  width: auto;
+  height: 36px;
+  padding: 0 11px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+:global(html[data-nav="top"]) .shell[data-home="false"] .content {
+  padding: 88px 0 0;
+}
+
+@media (min-width: 1180px) {
+  :global(html[data-nav="top"]) .navItem span {
+    display: inline;
+  }
+}
+
+/* ---- space pages ---- */
+.space {
+  padding: clamp(28px, 6vh, 72px) clamp(20px, 5vw, 72px);
+  max-width: 1200px;
+}
+
+.space h1 {
+  margin: 14px 0 18px;
+  font-size: clamp(46px, 8.5vw, 128px);
+}
+
+.spaceBlurb {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 16px;
+  max-width: 52ch;
+}
+
+.spaceEmpty {
+  margin-top: clamp(32px, 8vh, 80px);
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 24px;
+  align-items: baseline;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+/* ---- phone ---- */
+@media (max-width: 820px) {
+  .orbStage {
+    top: 42%;
+  }
+
+  .kbd {
+    display: none;
+  }
+
+  /* nav becomes a bottom bar in every style */
+  .nav,
+  :global(html[data-nav="top"]) .nav {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: calc(60px + env(safe-area-inset-bottom));
+    padding: 0 8px env(safe-area-inset-bottom);
+    flex-direction: row;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+  }
+
+  .navItem,
+  :global(html[data-nav="top"]) .navItem {
+    width: 46px;
+    padding: 0;
+    display: grid;
+  }
+
+  .shell[data-home="false"] .content,
+  :global(html[data-nav="top"]) .shell[data-home="false"] .content {
+    padding: 84px 0 76px;
+  }
+
+  /* panels become sheets above the message box */
+  .panel {
+    left: 8px !important;
+    right: 8px;
+    top: auto !important;
+    bottom: 150px;
+    width: auto !important;
+    height: auto !important;
+    max-height: 52vh;
+    --from: 0, 28px !important;
+  }
+
+  .grip {
+    display: none;
+  }
+
+  .panelTools {
+    opacity: 1;
+  }
+}

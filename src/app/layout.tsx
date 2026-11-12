@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono, Space_Grotesk, Syne, VT323 } from "next/font/goo
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { DEFAULT_THEME, PRESETS, presetsToCss, THEME_KEY } from "@/theme/presets";
 import { SwRegister } from "@/components/SwRegister";
+import { AppShell } from "@/shell/AppShell";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--f-inter", display: "swap" });
@@ -47,7 +48,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AppShell>{children}</AppShell>
+        </ThemeProvider>
         <SwRegister />
       </body>
     </html>

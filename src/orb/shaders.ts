@@ -70,6 +70,9 @@ void main(){
   col*=1.-uShade*(.5-.5*N.y)*(1.-f*.6);
   vec3 L=normalize(vec3(-.5,.7,.6));
   float spec=pow(max(dot(reflect(-L,N),V),0.),90.);
+  // a second, slow highlight that orbits the glass
+  vec3 L2=normalize(vec3(cos(uT*.7),.3,sin(uT*.7)));
+  spec+=pow(max(dot(reflect(-L2,N),V),0.),55.)*.55;
   col+=spec*uSpec;
   col*=1.+uPulse*.35;
   float a=mix(uCoreAlpha,1.,f);
@@ -85,7 +88,7 @@ void main(){
 // position.xy = (u along, v across), both 0..1
 
 export const ribbonVert = /* glsl */ `
-uniform float uT; uniform float uAmp; uniform float uTwist; uniform float uLevel;
+uniform float uT; uniform float uAmp; uniform float uTwist; uniform float uLevel; uniform float uPt;
 varying float vU; varying float vV2; varying float vEnv;
 ${NOISE}
 void main(){
@@ -103,6 +106,7 @@ void main(){
   vec3 p=vec3(x,y,z);
   float r=length(p); if(r>.93)p*=.93/r;
   vU=u; vV2=v; vEnv=env;
+  gl_PointSize=uPt;
   gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);
 }`;
 
@@ -156,5 +160,44 @@ void main(){
   float halo=exp(-max(d-.95,0.)*5.5)*.6;
   float inner=exp(-d*d*2.2)*.35;
   float g=(disc*smoothstep(.15,.9,uIntensity)+halo*uIntensity+inner)*uIntensity*(1.+uPulse*.5);
+  gl_FragColor=vec4(uColor*g,g);
+}`;
+
+/* ---------- particles: fine dust drifting inside the glass ---------- */
+
+export const dustVert = /* glsl */ `
+attribute float aSeed;
+uniform float uT; uniform float uLevel; uniform float uSize;
+varying float vTw;
+void main(){
+  vec3 p=position;
+  float a=uT*.16*(.4+aSeed);
+  float c=cos(a), s=sin(a);
+  p.xz=mat2(c,-s,s,c)*p.xz;
+  p.y+=sin(uT*.55+aSeed*40.)*.05;
+  p*=1.+uLevel*.14*sin(aSeed*90.+uT*7.);
+  vTw=.5+.5*sin(uT*1.8+aSeed*120.);
+  vec4 mv=modelViewMatrix*vec4(p,1.);
+  gl_PointSize=uSize*(.45+aSeed)*(1.+uLevel*.8)/-mv.z;
+  gl_Position=projectionMatrix*mv;
+}`;
+
+export const dustFrag = /* glsl */ `
+uniform vec3 uA; uniform vec3 uB; uniform float uOn;
+varying float vTw;
+void main(){
+  float d=length(gl_PointCoord-.5);
+  float a=smoothstep(.5,0.,d)*vTw*vTw*uOn*.75;
+  gl_FragColor=vec4(mix(uA,uB,vTw),a);
+}`;
+
+/* ---------- floor: faint reflection under the orb ---------- */
+
+export const floorFrag = /* glsl */ `
+uniform vec3 uColor; uniform float uIntensity;
+varying vec2 vUv;
+void main(){
+  vec2 q=(vUv-.5)*2.;
+  float g=exp(-dot(q,q)*3.2)*uIntensity;
   gl_FragColor=vec4(uColor*g,g);
 }`;

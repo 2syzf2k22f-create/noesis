@@ -8,7 +8,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import type { OrbTheme } from "@/theme/presets";
 import {
-  coreFrag, coreVert, ribbonFrag, ribbonVert, ringFrag, ringVert, shellFrag, shellVert,
+  coreFrag, coreVert, dustFrag, dustVert, floorFrag, ribbonFrag, ribbonVert, ringFrag, ringVert, shellFrag, shellVert,
 } from "./shaders";
 
 export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "acting";
@@ -53,19 +53,24 @@ type Props = {
   theme: OrbTheme;
   /** Current audio level 0..1 (Apollo's voice while speaking, the mic while listening). */
   getLevel?: () => number;
+  /** Docked/small: render at low resolution. */
+  small?: boolean;
   className?: string;
 };
 
-export function ApolloOrb({ state, theme, getLevel, className }: Props) {
+export function ApolloOrb({ state, theme, getLevel, small, className }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
   const themeRef = useRef(theme);
   const levelRef = useRef(getLevel);
   const applyThemeRef = useRef<(t: OrbTheme) => void>(() => {});
+  const smallRef = useRef(!!small);
+  const resizeRef = useRef<() => void>(() => {});
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { levelRef.current = getLevel; }, [getLevel]);
   useEffect(() => { themeRef.current = theme; applyThemeRef.current(theme); }, [theme]);
+  useEffect(() => { smallRef.current = !!small; resizeRef.current(); }, [small]);
 
   useEffect(() => {
     const host = hostRef.current!;
@@ -106,12 +111,73 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
       uniforms: {
         uT: { value: 0 }, uAmp: { value: 0.4 }, uTwist: { value: 1.6 }, uLevel: { value: 0 },
         uA: { value: C(t0.ribbon.a) }, uB: { value: C(t0.ribbon.b) }, uOn: { value: t0.ribbon.on }, uAlpha: { value: 0.15 },
+        uPt: { value: 1 },
       },
     });
     const ribbon = new THREE.LineSegments(lineGrid(48, 150, false, 56), ribbonMat);
     ribbon.renderOrder = 1;
     ribbon.rotation.z = -0.12;
     orb.add(ribbon);
+
+    // second, dotted ribbon: quieter, counter-phase (the dotted under-mesh in image 2)
+    const dotsMat = new THREE.ShaderMaterial({
+      vertexShader: ribbonVert, fragmentShader: ribbonFrag, transparent: true, depthWrite: false, depthTest: false,
+      blending: blend(t0),
+      uniforms: {
+        uT: { value: 0 }, uAmp: { value: 0.3 }, uTwist: { value: -1.2 }, uLevel: { value: 0 },
+        uA: ribbonMat.uniforms.uB, uB: ribbonMat.uniforms.uA, uOn: ribbonMat.uniforms.uOn, uAlpha: { value: 0.5 },
+        uPt: { value: 1.5 },
+      },
+    });
+    const dotGeo = (() => {
+      const pos: number[] = [];
+      for (let j = 0; j < 22; j++) for (let i = 0; i < 84; i++) pos.push(i / 83, j / 21, 0);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 3);
+      return g;
+    })();
+    const dots = new THREE.Points(dotGeo, dotsMat);
+    dots.renderOrder = 1;
+    dots.rotation.z = 0.5;
+    dots.scale.setScalar(0.9);
+    orb.add(dots);
+
+    // dust
+    const dustMat = new THREE.ShaderMaterial({
+      vertexShader: dustVert, fragmentShader: dustFrag, transparent: true, depthWrite: false, depthTest: false,
+      blending: blend(t0),
+      uniforms: {
+        uT: { value: 0 }, uLevel: { value: 0 }, uSize: { value: 30 }, uOn: { value: 0 },
+        uA: ribbonMat.uniforms.uA, uB: ribbonMat.uniforms.uB,
+      },
+    });
+    const dustGeo = (() => {
+      const n = 240, pos = new Float32Array(n * 3), seed = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const r = 0.25 + 0.6 * Math.cbrt(Math.random()), th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+        pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph), r * Math.sin(ph) * Math.sin(th)], i * 3);
+        seed[i] = Math.random();
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1));
+      return g;
+    })();
+    const dust = new THREE.Points(dustGeo, dustMat);
+    dust.renderOrder = 1;
+    orb.add(dust);
+
+    // faint reflection under the orb
+    const floorMat = new THREE.ShaderMaterial({
+      vertexShader: coreVert, fragmentShader: floorFrag, transparent: true, depthWrite: false, depthTest: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: { uColor: { value: C(t0.shell.rimB) }, uIntensity: { value: 0 } },
+    });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 0.42), floorMat);
+    floor.position.y = -1.52;
+    floor.renderOrder = 0;
+    scene.add(floor);
 
     // wireframe overlay (acting state, Ember base look)
     const wireMat = new THREE.LineBasicMaterial({
@@ -173,20 +239,28 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
       target.bg.set(t.bg); target.base.set(t.shell.base); target.rimA.set(t.shell.rimA); target.rimB.set(t.shell.rimB);
       target.ribA.set(t.ribbon.a); target.ribB.set(t.ribbon.b); target.ringA.set(t.ring.a); target.ringB.set(t.ring.b);
       target.wire.set(t.wire.color); target.core.set(t.core.color);
-      ribbonMat.blending = ringMat.blending = wireMat.blending = blend(t);
-      ribbonMat.needsUpdate = ringMat.needsUpdate = wireMat.needsUpdate = true;
+      ribbonMat.blending = ringMat.blending = wireMat.blending = dotsMat.blending = dustMat.blending = blend(t);
+      ribbonMat.needsUpdate = ringMat.needsUpdate = wireMat.needsUpdate = dotsMat.needsUpdate = dustMat.needsUpdate = true;
     };
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const cur: StateParams = { ...STATES[stateRef.current] };
     let level = 0, tSurf = 0, tRib = 0, tRing = 0, spin = 0, bloomNow = t0.bloom;
     let w = 0, h = 0, raf = 0, last = performance.now(), visible = true;
+    let prevState = stateRef.current, kick = 0, dprNow = 1;
+    const tilt = { x: 0, y: 0, tx: 0, ty: 0 };
+    const onMove = (e: PointerEvent) => {
+      tilt.tx = (e.clientX / window.innerWidth) * 2 - 1;
+      tilt.ty = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
 
     const resize = () => {
       const r = host.getBoundingClientRect();
       if (!r.width || !r.height) return;
       w = r.width; h = r.height;
-      const dpr = Math.min(window.devicePixelRatio || 1, w < 420 ? 1.75 : 2);
+      const dpr = smallRef.current ? 1 : Math.min(window.devicePixelRatio || 1, w < 420 ? 1.75 : 2);
+      dprNow = dpr;
       renderer.setPixelRatio(dpr);
       renderer.setSize(w, h, true);
       composer.setPixelRatio(dpr);
@@ -195,6 +269,7 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
       camera.updateProjectionMatrix();
       shellMat.uniforms.uScanPx.value = Math.max(4, Math.round((h * dpr) / 70));
     };
+    resizeRef.current = resize;
     const ro = new ResizeObserver(resize);
     ro.observe(host);
     resize();
@@ -211,6 +286,10 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
       const k = 1 - Math.exp(-dt * 4.5);
       const kc = 1 - Math.exp(-dt * 5);
       const S = STATES[stateRef.current];
+      if (stateRef.current !== prevState) { prevState = stateRef.current; kick = 1; }
+      kick *= Math.exp(-dt * 2.6);
+      tilt.x += (tilt.tx - tilt.x) * (1 - Math.exp(-dt * 3));
+      tilt.y += (tilt.ty - tilt.y) * (1 - Math.exp(-dt * 3));
       (Object.keys(cur) as (keyof StateParams)[]).forEach((key) => { cur[key] = mix(cur[key], S[key], k); });
 
       // audio level: fast attack, slower release
@@ -245,7 +324,7 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
       bloomNow = mix(bloomNow, th.bloom, kc);
 
       // state + audio
-      const pulse = cur.pulse * (0.5 + 0.5 * Math.sin(now / 1000 * 2.4)) + level * 0.6;
+      const pulse = cur.pulse * (0.5 + 0.5 * Math.sin(now / 1000 * 2.4)) + level * 0.6 + kick * 0.5;
       su.uT.value = tSurf;
       su.uDisp.value = mix(su.uDisp.value, s.disp * cur.disp * (1 + level * 2.2) + level * 0.035, 0.5);
       su.uPulse.value = pulse;
@@ -255,12 +334,30 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
       ribbonMat.uniforms.uLevel.value = level;
       ringMat.uniforms.uT.value = tRing;
       ringMat.uniforms.uLevel.value = level;
-      ringMat.uniforms.uEnergy.value = cur.ring;
+      ringMat.uniforms.uEnergy.value = cur.ring + kick * 1.2;
+      dotsMat.uniforms.uT.value = -tRib * 0.7 + 3.0;
+      dotsMat.uniforms.uAmp.value = cur.amp * (0.4 + level * 1.3);
+      dotsMat.uniforms.uLevel.value = level;
+      dotsMat.uniforms.uPt.value = 1.4 * dprNow;
+      dustMat.uniforms.uT.value = tRib;
+      dustMat.uniforms.uLevel.value = level;
+      dustMat.uniforms.uSize.value = 15 * dprNow * (h / 700);
+      dustMat.uniforms.uOn.value = mix(dustMat.uniforms.uOn.value, Math.min(1, th.ribbon.on * 2), kc);
+      floorMat.uniforms.uColor.value.lerp(target.rimB, kc);
+      floorMat.uniforms.uIntensity.value = mix(floorMat.uniforms.uIntensity.value, th.bloom > 0 ? 0.1 + level * 0.08 : 0, kc);
       coreMat.uniforms.uPulse.value = pulse;
       wireMat.opacity = Math.min(1, th.wire.base + cur.wire * 0.85) * (0.75 + 0.25 * Math.sin(now / 1000 * 5 * cur.wire));
 
       const tt = now / 1000;
       ribbon.rotation.y = spin;
+      dots.rotation.y = -spin * 0.6;
+      dust.rotation.y = spin * 0.5;
+      orb.rotation.set(tilt.y * 0.16 * m, tilt.x * 0.22 * m, 0);
+      ring.rotation.x = tilt.y * 0.12 * m;
+      ring.rotation.y = tilt.x * 0.16 * m;
+      dots.visible = ribbonMat.uniforms.uOn.value > 0.01;
+      dust.visible = dustMat.uniforms.uOn.value > 0.01;
+      floor.visible = floorMat.uniforms.uIntensity.value > 0.005;
       wire.rotation.set(tt * 0.11, tt * 0.17 + spin * 0.3, 0);
       wire2.rotation.set(-tt * 0.21, -tt * 0.13, tt * 0.09);
       wire2.visible = wire.visible = wireMat.opacity > 0.01;
@@ -293,6 +390,8 @@ export function ApolloOrb({ state, theme, getLevel, className }: Props) {
 
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      resizeRef.current = () => {};
       ro.disconnect();
       io.disconnect();
       applyThemeRef.current = () => {};
