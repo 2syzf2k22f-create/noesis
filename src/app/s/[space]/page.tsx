@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getSpace, SPACES } from "@/shell/spaces";
 import { Chats } from "@/shell/Chats";
 import { PageLoader } from "@/ui/PageLoader";
+import { PageHead } from "@/shell/PageHead";
 import s from "@/shell/shell.module.css";
 
 export function generateStaticParams() {
@@ -14,10 +15,8 @@ export default async function SpacePage({ params }: { params: Promise<{ space: s
   if (!sp) notFound();
   if (sp.id === "chats")
     return (
-      <article className={s.space}>
-        <div className="label">Space</div>
-        <h1 className="display">{sp.name}</h1>
-        <p className={s.spaceBlurb}>{sp.blurb}</p>
+      <article className={s.space} data-ui="page">
+        <PageHead slug={sp.id} title={sp.name} sub={sp.blurb} kicker="Space" />
         <Chats />
       </article>
     );

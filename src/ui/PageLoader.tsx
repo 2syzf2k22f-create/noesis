@@ -6,6 +6,7 @@ import { DEFAULT_SPECS } from "./defaultSpecs";
 import { parseSpec, type PageSpec } from "./spec";
 import { SpecView } from "./SpecView";
 import s from "@/shell/shell.module.css";
+import { PageHead } from "@/shell/PageHead";
 
 /**
  * A space or generated page. Spaces use Apollo's stored layout when there is one,
@@ -30,10 +31,9 @@ export function PageLoader({ slug, fallbackTitle, blurb, children }: { slug: str
 
   const spec = stored && stored !== "missing" ? stored.spec : DEFAULT_SPECS[slug];
   return (
-    <article className={s.space}>
-      <div className="label">{stored && stored !== "missing" ? `Apollo layout · v${stored.version}` : "Space"}</div>
-      <h1 className="display">{spec?.title ?? fallbackTitle}</h1>
-      {(spec?.subtitle ?? blurb) && <p className={s.spaceBlurb}>{spec?.subtitle ?? blurb}</p>}
+    <article className={s.space} data-ui="page">
+      <PageHead slug={slug} title={spec?.title ?? fallbackTitle} sub={spec?.subtitle ?? blurb}
+        kicker={stored && stored !== "missing" ? `Apollo layout · v${stored.version}` : "Space"} />
       {children}
       {stored === null ? null : spec ? <div className={s.spaceBody}><SpecView spec={spec} /></div> : (
         <div className={s.spaceEmpty}><span className="label">Status</span><span>This page doesn&apos;t exist (yet). Ask Apollo to make it.</span></div>

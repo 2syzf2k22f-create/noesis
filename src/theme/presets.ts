@@ -33,6 +33,8 @@ export type ThemePreset = {
   scheme: "dark" | "light";
   frame: "rounded" | "chamfer" | "square";
   nav: "rail" | "top";
+  /** UI skin: layout of nav, menus, page headers, panels and icons. Custom themes use their base's. */
+  skin?: string;
   swatch: [RGB, RGB, RGB];
   css: Record<string, string>;
   orb: OrbTheme;

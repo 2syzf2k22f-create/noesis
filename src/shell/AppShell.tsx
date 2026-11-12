@@ -61,9 +61,10 @@ function Shell({ children }: { children: React.ReactNode }) {
       </div>
 
       {!home && (
-        <nav className={s.nav} aria-label="Spaces">
+        <nav className={s.nav} aria-label="Spaces" data-ui="nav">
           {SPACES.map((sp) => (
-            <Link key={sp.id} href={`/s/${sp.id}`} className={s.navItem} aria-current={pathname === `/s/${sp.id}` ? "page" : undefined} title={sp.name}>
+            <Link key={sp.id} href={`/s/${sp.id}`} className={s.navItem} data-ui="nav-item" aria-current={pathname === `/s/${sp.id}` ? "page" : undefined} title={sp.name}>
+              <b data-ui="idx">{String(SPACES.indexOf(sp) + 1).padStart(2, "0")}</b>
               <Icon name={sp.icon} size={19} />
               <span>{sp.name}</span>
             </Link>

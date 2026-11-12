@@ -41,8 +41,9 @@ export function useBlockData(blocks: Block[]) {
 export function BlockFrame({ block, ctx, bare }: { block: Block; ctx: BlockCtx; bare?: boolean }) {
   if (bare || block.type === "heading") return <BlockView block={block} ctx={ctx} />;
   return (
-    <section className={`panel ${u.block}`} data-type={block.type}>
-      {block.title && <header className="label">{block.title}</header>}
+    <section className={`panel ${u.block}`} data-type={block.type} data-ui="block">
+      <i data-ui="ticks" aria-hidden />
+      {block.title && <header className="label" data-ui="block-head">{block.title}</header>}
       <BlockView block={block} ctx={ctx} />
     </section>
   );

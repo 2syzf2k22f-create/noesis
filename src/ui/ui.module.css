@@ -12,6 +12,7 @@
 }
 
 .block {
+  overflow: hidden;
   padding: 14px 16px 16px;
   display: grid;
   gap: 12px;
@@ -163,13 +164,18 @@
 
 .donut {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 12px 16px;
 }
 
 .donut svg {
-  width: 110px;
+  width: min(110px, 42%);
   flex: none;
+}
+
+.donut ul {
+  min-width: 96px;
 }
 
 .donut ul {

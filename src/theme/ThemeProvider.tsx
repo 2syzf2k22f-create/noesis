@@ -34,7 +34,7 @@ export function toPreset(c: Custom): ThemePreset | null {
   const orb = deepMerge<OrbTheme>(base.orb, c.tokens.orb ?? {});
   if (css["--bg"]) orb.bg = css["--bg"];
   const accent = css["--accent"] ?? base.swatch[1], accent2 = css["--accent-2"] ?? base.swatch[2];
-  return { ...base, id: c.id, name: c.name, note: `Custom · based on ${base.name}`, css, orb, swatch: [css["--bg"] ?? base.swatch[0], accent, accent2] };
+  return { ...base, skin: base.id, id: c.id, name: c.name, note: `Custom · based on ${base.name}`, css, orb, swatch: [css["--bg"] ?? base.swatch[0], accent, accent2] };
 }
 
 // The active preset lives on <html data-theme>; the inline script in the layout sets it before paint.
@@ -59,6 +59,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     el.dataset.theme = p.id;
     el.dataset.frame = p.frame;
     el.dataset.nav = p.nav;
+    el.dataset.skin = p.skin ?? p.id;
     ls.set(THEME_KEY, p.id);
     listeners.forEach((fn) => fn());
   }, []);
@@ -69,7 +70,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     let tag = document.getElementById("noesis-custom");
     if (!tag) { tag = document.createElement("style"); tag.id = "noesis-custom"; document.head.appendChild(tag); }
     tag.textContent = css;
-    ls.set(CUSTOM_CSS_KEY, JSON.stringify({ ids: list.map((p) => [p.id, p.frame, p.nav]), css }));
+    ls.set(CUSTOM_CSS_KEY, JSON.stringify({ ids: list.map((p) => [p.id, p.frame, p.nav, p.skin ?? p.id]), css }));
     ls.set(CUSTOM_KEY, JSON.stringify(rows));
     setCustom(list);
     return list;

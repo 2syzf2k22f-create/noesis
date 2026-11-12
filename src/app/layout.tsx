@@ -6,6 +6,7 @@ import { CUSTOM_CSS_KEY } from "@/theme/ThemeProvider";
 import { SwRegister } from "@/components/SwRegister";
 import { AppShell } from "@/shell/AppShell";
 import "./globals.css";
+import "../theme/skins.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--f-inter", display: "swap" });
 const grotesk = Space_Grotesk({ subsets: ["latin"], variable: "--f-grotesk", display: "swap" });
@@ -28,10 +29,10 @@ export const viewport: Viewport = {
 };
 
 // Applies the saved preset before first paint so there is no flash.
-const meta = Object.fromEntries(PRESETS.map((p) => [p.id, [p.frame, p.nav]]));
+const meta = Object.fromEntries(PRESETS.map((p) => [p.id, [p.frame, p.nav, p.id]]));
 const themeBoot = `(function(){try{var m=${JSON.stringify(meta)};var t=localStorage.getItem(${JSON.stringify(
   THEME_KEY,
-)});var c=JSON.parse(localStorage.getItem(${JSON.stringify(CUSTOM_CSS_KEY)})||"null");if(c){var s=document.createElement("style");s.id="noesis-custom";s.textContent=c.css;document.head.appendChild(s);c.ids.forEach(function(x){m[x[0]]=[x[1],x[2]]})}if(!m[t])t=${JSON.stringify(DEFAULT_THEME)};var d=document.documentElement;d.dataset.theme=t;d.dataset.frame=m[t][0];d.dataset.nav=m[t][1];}catch(e){}})();`;
+)});var c=JSON.parse(localStorage.getItem(${JSON.stringify(CUSTOM_CSS_KEY)})||"null");if(c){var s=document.createElement("style");s.id="noesis-custom";s.textContent=c.css;document.head.appendChild(s);c.ids.forEach(function(x){m[x[0]]=[x[1],x[2],x[3]||x[0]]})}if(!m[t])t=${JSON.stringify(DEFAULT_THEME)};var d=document.documentElement;d.dataset.theme=t;d.dataset.frame=m[t][0];d.dataset.nav=m[t][1];d.dataset.skin=m[t][2];}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const def = PRESETS.find((p) => p.id === DEFAULT_THEME)!;
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       data-theme={def.id}
       data-frame={def.frame}
       data-nav={def.nav}
+      data-skin={def.id}
       suppressHydrationWarning
       className={`${inter.variable} ${grotesk.variable} ${mono.variable} ${wide.variable} ${pixel.variable}`}
     >

@@ -268,7 +268,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "create_theme",
-    description: `Create or edit a custom style by overriding tokens of a built-in preset (${PRESETS.map((p) => p.id).join(", ")}). css: CSS variables like {"--bg":"#0a0f0a","--accent":"#7CFFB2","--radius":"14px"}. orb: partial orb theme, e.g. {"shell":{"rimA":"#..."},"ribbon":{"a":"#...","b":"#..."},"bloom":0.4}. Applies it unless apply=false.`,
+    description: `Create or edit a custom style by overriding tokens of a built-in preset. The base also sets the UI layout (skin) for nav, menus, page headers, panels and icons: midnight = floating glass, iridescent = light editorial with huge numerals, ember = technical HUD with ticks and readouts, mono = centred hairline pills, signal = brutalist terminal. Bases: ${PRESETS.map((p) => p.id).join(", ")}. css: CSS variables like {"--bg":"#0a0f0a","--accent":"#7CFFB2","--radius":"14px"}. orb: partial orb theme, e.g. {"shell":{"rimA":"#..."},"ribbon":{"a":"#...","b":"#..."},"bloom":0.4}. Applies it unless apply=false.`,
     input: { id: z.string().regex(/^[a-z0-9-]{2,30}$/), name: z.string(), base: z.string(), css: z.record(z.string(), z.string()).optional(), orb: z.record(z.string(), z.unknown()).optional(), apply: z.boolean().optional() },
     async run(ctx, a) {
       if (PRESETS.some((p) => p.id === a.id)) return { error: "that id is a built-in preset; pick a new id" };
