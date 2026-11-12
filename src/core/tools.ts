@@ -3,18 +3,31 @@
 // and undo/rollback replay the log backwards. No confirmation prompts by design.
 import { z } from "zod";
 import { PRESETS } from "../theme/presets";
+import { BlockSchema, parseSpec } from "../ui/spec";
+import { derive } from "./derive";
+import { runBind } from "./query";
+import { BindSchema } from "../ui/spec";
 import { nowIso, type Row, type Store } from "./store";
 
-export const WRITABLE = ["settings", "themes", "pages", "widgets", "profile_facts", "inbox_items", "files", "conversations"] as const;
-const READABLE = [...WRITABLE, "action_log", "trash"] as const;
-const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations"]);
+export const WRITABLE = [
+  "settings", "themes", "pages", "widgets", "profile_facts", "inbox_items", "files", "conversations",
+  "projects", "project_notes", "project_links",
+  "exercises", "workouts", "sets", "routines",
+  "meals", "recipes", "sleep_logs", "screentime_days",
+] as const;
+const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
+const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes"]);
+/** What the user's own forms may write (the journal is private: Apollo can't write or read it). */
+export const USER_WRITABLE = new Set<string>([...WRITABLE, "journal_entries", "reading_logs", "books"]);
 const SPACE_IDS = ["school", "fitness", "nutrition", "projects", "mind", "languages", "library", "stats", "inbox", "chats"];
-const PANEL_KINDS = ["spaces", "style", "orb", "inbox", "stats", "apollo"] as const;
+const PANEL_KINDS = ["spaces", "style", "orb", "inbox", "stats", "apollo", "widget"] as const;
+const SPEC_HELP = `Spec: {title, subtitle?, blocks:[{type, title?, span(1-12 of a 12-col grid)?, props?, bind?}]}. Types: heading(text), text(markdown), stat(unit?, goal?), sparkline, ring(goal), donut, bar, line, area, heatmap, table(columns?), list(primary, secondary?), form(table, fields:[{name,label?,type:text|number|date|select|textarea,options?}], defaults?), kanban(table, statusField, columns), timer(minutes, logTo?), flashcards(table?), quiz(questions:[{q,choices,answer}]), media(src,kind:image|video|youtube), wave, custom(html: sandboxed, receives data via window "message" {type:"noesis:data",rows}). bind: {table, where?, order?{col,asc}, limit?, days?, dateField?, agg?{fn:count|sum|avg|max|min|last, field?, by?:"day"|"week"|{field}}}. Numbers must come from bind, never typed in. Tables (fields): projects(name,status idea|active|paused|done,summary,link), project_notes(project,text), sets(routine push|pull|legs|other,exercise,weight_kg,reps,volume=auto weight×reps), sleep_logs(hours,quality 1-5), meals(name,kcal,protein_g,recipe_id), recipes(name,servings,kcal,protein_g,tags,ingredients,steps), screentime_days(minutes), inbox_items(title,body,source,link,due_at,read_at). Every row has id and created_at.`;
 
 export type UiAction =
   | { type: "navigate"; to: string }
-  | { type: "open_panel"; kind: string }
-  | { type: "set_theme"; id: string };
+  | { type: "open_panel"; kind: string; widget?: string }
+  | { type: "set_theme"; id: string }
+  | { type: "reload" };
 
 export type ToolCtx = { store: Store; jobId?: string | null; actor?: string };
 
@@ -68,6 +81,16 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "query_data",
+    description: "Count, sum, average, min/max or chart data from the user's logs, computed in code. ALWAYS use this for any number you tell the user (never count rows yourself). Same shape as a spec bind: {table, where?, days?, dateField?, agg?{fn,field?,by?}}.",
+    input: { bind: z.record(z.string(), z.unknown()) },
+    async run({ store }, a) {
+      const b = BindSchema.safeParse(a.bind);
+      if (!b.success) return { error: `invalid bind: ${b.error.issues[0]?.message}` };
+      return runBind(store, b.data);
+    },
+  },
+  {
     name: "get_record",
     description: "Get one row by id.",
     input: { table: readEnum, id: z.string() },
@@ -80,7 +103,7 @@ export const TOOLS: ToolDef[] = [
     description: `Create a row. Tables: ${WRITABLE.join(", ")}.`,
     input: { table: tableEnum, data: json },
     async run(ctx, a) {
-      const row = await ctx.store.insert(a.table, { ...a.data, id: undefined });
+      const row = await ctx.store.insert(a.table, derive(a.table, { ...a.data, id: undefined }));
       await log(ctx, "create_record", a.table, row.id, null, row);
       return row;
     },
@@ -92,7 +115,7 @@ export const TOOLS: ToolDef[] = [
     async run(ctx, a) {
       const before = await ctx.store.get(a.table, a.id);
       if (!before) return { error: "not found" };
-      const after = await ctx.store.update(a.table, a.id, { ...a.data, id: undefined, updated_at: nowIso() });
+      const after = await ctx.store.update(a.table, a.id, derive(a.table, { ...before, ...a.data, id: undefined, updated_at: nowIso() }));
       await log(ctx, "update_record", a.table, a.id, before, after);
       return after;
     },
@@ -145,22 +168,121 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "navigate",
-    description: `Open a page for the user: "home" or a space (${SPACE_IDS.join(", ")}).`,
+    description: `Open a page for the user: "home", a space (${SPACE_IDS.join(", ")}), or the slug of a generated page.`,
     input: { to: z.string() },
     async run(ctx, a) {
       const to = String(a.to).toLowerCase();
-      if (to !== "home" && !SPACE_IDS.includes(to)) return { error: `unknown page ${a.to}` };
+      const page = to !== "home" && !SPACE_IDS.includes(to) ? (await ctx.store.list("pages", { eq: { slug: to }, isNull: ["deleted_at"], limit: 1 }))[0] : null;
+      if (to !== "home" && !SPACE_IDS.includes(to) && !page) return { error: `unknown page ${a.to}` };
       await pushUi(ctx, { type: "navigate", to });
       return { navigated: to };
     },
   },
   {
     name: "open_panel",
-    description: `Slide a panel in beside the orb: ${PANEL_KINDS.join(", ")}.`,
-    input: { kind: z.enum(PANEL_KINDS) },
+    description: `Slide a panel in beside the orb: ${PANEL_KINDS.join(", ")}. For "widget", pass the widget id from create_widget.`,
+    input: { kind: z.enum(PANEL_KINDS), widget: z.string().optional() },
     async run(ctx, a) {
-      await pushUi(ctx, { type: "open_panel", kind: a.kind });
+      if (a.kind === "widget" && !(a.widget && (await ctx.store.get("widgets", a.widget)))) return { error: "widget not found" };
+      await pushUi(ctx, { type: "open_panel", kind: a.kind, widget: a.widget });
       return { opened: a.kind };
+    },
+  },
+  {
+    name: "create_page",
+    description: `Make a new page (or replace a space's layout by using its id as slug: ${SPACE_IDS.join(", ")}). ${SPEC_HELP}`,
+    input: { slug: z.string().regex(/^[a-z0-9-]{2,40}$/), spec: z.record(z.string(), z.unknown()), space: z.string().optional(), open: z.boolean().optional() },
+    async run(ctx, a) {
+      const p = parseSpec(a.spec);
+      if (!p.ok) return { error: `invalid spec: ${p.error}` };
+      const existing = (await ctx.store.list("pages", { eq: { slug: a.slug }, limit: 1 }))[0];
+      if (existing && !existing.deleted_at) return { error: "slug exists; use update_page" };
+      const row = existing
+        ? await ctx.store.update("pages", existing.id, { title: p.spec.title, spec: p.spec, space: a.space ?? null, version: (existing.version ?? 1) + 1, deleted_at: null, updated_at: nowIso() })
+        : await ctx.store.insert("pages", { slug: a.slug, title: p.spec.title, spec: p.spec, space: a.space ?? null, version: 1, pinned: false, deleted_at: null });
+      await ctx.store.insert("page_versions", { page_id: row!.id, version: row!.version, spec: p.spec });
+      await log(ctx, "create_page", "pages", row!.id, existing ?? null, row);
+      await pushUi(ctx, { type: "reload" });
+      if (a.open !== false) await pushUi(ctx, { type: "navigate", to: a.slug });
+      return { slug: a.slug, version: row!.version };
+    },
+  },
+  {
+    name: "update_page",
+    description: "Replace a page's spec (versioned; old versions can be restored with revert_page). Get the current spec with get_page first and edit it rather than starting over.",
+    input: { slug: z.string(), spec: z.record(z.string(), z.unknown()) },
+    async run(ctx, a) {
+      const p = parseSpec(a.spec);
+      if (!p.ok) return { error: `invalid spec: ${p.error}` };
+      const before = (await ctx.store.list("pages", { eq: { slug: a.slug }, isNull: ["deleted_at"], limit: 1 }))[0];
+      if (!before) {
+        if (SPACE_IDS.includes(a.slug)) return TOOLS.find((t) => t.name === "create_page")!.run(ctx, { slug: a.slug, spec: a.spec, space: a.slug, open: true });
+        return { error: "page not found" };
+      }
+      const after = await ctx.store.update("pages", before.id, { spec: p.spec, title: p.spec.title, version: (before.version ?? 1) + 1, updated_at: nowIso() });
+      await ctx.store.insert("page_versions", { page_id: before.id, version: after!.version, spec: p.spec });
+      await log(ctx, "update_page", "pages", before.id, before, after);
+      await pushUi(ctx, { type: "reload" });
+      return { slug: a.slug, version: after!.version };
+    },
+  },
+  {
+    name: "get_page",
+    description: "Read a page's current spec and version list.",
+    input: { slug: z.string() },
+    async run({ store }, a) {
+      const page = (await store.list("pages", { eq: { slug: a.slug }, isNull: ["deleted_at"], limit: 1 }))[0];
+      if (!page) return { error: "no stored page (spaces use their built-in layout until changed)" };
+      const versions = await store.list("page_versions", { eq: { page_id: page.id }, order: { col: "version", asc: false }, limit: 20 });
+      return { slug: page.slug, version: page.version, spec: page.spec, versions: versions.map((v) => v.version) };
+    },
+  },
+  {
+    name: "revert_page",
+    description: "Restore an earlier version of a page.",
+    input: { slug: z.string(), version: z.number().int() },
+    async run(ctx, a) {
+      const before = (await ctx.store.list("pages", { eq: { slug: a.slug }, limit: 1 }))[0];
+      if (!before) return { error: "page not found" };
+      const v = (await ctx.store.list("page_versions", { eq: { page_id: before.id, version: a.version }, limit: 1 }))[0];
+      if (!v) return { error: "version not found" };
+      const after = await ctx.store.update("pages", before.id, { spec: v.spec, title: v.spec.title, version: (before.version ?? 1) + 1, deleted_at: null, updated_at: nowIso() });
+      await ctx.store.insert("page_versions", { page_id: before.id, version: after!.version, spec: v.spec });
+      await log(ctx, "revert_page", "pages", before.id, before, after);
+      await pushUi(ctx, { type: "reload" });
+      return { slug: a.slug, version: after!.version, restored_from: a.version };
+    },
+  },
+  {
+    name: "create_widget",
+    description: `Make a reusable widget (one block) and optionally show it in a floating panel beside the orb. Block: {type, title?, props?, bind?}. ${SPEC_HELP}`,
+    input: { name: z.string(), block: z.record(z.string(), z.unknown()), show: z.boolean().optional() },
+    async run(ctx, a) {
+      const b = BlockSchema.safeParse(a.block);
+      if (!b.success) return { error: `invalid block: ${b.error.issues[0]?.message}` };
+      const row = await ctx.store.insert("widgets", { name: a.name, kind: b.data.type, spec: b.data, version: 1, deleted_at: null });
+      await log(ctx, "create_widget", "widgets", row.id, null, row);
+      if (a.show !== false) await pushUi(ctx, { type: "open_panel", kind: "widget", widget: row.id });
+      return { id: row.id };
+    },
+  },
+  {
+    name: "create_theme",
+    description: `Create or edit a custom style by overriding tokens of a built-in preset (${PRESETS.map((p) => p.id).join(", ")}). css: CSS variables like {"--bg":"#0a0f0a","--accent":"#7CFFB2","--radius":"14px"}. orb: partial orb theme, e.g. {"shell":{"rimA":"#..."},"ribbon":{"a":"#...","b":"#..."},"bloom":0.4}. Applies it unless apply=false.`,
+    input: { id: z.string().regex(/^[a-z0-9-]{2,30}$/), name: z.string(), base: z.string(), css: z.record(z.string(), z.string()).optional(), orb: z.record(z.string(), z.unknown()).optional(), apply: z.boolean().optional() },
+    async run(ctx, a) {
+      if (PRESETS.some((p) => p.id === a.id)) return { error: "that id is a built-in preset; pick a new id" };
+      if (!PRESETS.some((p) => p.id === a.base)) return { error: "unknown base preset" };
+      const css = Object.fromEntries(Object.entries(a.css ?? {}).filter(([k, v]) => /^--[a-z0-9-]+$/.test(k) && !/[;{}<>]/.test(String(v))));
+      const before = await ctx.store.get("themes", a.id);
+      const tokens = { base: a.base, css, orb: a.orb ?? {} };
+      const after = before
+        ? await ctx.store.update("themes", a.id, { name: a.name, tokens, version: (before.version ?? 1) + 1, updated_at: nowIso() })
+        : await ctx.store.insert("themes", { id: a.id, name: a.name, tokens, version: 1, created_by: "apollo" });
+      await log(ctx, "create_theme", "themes", a.id, before, after);
+      await pushUi(ctx, { type: "reload" });
+      if (a.apply !== false) return TOOLS.find((t) => t.name === "set_theme")!.run(ctx, { id: a.id });
+      return { theme: a.id };
     },
   },
   {

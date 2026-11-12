@@ -1,8 +1,8 @@
 // Panels that slide in around the orb. Pinned ones are remembered on this device.
 
-export type PanelKind = "spaces" | "style" | "orb" | "inbox" | "stats" | "apollo";
+export type PanelKind = "spaces" | "style" | "orb" | "inbox" | "stats" | "apollo" | "widget";
 export type Panel = {
-  id: string; kind: PanelKind; title: string;
+  id: string; kind: PanelKind; title: string; widget?: string;
   x: number; y: number; w: number; h: number; pinned: boolean; slot: "left" | "right" | "bottom";
 };
 
@@ -15,8 +15,9 @@ const DEFS: Record<PanelKind, { title: string; slot: Panel["slot"]; w: number; h
   inbox: { title: "Inbox", slot: "right", w: 340, h: 420 },
   orb: { title: "Orb states", slot: "bottom", w: 520, h: 112 },
   apollo: { title: "Apollo", slot: "right", w: 340, h: 520 },
+  widget: { title: "Widget", slot: "right", w: 380, h: 340 },
 };
-export const PANEL_KINDS = Object.keys(DEFS) as PanelKind[];
+export const PANEL_KINDS = (Object.keys(DEFS) as PanelKind[]).filter((k) => k !== "widget");
 export const panelTitle = (k: PanelKind) => DEFS[k].title;
 
 let panels: Panel[] = EMPTY;
@@ -49,14 +50,15 @@ export const panelStore = {
   subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },
   get() { if (!loaded) load(); return panels; },
   getServer() { return EMPTY; },
-  open(kind: PanelKind) {
-    const existing = panels.find((p) => p.kind === kind);
+  open(kind: PanelKind, widget?: string, title?: string) {
+    const pid = widget ? `widget:${widget}` : kind;
+    const existing = panels.find((p) => p.id === pid);
     if (existing) return commit([...panels.filter((p) => p !== existing), existing]); // bring to front
     const d = DEFS[kind], vw = window.innerWidth, vh = window.innerHeight;
     const n = panels.filter((p) => p.slot === d.slot).length * 26;
     const x = d.slot === "left" ? 24 + n : d.slot === "right" ? vw - d.w - 24 - n : (vw - d.w) / 2;
     const y = d.slot === "bottom" ? vh - d.h - 176 - n : Math.max(24, (vh - d.h) / 2 - 30 + n);
-    commit([...panels, clamp({ id: kind, kind, title: d.title, slot: d.slot, x, y, w: d.w, h: d.h, pinned: false })]);
+    commit([...panels, clamp({ id: pid, kind, widget, title: title ?? d.title, slot: d.slot, x, y, w: d.w, h: d.h, pinned: false })]);
   },
   close(id: string) { commit(panels.filter((p) => p.id !== id)); },
   /** Leaving the orb: only pinned panels follow you to other pages. */

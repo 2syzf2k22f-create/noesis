@@ -6,12 +6,13 @@ import { ORB_STATES } from "@/orb/ApolloOrb";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useApollo } from "./apollo";
 import { ApolloPanel } from "./ApolloPanel";
+import { WidgetPanel } from "@/ui/WidgetPanel";
 import { Icon } from "./Icon";
 import { panelStore, type Panel } from "./panelStore";
 import { SPACES } from "./spaces";
 import s from "./shell.module.css";
 
-function Body({ kind }: { kind: Panel["kind"] }) {
+function Body({ kind, widget }: { kind: Panel["kind"]; widget?: string }) {
   const { preset, presets, setTheme } = useTheme();
   const { orbState, setOrbState } = useApollo();
   if (kind === "spaces")
@@ -43,6 +44,7 @@ function Body({ kind }: { kind: Panel["kind"] }) {
       </div>
     );
   if (kind === "apollo") return <ApolloPanel />;
+  if (kind === "widget" && widget) return <WidgetPanel id={widget} />;
   if (kind === "orb")
     return (
       <div className={s.pills}>
@@ -102,7 +104,7 @@ function PanelView({ p, z }: { p: Panel; z: number }) {
         </span>
       </header>
       <div className={s.panelBody}>
-        <Body kind={p.kind} />
+        <Body kind={p.kind} widget={p.widget} />
       </div>
       <span className={s.grip} onPointerDown={startSize} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-hidden />
     </section>

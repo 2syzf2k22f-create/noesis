@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "@/theme/ThemeProvider";
+import { useApollo } from "./apollo";
 import { Icon } from "./Icon";
 import { SPACES } from "./spaces";
 import s from "./shell.module.css";
@@ -16,6 +17,12 @@ export function CornerMenus() {
   const { preset, presets, setTheme } = useTheme();
   const pathname = usePathname();
   const ref = useRef<HTMLDivElement>(null);
+  const { changes } = useApollo();
+  const [made, setMade] = useState<{ slug: string; title: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/pages").then((r) => (r.ok ? r.json() : [])).then((rows: { slug: string; title: string; space: string | null }[]) =>
+      setMade(rows.filter((p) => !SPACES.some((sp) => sp.id === p.slug)))).catch(() => {});
+  }, [changes, open]);
 
   // close on navigation, outside click, Escape
   const [lastPath, setLastPath] = useState(pathname);
@@ -51,6 +58,12 @@ export function CornerMenus() {
               {SPACES.map((sp) => (
                 <Link key={sp.id} href={`/s/${sp.id}`} role="menuitem" className={s.row} aria-current={pathname === `/s/${sp.id}` ? "page" : undefined}>
                   <Icon name={sp.icon} /><span>{sp.name}</span>
+                </Link>
+              ))}
+              {made.length > 0 && <div className={`label ${s.cornerSub}`}>Made by Apollo</div>}
+              {made.map((p) => (
+                <Link key={p.slug} href={`/p/${p.slug}`} role="menuitem" className={s.row} aria-current={pathname === `/p/${p.slug}` ? "page" : undefined}>
+                  <Icon name="panel" /><span>{p.title}</span>
                 </Link>
               ))}
             </>

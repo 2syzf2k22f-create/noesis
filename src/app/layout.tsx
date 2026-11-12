@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk, Syne, VT323 } from "next/font/google";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import { DEFAULT_THEME, PRESETS, presetsToCss, THEME_KEY } from "@/theme/presets";
+import { CUSTOM_CSS_KEY } from "@/theme/ThemeProvider";
 import { SwRegister } from "@/components/SwRegister";
 import { AppShell } from "@/shell/AppShell";
 import "./globals.css";
@@ -30,7 +31,7 @@ export const viewport: Viewport = {
 const meta = Object.fromEntries(PRESETS.map((p) => [p.id, [p.frame, p.nav]]));
 const themeBoot = `(function(){try{var m=${JSON.stringify(meta)};var t=localStorage.getItem(${JSON.stringify(
   THEME_KEY,
-)});if(!m[t])t=${JSON.stringify(DEFAULT_THEME)};var d=document.documentElement;d.dataset.theme=t;d.dataset.frame=m[t][0];d.dataset.nav=m[t][1];}catch(e){}})();`;
+)});var c=JSON.parse(localStorage.getItem(${JSON.stringify(CUSTOM_CSS_KEY)})||"null");if(c){var s=document.createElement("style");s.id="noesis-custom";s.textContent=c.css;document.head.appendChild(s);c.ids.forEach(function(x){m[x[0]]=[x[1],x[2]]})}if(!m[t])t=${JSON.stringify(DEFAULT_THEME)};var d=document.documentElement;d.dataset.theme=t;d.dataset.frame=m[t][0];d.dataset.nav=m[t][1];}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const def = PRESETS.find((p) => p.id === DEFAULT_THEME)!;

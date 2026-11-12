@@ -979,3 +979,12 @@
     --cy: 42%;
   }
 }
+
+.spaceBody {
+  margin-top: clamp(24px, 5vh, 44px);
+  padding-bottom: 60px;
+}
+
+.cornerSub {
+  padding: 12px 10px 4px;
+}

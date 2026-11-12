@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import { ORB_STATES, type OrbState } from "@/orb/ApolloOrb";
 import { syntheticSpeech, useOrbAudio } from "@/orb/useOrbAudio";
+import { createSpeaker, listenOnce, pickVoice, sttSupported, ttsSupported, wakeWord, type Listener } from "@/voice/voice";
 import { useTheme } from "@/theme/ThemeProvider";
 import { MODEL_PREFS, biggerModel, type ModelPref } from "@/core/routing";
 import type { UiAction } from "@/core/tools";
@@ -46,8 +47,16 @@ type Ctx = {
   actions: Action[];
   runAction: (a: Action) => void;
   /** Site commands run instantly in the browser; anything else goes to Apollo via the relay. */
-  submit: (text: string, opts?: { model?: ModelPref }) => void;
+  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean }) => void;
   toggleMic: () => void;
+  /** Push-to-talk: start on press, stop (and send) on release. */
+  startListening: () => void;
+  stopListening: () => void;
+  /** Live transcript while you talk. */
+  draft: string;
+  voice: { speak: SpeakPref; wake: boolean; stt: boolean };
+  setSpeak: (p: SpeakPref) => void;
+  setWake: (on: boolean) => void;
   paletteOpen: boolean;
   setPaletteOpen: (o: boolean) => void;
   model: ModelPref;
@@ -61,7 +70,10 @@ type Ctx = {
   undoApollo: (actionId?: string) => Promise<void>;
 };
 
+export type SpeakPref = "voice" | "always" | "never";
 const ApolloCtx = createContext<Ctx | null>(null);
+const SPEAK_KEY = "noesis.speak";
+const WAKE_KEY = "noesis.wake";
 
 const VERBS = /^(please\s+)?(open|go to|goto|show|switch to|use|pull up|set (the )?(theme|style) to|theme|style)\s+(the\s+|my\s+)?/;
 const CHAT_KEY = "noesis.chat";
@@ -75,7 +87,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { presets, setTheme } = useTheme();
+  const { presets, setTheme, reloadThemes } = useTheme();
   const [orbState, setState] = useState<OrbState>("idle");
   const [reply, setReply] = useState<Reply | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -87,6 +99,27 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(orbState);
   const timers = useRef<number[]>([]);
   const runId = useRef(0);
+  const [draft, setDraft] = useState("");
+  const [speakPref, setSpeakPref] = useState<SpeakPref>("voice");
+  const [wake, setWakeState] = useState(false);
+  const [stt, setStt] = useState(false);
+  const listener = useRef<Listener | null>(null);
+  const speaker = useRef<ReturnType<typeof createSpeaker> | null>(null);
+  const lastWord = useRef(0);
+  const submitRef = useRef<Ctx["submit"]>(() => {});
+
+  useEffect(() => {
+    const sp = ls.get(SPEAK_KEY) as SpeakPref | null;
+    const wk = ls.get(WAKE_KEY) === "1";
+    queueMicrotask(() => {
+      setStt(sttSupported());
+      if (sp === "voice" || sp === "always" || sp === "never") setSpeakPref(sp);
+      setWakeState(wk);
+    });
+    if (ttsSupported()) { pickVoice(); speechSynthesis.onvoiceschanged = () => pickVoice(); }
+  }, []);
+  const setSpeak = useCallback((p: SpeakPref) => { setSpeakPref(p); ls.set(SPEAK_KEY, p); }, []);
+  const setWake = useCallback((on: boolean) => { setWakeState(on); ls.set(WAKE_KEY, on ? "1" : "0"); }, []);
 
   useEffect(() => { stateRef.current = orbState; }, [orbState]);
 
@@ -121,7 +154,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const getLevel = useCallback(() => {
     if (stateRef.current === "listening") return micLevel();
-    if (stateRef.current === "speaking") return syntheticSpeech(performance.now() / 1000);
+    if (stateRef.current === "speaking") {
+      const t = performance.now();
+      if (speaker.current && t - lastWord.current < 1500) {
+        // real TTS: words drive the energy (browser speech audio can't be analysed directly)
+        const e = Math.max(0, 1 - (t - lastWord.current) / 380);
+        return Math.min(1, 0.2 + e * 0.8) * (0.65 + 0.35 * syntheticSpeech(t / 1000));
+      }
+      return speaker.current ? 0.08 : syntheticSpeech(t / 1000);
+    }
     return 0;
   }, [micLevel]);
 
@@ -132,15 +173,61 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setState(next);
   }, [clearTimers, micOn, startMic, stopMic]);
 
-  const toggleMic = useCallback(() => {
-    setOrbState(stateRef.current === "listening" ? "idle" : "listening");
+  const stopListening = useCallback(() => { listener.current?.stop(); }, []);
+
+  const startListening = useCallback(() => {
+    if (listener.current) return;
+    speaker.current?.cancel();
+    speaker.current = null;
+    void setOrbState("listening");
+    setDraft("");
+    const l = listenOnce({
+      onInterim: setDraft,
+      onFinal: (t) => { setDraft(""); submitRef.current(t, { spoken: true }); },
+      onEnd: () => {
+        listener.current = null;
+        setDraft("");
+        if (stateRef.current === "listening") void setOrbState("idle");
+      },
+      onError: (e) => { if (e === "not-allowed") setReply({ text: "Microphone permission is blocked for this site.", tone: "error" }); },
+    });
+    if (!l) setReply({ text: "This browser has no speech recognition. Chrome, Edge or Safari do.", tone: "info" });
+    listener.current = l;
   }, [setOrbState]);
 
+  const toggleMic = useCallback(() => {
+    if (listener.current) stopListening();
+    else if (stateRef.current === "listening") void setOrbState("idle");
+    else startListening();
+  }, [setOrbState, startListening, stopListening]);
+
+  // Wake word: only while idle (two recognisers can't share the mic)
+  useEffect(() => {
+    if (!wake || orbState !== "idle") return;
+    const w = wakeWord("apollo", (rest) => {
+      if (rest) submitRef.current(rest, { spoken: true });
+      else startListening();
+    });
+    return () => w?.abort();
+  }, [wake, orbState, startListening]);
+
+  // Hold Space to talk (when not typing)
+  useEffect(() => {
+    const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && (e.target.closest("input, textarea, select, [contenteditable]") !== null);
+    const down = (e: KeyboardEvent) => { if (e.code === "Space" && !e.repeat && !typing(e)) { e.preventDefault(); startListening(); } };
+    const up = (e: KeyboardEvent) => { if (e.code === "Space" && !typing(e)) stopListening(); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, [startListening, stopListening]);
+
   const applyUi = useCallback((ui: UiAction) => {
-    if (ui.type === "navigate") router.push(ui.to === "home" ? "/" : `/s/${ui.to}`);
+    if (ui.type === "navigate") router.push(ui.to === "home" ? "/" : SPACES.some((s) => s.id === ui.to) ? `/s/${ui.to}` : `/p/${ui.to}`);
+    else if (ui.type === "open_panel" && ui.kind === "widget" && ui.widget) panelStore.open("widget", ui.widget);
     else if (ui.type === "open_panel" && (PANEL_KINDS as string[]).includes(ui.kind)) panelStore.open(ui.kind as PanelKind);
     else if (ui.type === "set_theme") setTheme(ui.id);
-  }, [router, setTheme]);
+    else if (ui.type === "reload") { void reloadThemes(); setChanges((c) => c + 1); }
+  }, [reloadThemes, router, setTheme]);
 
   const actions = useMemo<Action[]>(() => [
     { id: "go:home", group: "Go to", label: "Home", icon: "home", keywords: ["home", "apollo", "orb"], done: "Home.", run: () => router.push("/") },
@@ -149,6 +236,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       keywords: [s.id, s.name.toLowerCase(), ...s.name.toLowerCase().split(" and ")],
       done: `Opened ${s.name}.`, run: () => router.push(`/s/${s.id}`),
     })),
+    ...(["voice", "always", "never"] as SpeakPref[]).map((p) => ({
+      id: `speak:${p}`, group: "Voice", label: `Spoken replies: ${p === "voice" ? "when I talk" : p}`, icon: "orb",
+      keywords: [`speak ${p}`, p === "never" ? "mute" : p === "always" ? "unmute" : "voice replies"],
+      done: p === "never" ? "I won't read replies aloud." : p === "always" ? "I'll read every reply aloud." : "I'll speak when you talk to me.", run: () => setSpeak(p),
+    })),
+    { id: "wake:on", group: "Voice", label: "Wake word on (\"Apollo\")", icon: "orb", keywords: ["wake word on", "hey apollo"], done: "Say \"Apollo\" any time this page is open.", run: () => setWake(true) },
+    { id: "wake:off", group: "Voice", label: "Wake word off", icon: "orb", keywords: ["wake word off"], done: "Wake word off.", run: () => setWake(false) },
     { id: "chat:new", group: "Apollo", label: "New chat", icon: "chats", keywords: ["new chat", "new conversation", "clear chat"], done: "New chat.", run: () => { openChat(null); router.push("/"); } },
     { id: "apollo:undo", group: "Apollo", label: "Undo Apollo", hint: "Undo the last change Apollo made", icon: "undo", keywords: ["undo", "undo apollo"], done: "", run: () => { void undoRef.current(); } },
     ...MODEL_PREFS.map((m) => ({
@@ -169,7 +263,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       id: `orb:${st}`, group: "Preview orb", label: `Orb: ${st}`, icon: "orb",
       keywords: [`orb ${st}`], done: "", run: () => { setOrbState(st); },
     })),
-  ], [openChat, presets, router, setModel, setOrbState, setTheme]);
+  ], [openChat, presets, router, setModel, setOrbState, setSpeak, setTheme, setWake]);
 
   const settle = useCallback((r: Reply, ms = 9000) => {
     setReply(r);
@@ -201,10 +295,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     settle({ text: a.done }, 4200);
   }, [clearTimers, micOn, settle, stopMic]);
 
-  const ask = useCallback(async (text: string, m: ModelPref) => {
+  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean) => {
     const my = ++runId.current;
     clearTimers();
     if (micOn) stopMic();
+    speaker.current?.cancel();
+    speaker.current = speak && ttsSupported()
+      ? createSpeaker({
+          onStart: () => setState("speaking"),
+          onWord: () => { lastWord.current = performance.now(); },
+          onEnd: () => { if (my === runId.current) { speaker.current = null; setState((s) => (s === "speaking" ? "idle" : s)); } },
+        })
+      : null;
     setState("thinking");
     setReply({ text: "", pending: true, ask: text });
     const res = await fetch("/api/ask", {
@@ -241,6 +343,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         lastText = t;
         setState("speaking");
         setReply({ text: t, pending: true, ask: text, model: family(j.output?.model) });
+        speaker.current?.feed(t);
       }
       if (j.status === "rate_limited") {
         const at = j.retryAt ? new Date(j.retryAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "soon";
@@ -252,7 +355,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         if (j.output?.actions) setChanges((c) => c + 1);
         setState("speaking");
         const words = (j.output?.text ?? "").split(/\s+/).length;
-        later(Math.min(9000, 1200 + words * 260), () => setState("idle"));
+        if (speaker.current) speaker.current.feed(j.output?.text ?? "", true);
+        else later(Math.min(9000, 1200 + words * 260), () => setState("idle"));
         refreshStatus();
         return settle({ text: j.output?.text ?? "", model: family(j.output?.family ?? j.output?.model), escalated: !!j.output?.escalated, ask: text }, 30_000);
       }
@@ -263,7 +367,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUi, clearTimers, micOn, openChat, refreshStatus, settle, stopMic]);
 
-  const submit = useCallback((text: string, opts?: { model?: ModelPref }) => {
+  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean }) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
     if (!q) return;
     if (!opts?.model) {
@@ -273,15 +377,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (hit) return runAction(hit);
     }
     setPaletteOpen(false);
-    void ask(text.trim(), opts?.model ?? model);
-  }, [actions, ask, model, runAction]);
+    void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken));
+  }, [actions, ask, model, runAction, speakPref]);
+  useEffect(() => { submitRef.current = submit; }, [submit]);
 
   const value = useMemo(
     () => ({
       orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, setPaletteOpen,
       model, setModel, chatId, openChat, status, refreshStatus, changes, undoApollo,
+      startListening, stopListening, draft, voice: { speak: speakPref, wake, stt }, setSpeak, setWake,
     }),
-    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, status, refreshStatus, changes, undoApollo],
+    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
   );
   return <ApolloCtx.Provider value={value}>{children}</ApolloCtx.Provider>;
 }
