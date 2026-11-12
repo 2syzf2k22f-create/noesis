@@ -68,7 +68,7 @@ async function runApollo(s: Store, job: Row) {
   let pick = pickModel(model_pref as ModelPref, text);
   // tutoring and flashcard-making need a stronger model than Haiku by default
   if (pick.auto && pick.model === "haiku" && (mode === "tutor" || mode === "flashcards")) pick = { model: "sonnet", auto: true, reason: `${mode} mode` };
-  const prompt = await buildUserPrompt(s, convId, text, message_id);
+  const prompt = await buildUserPrompt(s, convId, text, message_id, typeof job.input?.screen === "string" ? job.input.screen : undefined);
   const mcp = mcpConfigFor(job.id);
 
   const attempt = async (model: string, escalatable: boolean) => {

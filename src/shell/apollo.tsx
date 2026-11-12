@@ -10,6 +10,9 @@ import { MODEL_PREFS, biggerModel, type ModelPref } from "@/core/routing";
 import type { UiAction } from "@/core/tools";
 import { PANEL_KINDS, panelStore, panelTitle, type PanelKind } from "./panelStore";
 import { SPACES, type IconName } from "./spaces";
+import { boardAnnotations } from "@/chess/Board";
+import { screenContext } from "./screen";
+import { uiStore } from "./uiStore";
 
 export type Action = {
   id: string; group: string; label: string; hint?: string; icon: IconName | string;
@@ -63,6 +66,8 @@ type Ctx = {
   setModel: (m: ModelPref) => void;
   chatId: string | null;
   openChat: (id: string | null) => void;
+  /** The conversation the latest question went to (the main chat or a named thread). */
+  activeConv: string | null;
   status: Status | null;
   refreshStatus: () => void;
   /** Bumps when Apollo changed something, so undo UI can appear. */
@@ -95,6 +100,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [chatId, setChatId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [changes, setChanges] = useState(0);
+  const [activeConv, setActiveConv] = useState<string | null>(null);
   const { micOn, micError, startMic, stopMic, micLevel } = useOrbAudio();
   const stateRef = useRef(orbState);
   const timers = useRef<number[]>([]);
@@ -230,6 +236,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     else if (ui.type === "open_panel" && (PANEL_KINDS as string[]).includes(ui.kind)) panelStore.open(ui.kind as PanelKind);
     else if (ui.type === "set_theme") setTheme(ui.id);
     else if (ui.type === "reload") { void reloadThemes(); setChanges((c) => c + 1); }
+    // after a navigation the element may not exist yet, so wait a moment
+    else if (ui.type === "highlight") setTimeout(() => uiStore.highlight(ui.target, ui.label, ui.ms), 400);
+    else if (ui.type === "chatbox") {
+      if (ui.near) setTimeout(() => { if (!uiStore.placeNear(ui.near!, { w: ui.w, h: ui.h })) uiStore.setChat({ open: true }); }, 350);
+      else if (ui.x != null || ui.y != null || ui.w != null || ui.h != null) {
+        const b = uiStore.get().chat.box ?? { x: 104, y: 12, w: 380, h: 420 };
+        uiStore.setChat({ open: ui.open ?? true, box: { x: ui.x ?? b.x, y: ui.y ?? b.y, w: ui.w ?? b.w, h: ui.h ?? b.h } });
+      } else if (ui.open != null) uiStore.setChat({ open: ui.open });
+    }
+    else if (ui.type === "open_window") uiStore.openWindow(ui.to);
+    else if (ui.type === "close_window") uiStore.closeWindow(ui.to);
+    else if (ui.type === "annotate_board") boardAnnotations.set({ arrows: ui.arrows ?? [], squares: ui.squares ?? {}, note: ui.note, fen: ui.fen });
   }, [reloadThemes, router, setTheme]);
 
   const actions = useMemo<Action[]>(() => [
@@ -244,6 +262,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       keywords: [x.name.toLowerCase(), `${s.id} ${x.id}`, `${s.name.toLowerCase()} ${x.name.toLowerCase()}`],
       done: `Opened ${x.name}.`, run: () => router.push(`/s/${s.id}/${x.id}`),
     }))),
+    ...SPACES.flatMap((s) => [{ id: s.id, name: s.name }, ...(s.subs ?? []).map((x) => ({ id: `${s.id}--${x.id}`, name: `${s.name} › ${x.name}` }))]).filter((x) => x.id !== "chats").map((x) => ({
+      id: `win:${x.id}`, group: "Side by side", label: `${x.name} (side by side)`, icon: "panel" as IconName,
+      keywords: [`${x.name.toLowerCase()} side by side`, `open ${x.name.toLowerCase()} next to this`],
+      done: `${x.name} is open beside this page.`, run: () => uiStore.openWindow(x.id),
+    })),
+    { id: "win:close", group: "Side by side", label: "Close side-by-side windows", icon: "close" as IconName, keywords: ["close windows", "close side by side"], done: "Closed.", run: () => uiStore.closeWindow() },
+    { id: "chatbox:reset", group: "Apollo", label: "Reset chatbox position", icon: "orb", keywords: ["reset chatbox", "move chatbox back"], done: "Chatbox is back by the orb.", run: () => uiStore.setChat({ box: null }) },
     ...(["voice", "always", "never"] as SpeakPref[]).map((p) => ({
       id: `speak:${p}`, group: "Voice", label: `Spoken replies: ${p === "voice" ? "when I talk" : p}`, icon: "orb",
       keywords: [`speak ${p}`, p === "never" ? "mute" : p === "always" ? "unmute" : "voice replies"],
@@ -319,7 +344,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setReply({ text: "", pending: true, ask: text });
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY) }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot() }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
@@ -328,6 +353,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       return settle({ text: notConfigured ? "My database isn't connected yet, so I can't answer. Site commands still work." : "Couldn't reach the site's server.", tone: "error" });
     }
     if (!thread) openChat(res.body.conversationId);
+    setActiveConv(res.body.conversationId);
     if (!res.body.relayOnline) {
       setReply({ text: "Your PC's relay is offline. I've queued this and will answer when it's back.", pending: true, ask: text, tone: "info" });
     }
@@ -392,10 +418,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, setPaletteOpen,
-      model, setModel, chatId, openChat, status, refreshStatus, changes, undoApollo,
+      model, setModel, chatId, openChat, activeConv, status, refreshStatus, changes, undoApollo,
       startListening, stopListening, draft, voice: { speak: speakPref, wake, stt }, setSpeak, setWake,
     }),
-    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
+    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
   );
   return <ApolloCtx.Provider value={value}>{children}</ApolloCtx.Provider>;
 }

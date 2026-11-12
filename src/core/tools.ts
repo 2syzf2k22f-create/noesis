@@ -23,9 +23,10 @@ export const WRITABLE = [
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
+  "questions", "tests", "question_attempts",
 ] as const;
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
-const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events"]);
+const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
 /** What the user's own forms may write (the journal is private: Apollo can't write or read it). */
 export const USER_WRITABLE = new Set<string>([...WRITABLE, "journal_entries", "geo_attempts", "memory_sessions"]);
 /** Built-in pages: spaces ("school") and subpages ("school/flashcards", stored as slug "school--flashcards"). */
@@ -38,7 +39,12 @@ export type UiAction =
   | { type: "navigate"; to: string }
   | { type: "open_panel"; kind: string; widget?: string }
   | { type: "set_theme"; id: string }
-  | { type: "reload" };
+  | { type: "reload" }
+  | { type: "highlight"; target: string; label?: string; ms?: number }
+  | { type: "chatbox"; x?: number; y?: number; w?: number; h?: number; near?: string; open?: boolean }
+  | { type: "open_window"; to: string }
+  | { type: "close_window"; to?: string }
+  | { type: "annotate_board"; arrows?: { from: string; to: string; color?: string }[]; squares?: Record<string, string>; note?: string; fen?: string };
 
 export type ToolCtx = { store: Store; jobId?: string | null; actor?: string };
 
@@ -197,6 +203,91 @@ export const TOOLS: ToolDef[] = [
       if (a.kind === "widget" && !(a.widget && (await ctx.store.get("widgets", a.widget)))) return { error: "widget not found" };
       await pushUi(ctx, { type: "open_panel", kind: a.kind, widget: a.widget });
       return { opened: a.kind };
+    },
+  },
+  {
+    name: "add_questions",
+    description: "Add exam questions to the question bank (subject, board, topic, subtopic, question, marks, mark_scheme with marking points like M1/A1/B1, answer). source: 'past paper' ONLY for a real question copied from a paper Reg gave you or you fetched (then set paper, year, number); otherwise 'generated' (written in the exact style of that board's papers). Never present generated questions as real.",
+    input: { questions: z.array(z.object({
+      subject: z.string(), board: z.string().optional(), topic: z.string().optional(), subtopic: z.string().optional(),
+      source: z.enum(["past paper", "generated", "mine"]).optional(), paper: z.string().optional(), year: z.string().optional(), number: z.string().optional(),
+      question: z.string().min(3), marks: z.number().min(1).max(50), mark_scheme: z.string().optional(), answer: z.string().optional(), difficulty: z.number().min(1).max(5).optional(),
+    })).min(1).max(40) },
+    async run(ctx, a) {
+      const ids: string[] = [];
+      for (const q of a.questions) {
+        const row = await ctx.store.insert("questions", { source: "generated", ...q, deleted_at: null });
+        await log(ctx, "add_questions", "questions", row.id, null, row);
+        ids.push(row.id);
+      }
+      await pushUi(ctx, { type: "reload" });
+      return { added: ids.length, ids };
+    },
+  },
+  {
+    name: "mark_attempt",
+    description: "Mark one of Reg's question attempts against the mark scheme: marks awarded and short feedback (which marking points were earned/missed).",
+    input: { attempt_id: z.string(), marks: z.number().min(0), feedback: z.string().max(2000) },
+    async run(ctx, a) {
+      const before = await ctx.store.get("question_attempts", a.attempt_id);
+      if (!before) return { error: "attempt not found" };
+      const total = Number(before.total) || 1, marks = Math.min(total, a.marks);
+      const after = await ctx.store.update("question_attempts", a.attempt_id, { marks, pct: Math.round((marks / total) * 1000) / 10, feedback: a.feedback, marked_by: "apollo", updated_at: nowIso() });
+      await log(ctx, "mark_attempt", "question_attempts", a.attempt_id, before, after);
+      await pushUi(ctx, { type: "reload" });
+      return { marks, total };
+    },
+  },
+  {
+    name: "highlight",
+    description: "Point at something on Reg's screen: scrolls to it and draws a glowing ring with an optional label. target is visible text (a button, heading or block title, e.g. \"Game Review\" or \"Rating, 60 days\") or a CSS selector (e.g. \"[data-sq=e4]\"). Use it whenever you say where something is.",
+    input: { target: z.string().min(1).max(200), label: z.string().max(200).optional(), seconds: z.number().min(2).max(60).optional() },
+    async run(ctx, a) {
+      await pushUi(ctx, { type: "highlight", target: a.target, label: a.label, ms: a.seconds ? a.seconds * 1000 : undefined });
+      return { highlighted: a.target };
+    },
+  },
+  {
+    name: "move_chatbox",
+    description: "Move, resize, open or close your chatbox on Reg's screen. Either near (visible text or CSS selector of something to sit next to, e.g. when explaining it) or x/y/w/h in pixels from the top-left of the window. open:false collapses it.",
+    input: { near: z.string().max(200).optional(), x: z.number().optional(), y: z.number().optional(), w: z.number().min(240).max(1400).optional(), h: z.number().min(120).max(1200).optional(), open: z.boolean().optional() },
+    async run(ctx, a) {
+      await pushUi(ctx, { type: "chatbox", near: a.near, x: a.x, y: a.y, w: a.w, h: a.h, open: a.open });
+      return { ok: true };
+    },
+  },
+  {
+    name: "open_side_by_side",
+    description: `Open a page in a window next to the current one (several can be open at once), e.g. to compare or show two things together. to: a built-in page (${ALL_PAGE_IDS.join(", ")}) or a generated page slug.`,
+    input: { to: z.string() },
+    async run(ctx, a) {
+      const to = normPage(String(a.to));
+      if (!SPACE_IDS.includes(to) && !(await ctx.store.list("pages", { eq: { slug: to }, isNull: ["deleted_at"], limit: 1 }))[0]) return { error: `unknown page ${a.to}` };
+      await pushUi(ctx, { type: "open_window", to });
+      return { opened: to };
+    },
+  },
+  {
+    name: "close_side_by_side",
+    description: "Close a side-by-side window (or all of them if no page is given).",
+    input: { to: z.string().optional() },
+    async run(ctx, a) {
+      await pushUi(ctx, { type: "close_window", to: a.to ? normPage(String(a.to)) : undefined });
+      return { ok: true };
+    },
+  },
+  {
+    name: "annotate_board",
+    description: "Draw on the chess board Reg is looking at: arrows (from/to squares, color green|orange|red|blue) and highlighted squares (square -> CSS colour, e.g. \"rgba(255,0,0,0.5)\"), plus an optional short note shown under the board. Pass fen to tie it to that exact position. Use it to SHOW threats, plans and better moves while explaining.",
+    input: {
+      arrows: z.array(z.object({ from: z.string().regex(/^[a-h][1-8]$/), to: z.string().regex(/^[a-h][1-8]$/), color: z.string().optional() })).max(12).optional(),
+      squares: z.record(z.string().regex(/^[a-h][1-8]$/), z.string()).optional(),
+      note: z.string().max(300).optional(),
+      fen: z.string().optional(),
+    },
+    async run(ctx, a) {
+      await pushUi(ctx, { type: "annotate_board", arrows: a.arrows, squares: a.squares, note: a.note, fen: a.fen });
+      return { ok: true };
     },
   },
   {

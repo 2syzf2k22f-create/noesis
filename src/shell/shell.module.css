@@ -1090,3 +1090,12 @@
     margin-top: 12px;
   }
 }
+
+/* room for the chatbox beside the docked orb */
+.shell[data-home="false"] .content {
+  padding-top: 56px;
+}
+
+:global(html[data-nav="top"]) .shell[data-home="false"] .content {
+  padding-top: 88px;
+}

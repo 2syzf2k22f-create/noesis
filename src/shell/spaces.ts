@@ -36,6 +36,7 @@ export const SPACES: Space[] = [
     { id: "flashcards", name: "Flashcards", blurb: "Spaced repetition by subject" },
     { id: "revise", name: "Revise", blurb: "Timer and revision stats" },
     { id: "planner", name: "Planner", blurb: "Exam countdown and a day-by-day revision plan" },
+    { id: "questions", name: "Questions", blurb: "Question bank: past-paper and exam-style questions, practice and tests" },
     { id: "papers", name: "Past papers", blurb: "Marks by paper and topic, weak-topic finder" },
     { id: "tutor", name: "Tutor", blurb: "Step-by-step help aimed at full marks" },
     { id: "notes", name: "Notes", blurb: "Lesson and topic notes, notes to flashcards, websites" },

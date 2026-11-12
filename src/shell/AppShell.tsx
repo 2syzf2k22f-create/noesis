@@ -11,6 +11,8 @@ import { CommandPalette } from "./CommandPalette";
 import { CornerMenus } from "./CornerMenus";
 import { Icon } from "./Icon";
 import { PanelLayer } from "./Panels";
+import { ChatDock, Highlighter } from "./ChatDock";
+import { SideWindows } from "./SideWindows";
 import { panelStore } from "./panelStore";
 import { SPACES } from "./spaces";
 import s from "./shell.module.css";
@@ -72,7 +74,9 @@ function Shell({ children }: { children: React.ReactNode }) {
         </nav>
       )}
 
-      <div className={s.content}>{children}</div>
+      <div className={s.content}>{home ? children : <SideWindows>{children}</SideWindows>}</div>
+      <ChatDock />
+      <Highlighter />
       <PanelLayer />
       <CommandPalette />
     </div>

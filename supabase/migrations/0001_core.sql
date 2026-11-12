@@ -104,7 +104,7 @@ create table noesis.chat_summaries (
 
 create table noesis.jobs (
   id uuid primary key default gen_random_uuid(),
-  kind text not null check (kind in ('apollo', 'build')),
+  kind text not null check (kind in ('apollo', 'build', 'report', 'research', 'ship', 'rollback')),
   status text not null default 'queued'
     check (status in ('queued', 'running', 'done', 'error', 'rate_limited', 'cancelled')),
   conversation_id uuid references noesis.conversations on delete set null,

@@ -7,7 +7,7 @@ export const BLOCK_TYPES = [
   "table", "list", "form", "kanban", "timer", "flashcards", "quiz", "media", "wave", "custom",
   "review", "ask", "scores", "brain", "geo", "sync",
   "timetable", "agenda", "tile", "insights", "history", "inbox", "cards",
-  "streaks", "countdown", "chessboard", "openings", "puzzles", "gamereview",
+  "streaks", "countdown", "chessboard", "openings", "puzzles", "gamereview", "questionbank",
   "deepstats", "benchmark", "poker",
 ] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];

@@ -5,6 +5,7 @@ import type { Row, Store } from "./store";
 
 /** Tables generated UI may read (journal entries only when marked shareable). */
 export const BINDABLE = new Set([
+  "questions", "tests", "question_attempts",
   "inbox_items", "conversations", "usage_log", "action_log", "files", "pages", "profile_facts",
   "projects", "project_notes", "project_links",
   "exercises", "workouts", "sets", "routines",

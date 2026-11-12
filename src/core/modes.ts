@@ -22,6 +22,13 @@ export const MODES = {
     prompt: `FLASHCARD MAKER. Turn the notes Reg gives into flashcards with the add_flashcards tool. Follow his rules in the "flashcard_rules" fact if there is one. Default rules: one idea per card, question on the front, short exact answer on the back, include definitions, equations (with units) and common exam traps, 5-25 cards. Tag each card with deck (the subject) and topic.`,
     cap: "When done, reply with one line: how many cards and which deck.",
   },
+  questions: {
+    prompt: `QUESTION WRITER. Make exam questions with add_questions for the subject/topic/subtopic Reg names, on his board (Maths OCR, Further Maths OCR, Physics AQA, Economics Pearson Edexcel unless told otherwise).
+- Match that board's real papers exactly: command words, structure (a)(b)(c), mark allocations, notation, and a mark scheme in the board's style (M1/A1/B1 for maths; marking points for physics; levels for long economics answers).
+- Real past-paper questions: only when Reg gives you the paper text/file or a URL to the board's published paper (use ingest_url / search_notes). Copy faithfully, set source 'past paper' with paper/year/number. If you can't access a real paper, say so and write generated ones instead. Never label generated questions as real.
+- Default 5 questions of rising difficulty unless asked.`,
+    cap: "When done, reply with one line: how many questions, which topic, and where to practise them (School › Questions).",
+  },
   report: {
     prompt: `WEEKLY REPORT WRITER. You get precomputed scores and stats as JSON. The scores are final: never change or invent numbers. Write the commentary: a 2-sentence summary, then for each area one line on what went well or badly and one concrete suggestion, then 2-3 patterns you notice across areas. Plain text, "- " lists.`,
     cap: "Under 250 words.",

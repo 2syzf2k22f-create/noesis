@@ -1,0 +1,28 @@
+.wrap, .run { display: grid; gap: 12px; }
+.filters, .row, .gen, .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.filters select, .gen select { height: 34px; padding: 0 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+.gen { padding: 10px; border: 1px dashed var(--border); border-radius: 10px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.stats, .list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; max-height: 380px; overflow: auto; }
+.stats li { display: grid; grid-template-columns: minmax(0, 1fr) 90px 52px auto; gap: 8px; align-items: center; font-size: 13px; }
+.stats span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats i { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--c, var(--good)) var(--v), var(--surface-2) var(--v)); }
+.stats i[data-tone="bad"] { --c: var(--danger); }
+.stats i[data-tone="mid"] { --c: #f7c631; }
+.stats small, .list small { color: var(--text-dim); font-size: 11.5px; }
+.list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface); font-size: 13px; }
+.qt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src { padding: 1px 6px; border-radius: 4px; font-size: 11px; background: var(--surface-2); }
+.src[data-src="past paper"] { background: var(--accent); color: var(--on-accent); }
+.bar { justify-content: space-between; }
+.timer { font: 700 18px var(--font-mono), monospace; }
+.timer[data-low="true"] { color: var(--danger); }
+.q { display: grid; gap: 10px; padding: 14px; border-radius: 12px; background: var(--surface); }
+.meta { font-size: 12.5px; color: var(--text-dim); }
+.text { margin: 0; font-size: 16px; line-height: 1.55; white-space: pre-wrap; }
+.answer { width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); font: 14px var(--font-body), sans-serif; resize: vertical; }
+.scheme { display: grid; gap: 8px; padding: 12px 14px; border-radius: 12px; border-left: 3px solid var(--good); background: var(--surface-2); }
+.scheme p { margin: 0; white-space: pre-wrap; font-size: 14px; }
+.mk { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); }
+.mk[data-on="true"] { background: var(--accent); color: var(--on-accent); }

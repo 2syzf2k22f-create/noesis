@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const msg = await s.insert("messages", { conversation_id: convId, role: "user", content: thread?.startsWith("project:") ? `[Project: ${thread.slice(8)}] ${text}` : text });
   const job = await s.insert("jobs", {
     kind: "apollo", status: "queued", conversation_id: convId,
-    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat" },
+    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", screen: typeof body.screen === "string" ? body.screen.slice(0, 6000) : null },
     ui_actions: [], output: null,
   });
   await s.update("conversations", convId, { updated_at: nowIso() });

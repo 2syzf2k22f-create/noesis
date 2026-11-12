@@ -116,6 +116,20 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "list", title: "Overdue", span: 6, bind: { table: "plan_items", where: { done: false }, due: { field: "date" }, limit: 20 }, props: { primary: "topic", secondary: ["subject", "date"], action: { label: "Done", op: "update", data: { done: true } } } },
     ],
   },
+  "school--questions": {
+    title: "Questions",
+    subtitle: "Real past-paper questions and exam-style ones by topic and subtopic, with mark schemes. Practise, sit timed tests, self-mark or let Apollo mark.",
+    blocks: [
+      { type: "questionbank", span: 12 },
+      { type: "stat", title: "Average score %", span: 3, bind: { table: "question_attempts", agg: { fn: "avg", field: "pct" } } },
+      { type: "stat", title: "Questions answered, 7 days", span: 3, bind: { table: "question_attempts", days: 7, agg: { fn: "count", by: "day" } } },
+      { type: "bar", title: "Score % by topic", span: 6, bind: { table: "question_attempts", agg: { fn: "avg", field: "pct", by: { field: "topic" } } } },
+      { type: "line", title: "Score % over time", span: 6, bind: { table: "question_attempts", days: 90, agg: { fn: "avg", field: "pct", by: "week" } } },
+      { type: "bar", title: "Score % by subject", span: 6, bind: { table: "question_attempts", agg: { fn: "avg", field: "pct", by: { field: "subject" } } } },
+      { type: "table", title: "Tests", span: 12, bind: { table: "tests", limit: 20 }, props: { columns: ["created_at", "title", "score", "total", "pct", "minutes", "status"] } },
+      { type: "deepstats", title: "Question scores in depth", span: 12, props: { table: "question_attempts", field: "pct", groupBy: "subject" } },
+    ],
+  },
   "school--papers": {
     title: "Past papers",
     blocks: [
