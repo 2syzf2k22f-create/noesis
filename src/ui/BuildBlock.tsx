@@ -42,6 +42,7 @@ export function BuildBlock() {
               {b.note && <small className="label">{b.note}</small>}
               <div className={u.row}>
                 {b.status === "proposed" && <button className="pill" data-active="true" onClick={() => act(b.id, "approve")}>Build it</button>}
+                {b.status === "error" && <button className="pill" data-active="true" onClick={() => act(b.id, "retry")}>↻ Retry</button>}
                 {b.status === "proposed" && <button className="pill" onClick={() => act(b.id, "decline")}>No thanks</button>}
                 {b.preview && <a className="pill" href={b.preview} target="_blank" rel="noreferrer">Open preview ↗</a>}
                 {b.status === "done" && !b.shipped && !b.rolled_back && <button className="pill" data-active="true" onClick={() => act(b.id, "ship")}>Ship it</button>}

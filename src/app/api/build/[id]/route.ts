@@ -15,6 +15,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await s.update("jobs", id, { status: "queued", input: { ...build.input, by: "reg", approved_at: new Date().toISOString() }, output: { step: "Queued: waiting for the relay on your PC" } });
     return Response.json({ ok: true });
   }
+  // retry a failed build with the same request (your click, like any build)
+  if (b.action === "retry") {
+    if (build.status !== "error") return Response.json({ error: "only failed builds can be retried" }, { status: 409 });
+    const job = await s.insert("jobs", { kind: "build", status: "queued", input: { request: build.input?.request, summary: build.input?.summary ?? null, by: "reg", retry_of: id }, ui_actions: [], output: { step: "Queued: waiting for the relay on your PC" } });
+    return Response.json({ id: job.id });
+  }
   if (b.action !== "ship" && b.action !== "rollback") return Response.json({ error: "bad action" }, { status: 400 });
   if (b.action === "ship" && (build.status !== "done" || build.output?.shipped || build.output?.rolled_back)) return Response.json({ error: "this build can't be shipped" }, { status: 409 });
   const job = await s.insert("jobs", { kind: b.action, status: "queued", input: { build_job_id: id }, ui_actions: [], output: null });

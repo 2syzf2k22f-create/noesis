@@ -6,7 +6,7 @@
 // push the branch (Vercel builds a preview). "Ship it" merges into main on GitHub (Vercel deploys it);
 // "Roll back" deletes an unshipped branch or reverts a shipped merge. Your local main is never used.
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { nowIso, type Row, type Store } from "../src/core/store";
 import type { Backend } from "./backend.mts";
@@ -17,12 +17,19 @@ const win = process.platform === "win32";
 const WHO = ["-c", "user.name=Apollo (Build mode)", "-c", "user.email=noreply@anthropic.com"];
 
 function sh(cmd: string, args: string[], opts: { allowFail?: boolean; timeout?: number; cwd?: string } = {}) {
-  const r = spawnSync(cmd, args, { cwd: opts.cwd ?? WT, encoding: "utf8", shell: win, timeout: opts.timeout ?? 10 * 60_000, maxBuffer: 50 * 1024 * 1024 });
+  // only npm/npx (.cmd wrappers on Windows) need a shell; git runs directly so messages with newlines/brackets survive
+  const r = spawnSync(cmd, args, { cwd: opts.cwd ?? WT, encoding: "utf8", shell: win && /\.cmd$/i.test(cmd), timeout: opts.timeout ?? 10 * 60_000, maxBuffer: 50 * 1024 * 1024 });
   const out = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
   if (r.status !== 0 && !opts.allowFail) throw new Error(`${cmd} ${args.join(" ")} failed:\n${out.slice(-1500)}`);
   return { ok: r.status === 0, out };
 }
 const git = (...a: string[]) => sh("git", a).out;
+/** Commit with the message in a file (no quoting problems on any OS). */
+function commitWith(message: string) {
+  const f = join(WT, ".git-build-message.txt");
+  writeFileSync(f, message, "utf8");
+  try { git(...WHO, "commit", "-F", f); } finally { try { unlinkSync(f); } catch {} }
+}
 
 /** Make (once) and clean the build worktree, at a fresh copy of GitHub's main. */
 function freshWorktree() {
@@ -82,8 +89,8 @@ export async function runBuild(s: Store, backend: Backend, job: Row, log: (...a:
       if (!c.ok) throw new Error(`Checks still fail (${c.step}):\n${c.out.slice(-800)}`);
     }
     if (!sh("git", ["status", "--porcelain"]).out) throw new Error(`No files changed. Claude said: ${summary.slice(0, 500)}`);
-    git("add", "-A");
-    git(...WHO, "commit", "-m", `Build: ${request.slice(0, 70)}\n\n${request}\n\nCo-Authored-By: Claude <noreply@anthropic.com>`);
+    git("add", "-A", "--", ".", ":!.git-build-message.txt");
+    commitWith(`Build: ${request.slice(0, 70)}\n\n${request}\n\nCo-Authored-By: Claude <noreply@anthropic.com>`);
     const commit = git("rev-parse", "HEAD");
     const diffstat = git("diff", "--shortstat", "origin/main", "HEAD");
     const lines = Number(/(\d+) insertion/.exec(diffstat)?.[1] ?? 0) + Number(/(\d+) deletion/.exec(diffstat)?.[1] ?? 0);
