@@ -13,6 +13,7 @@ import { nowIso, type Row, type Store } from "../src/core/store";
 import { claudeCode, type Backend, type RunResult } from "./backend.mts";
 import { runBuild, runRollback, runShip } from "./build.mts";
 import { syncMicrosoft } from "../src/core/microsoft";
+import { indexPending } from "./embed.mts";
 
 const VERSION = "0.5.0";
 const HEARTBEAT_MS = 15_000;
@@ -65,6 +66,20 @@ function throttle(fn: (s: string) => void, ms: number) {
   };
 }
 
+/** Every model run: tokens plus how much it moved your plan's 5-hour and weekly usage (from Claude Code's own readings). */
+let lastPlan: RunResult["plan"] = null;
+async function logUsage(s: Store, row: Row | Record<string, unknown>, r: RunResult) {
+  const delta = (k: string) => {
+    const now = r.plan?.[k], prev = lastPlan?.[k];
+    if (!now) return null;
+    if (!prev || prev.resetsAt !== now.resetsAt) return prev ? Math.round(now.utilization * 1000) / 10 : null; // new window: all of it is since the reset
+    return Math.max(0, Math.round((now.utilization - prev.utilization) * 1000) / 10);
+  };
+  const extra = r.plan ? { plan_5h_pct: r.plan.five_hour ? Math.round(r.plan.five_hour.utilization * 1000) / 10 : null, plan_7d_pct: r.plan.seven_day ? Math.round(r.plan.seven_day.utilization * 1000) / 10 : null, plan_5h_delta: delta("five_hour"), plan_7d_delta: delta("seven_day") } : {};
+  if (r.plan) lastPlan = r.plan;
+  await s.insert("usage_log", { ...row, ...extra }).catch(() => s.insert("usage_log", row));
+}
+
 async function runApollo(s: Store, job: Row) {
   const { conversation_id: convId, text, model_pref = "auto", message_id } = job.input ?? {};
   const mode = isMode(job.input?.mode) ? job.input.mode : "chat";
@@ -87,7 +102,7 @@ async function runApollo(s: Store, job: Row) {
   let r = await attempt(pick.model, pick.auto && pick.model === "haiku");
   let escalated = false;
   if (pick.auto && pick.model === "haiku" && r.text.trim() === ESCALATE) {
-    await s.insert("usage_log", { job_id: job.id, feature: "apollo.route", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
+    await logUsage(s, { job_id: job.id, feature: "apollo.route", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
     pick = { model: "sonnet", auto: true, reason: "Haiku escalated" };
     escalated = true;
     r = await attempt("sonnet", false);
@@ -105,7 +120,7 @@ async function runApollo(s: Store, job: Row) {
   const msg = await s.insert("messages", {
     conversation_id: convId, role: "assistant", content: r.text, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut,
   });
-  await s.insert("usage_log", { job_id: job.id, feature: "apollo.chat", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
+  await logUsage(s, { job_id: job.id, feature: `apollo.${mode}`, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
   await s.update("conversations", convId, { updated_at: nowIso() });
   const actions = await s.count("action_log", { eq: { job_id: job.id } });
   await s.update("jobs", job.id, {
@@ -129,7 +144,7 @@ async function maybeSummarise(s: Store, convId: string) {
       prompt: `${prev?.summary ? `Earlier summary: ${prev.summary}\n\n` : ""}${older.map((m) => `${m.role}: ${m.content}`).join("\n")}`,
     });
     await s.insert("chat_summaries", { id: convId, summary: r.text, upto_message_id: older[older.length - 1].id, updated_at: nowIso() });
-    await s.insert("usage_log", { feature: "apollo.summary", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
+    await logUsage(s, { feature: "apollo.summary", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
     log(`summarised ${older.length} messages in ${convId.slice(0, 8)}`);
   } catch (e) {
     log("summary failed:", (e as Error).message);
@@ -175,7 +190,7 @@ async function runReport(s: Store, job: Row) {
       return;
     }
     commentary = r.text;
-    await s.insert("usage_log", { job_id: job.id, feature: "report", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut });
+    await logUsage(s, { job_id: job.id, feature: "report", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
   } else commentary = "No data was logged this week, so there are no scores.";
   const existing = (await s.list("weekly_reports", { eq: { week: scores.week }, limit: 1 }))[0];
   const data = { week: scores.week, overall: scores.overall, grade: scores.grade, scores: scores.areas, commentary, title: `Week of ${scores.week}` };
@@ -208,7 +223,7 @@ Rules: every item needs the real page url you found it on; only give a deadline 
   const t0 = Date.now();
   const r = await backend.run({ model: "sonnet", system: systemFor("chat"), prompt, mcpConfig: mcpConfigFor(job.id), builtins: ["WebSearch", "WebFetch"], timeoutMs: 15 * 60_000 });
   if (r.plan) plan = r.plan;
-  await s.insert("usage_log", { job_id: job.id, feature: topic === "uni" ? "uni research" : topic === "books" ? "book recs" : "opportunities", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut, duration_ms: Date.now() - t0 });
+  await logUsage(s, { job_id: job.id, feature: topic === "uni" ? "uni research" : topic === "books" ? "book recs" : "opportunities", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut, duration_ms: Date.now() - t0 }, r);
   await s.update("jobs", job.id, { status: r.isError ? "error" : "done", finished_at: nowIso(), output: { text: r.text }, error: r.isError ? r.text : null });
   log(`${topic}: ${r.text.slice(0, 80)}`);
 }
@@ -253,4 +268,13 @@ async function msTick() {
   } catch (e) { log("microsoft sync failed:", (e as Error).message); }
 }
 setTimeout(msTick, 30_000);
+
+// Smart search index: embed new notes, OneNote pages and knowledge sources a batch at a time while idle.
+async function indexTick() {
+  if (busy) return;
+  try { const n = await indexPending(store!); if (n) log(`indexed ${n} sections for smart search`); }
+  catch (e) { log("indexing failed:", (e as Error).message.slice(0, 160)); }
+}
+setTimeout(indexTick, 60_000);
+setInterval(indexTick, 2 * 60_000);
 setInterval(msTick, 15 * 60_000);

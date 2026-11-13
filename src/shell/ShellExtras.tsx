@@ -3,6 +3,7 @@
 // study time, browser reminders (homework due, next lesson), and a "?" shortcuts overlay.
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import s from "./dock.module.css";
 
@@ -24,6 +25,41 @@ function notify(title: string, body: string, key: string) {
   for (const [k, t] of Object.entries(seen)) if (nowMs() - t > 7 * 864e5) delete seen[k];
   ls.set("noesis.notified", JSON.stringify(seen));
   try { new Notification(title, { body, icon: "/favicon.ico" }); } catch {}
+}
+
+type Recent = { path: string; title: string; at: number };
+const RKEY = "noesis.recent";
+
+/** Recently visited pages (this device), newest first. */
+function RecentPages() {
+  const pathname = usePathname();
+  const [list, setList] = useState<Recent[]>([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // wait for the page title to render, then record the visit
+    const t = setTimeout(() => {
+      const title = document.querySelector("h1")?.textContent?.trim() || pathname;
+      const crumb = document.querySelector("[data-ui=kicker]")?.textContent?.trim();
+      const prev = JSON.parse(ls.get(RKEY) ?? "[]") as Recent[];
+      const next = [{ path: pathname, title: crumb && !/overview|space/i.test(crumb) ? `${crumb.split("·")[0].trim()} › ${title}` : title, at: nowMs() }, ...prev.filter((r) => r.path !== pathname)].slice(0, 12);
+      ls.set(RKEY, JSON.stringify(next));
+      setList(next);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [pathname]);
+  const others = list.filter((r) => r.path !== pathname).slice(0, 10);
+  if (!others.length) return null;
+  return (
+    <span style={{ position: "relative" }}>
+      <button className={s.chip} onClick={() => setOpen(!open)} title="Recent pages">↺ Recent</button>
+      {open && (
+        <div className={s.extrasMenu} onClick={() => setOpen(false)}>
+          <span className="label">Recent pages</span>
+          {others.map((r) => <Link key={r.path} href={r.path} style={{ fontSize: 13.5, padding: "3px 0" }}>{r.title}</Link>)}
+        </div>
+      )}
+    </span>
+  );
 }
 
 export function ShellExtras() {
@@ -108,6 +144,7 @@ export function ShellExtras() {
   return (
     <>
       <div className={s.extras}>
+        <RecentPages />
         {lessonText && <Link className={s.chip} href="/s/school/timetable" title="Today's timetable">{lessonText}</Link>}
         <button className={s.chip} data-on={!!focus} onClick={() => setMenu(!menu)} title="Focus timer">
           {focus ? `◷ ${focus.subject} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "◷ Focus"}

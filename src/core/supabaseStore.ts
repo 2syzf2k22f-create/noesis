@@ -23,6 +23,9 @@ export class SupabaseStore implements Store {
     return r.data;
   }
 
+  async rpc(fn: string, args: Record<string, unknown>) {
+    return this.ok(await this.db.rpc(fn, args));
+  }
   async get(table: string, id: string) {
     return this.ok(await this.db.from(table).select("*").eq("id", id).maybeSingle()) as Row | null;
   }

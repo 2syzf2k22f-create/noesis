@@ -149,3 +149,42 @@ export function ShoppingList({ ctx }: { ctx: BlockCtx }) {
     </div>
   );
 }
+
+/* ---------- plan share: what used your Pro plan ---------- */
+export function PlanShare({ ctx }: { ctx: BlockCtx }) {
+  const rows = (ctx.data?.rows ?? []) as Row[];
+  const withPlan = rows.filter((r) => r.plan_7d_delta != null || r.plan_5h_delta != null);
+  if (!withPlan.length) return <div className="label">No plan readings yet. After a few Apollo jobs through the relay, this shows how much of your weekly and 5-hour Pro limits each kind of job used, and roughly how many tokens make 1%.</div>;
+  const by = new Map<string, { t: number; w: number; h: number; n: number }>();
+  for (const r of withPlan) {
+    const k = String(r.feature ?? "other").replace(/^apollo\./, "Apollo ");
+    const v = by.get(k) ?? { t: 0, w: 0, h: 0, n: 0 };
+    v.t += Number(r.tokens_in ?? 0) + Number(r.tokens_out ?? 0); v.w += Number(r.plan_7d_delta ?? 0); v.h += Number(r.plan_5h_delta ?? 0); v.n++;
+    by.set(k, v);
+  }
+  const all = [...by.values()].reduce((a, v) => ({ t: a.t + v.t, w: a.w + v.w, h: a.h + v.h }), { t: 0, w: 0, h: 0 });
+  const latest = rows.find((r) => r.plan_7d_pct != null);
+  const per1 = all.w > 0 ? Math.round(all.t / all.w) : null;
+  const list = [...by.entries()].sort((a, b) => b[1].w - a[1].w);
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div className={u.row}>
+        {latest && <span><b style={{ fontSize: 20 }}>{latest.plan_7d_pct}%</b> <span className="label">of your weekly limit used</span></span>}
+        {latest?.plan_5h_pct != null && <span><b style={{ fontSize: 20 }}>{latest.plan_5h_pct}%</b> <span className="label">of the current 5-hour session</span></span>}
+        {per1 && <span className="label">≈ {per1.toLocaleString("en-GB")} tokens = 1% of your weekly limit (from your own readings)</span>}
+      </div>
+      <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
+        <thead><tr>{["What", "Jobs", "Tokens", "Weekly limit used", "Share of Apollo's use", "5-hour used"].map((h) => <th key={h} style={{ textAlign: "left", padding: "4px 6px", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+        <tbody>{list.map(([k, v]) => (
+          <tr key={k}>
+            <td style={{ padding: "4px 6px" }}>{k}</td><td style={{ padding: "4px 6px" }}>{v.n}</td><td style={{ padding: "4px 6px" }}>{v.t.toLocaleString("en-GB")}</td>
+            <td style={{ padding: "4px 6px" }}><b>{v.w.toFixed(1)}%</b></td>
+            <td style={{ padding: "4px 6px" }}><i style={{ display: "inline-block", width: 80, height: 6, borderRadius: 3, background: `linear-gradient(90deg, var(--accent) ${all.w ? (v.w / all.w) * 100 : 0}%, var(--surface-2) 0)` }} /> {all.w ? Math.round((v.w / all.w) * 100) : 0}%</td>
+            <td style={{ padding: "4px 6px" }}>{v.h.toFixed(1)}%</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      <small className="label">Percentages come from Claude Code&apos;s own plan readings after each job. Your claude.ai chats and other Claude Code use share the same limits, so some of the weekly % may come from outside NOESIS.</small>
+    </div>
+  );
+}

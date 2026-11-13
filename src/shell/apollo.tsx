@@ -68,6 +68,8 @@ type Ctx = {
   openChat: (id: string | null) => void;
   /** The conversation the latest question went to (the main chat or a named thread). */
   activeConv: string | null;
+  /** A short note like "New topic, so I started a new chat." */
+  notice: string | null;
   status: Status | null;
   refreshStatus: () => void;
   /** Bumps when Apollo changed something, so undo UI can appear. */
@@ -101,6 +103,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [changes, setChanges] = useState(0);
   const [activeConv, setActiveConv] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const { micOn, micError, startMic, stopMic, micLevel } = useOrbAudio();
   const stateRef = useRef(orbState);
   const timers = useRef<number[]>([]);
@@ -181,7 +184,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const stopListening = useCallback(() => { listener.current?.stop(); }, []);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback((untilStopped = false) => {
     if (listener.current) return;
     speaker.current?.cancel();
     speaker.current = null;
@@ -196,7 +199,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         if (stateRef.current === "listening") void setOrbState("idle");
       },
       onError: (e) => { if (e === "not-allowed") setReply({ text: "Microphone permission is blocked for this site.", tone: "error" }); },
-    });
+    }, { untilStopped });
     if (!l) setReply({ text: "This browser has no speech recognition. Chrome, Edge or Safari do.", tone: "info" });
     listener.current = l;
   }, [setOrbState]);
@@ -204,7 +207,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const toggleMic = useCallback(() => {
     if (listener.current) stopListening();
     else if (stateRef.current === "listening") void setOrbState("idle");
-    else startListening();
+    else startListening(true);
   }, [setOrbState, startListening, stopListening]);
 
   // Wake word: only while idle (two recognisers can't share the mic)
@@ -217,11 +220,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return () => w?.abort();
   }, [wake, orbState, startListening]);
 
-  // Push to talk: hold Alt+P (works anywhere, even while typing); release P or Alt to send
+  // Alt+P toggles listening (works anywhere, even while typing): press to start, talk with pauses, press again to send
   useEffect(() => {
-    let held = false;
-    const down = (e: KeyboardEvent) => { if (e.altKey && e.code === "KeyP") { e.preventDefault(); if (!e.repeat && !held) { held = true; startListening(); } } };
-    const up = (e: KeyboardEvent) => { if (held && (e.code === "KeyP" || e.key === "Alt")) { held = false; e.preventDefault(); stopListening(); } };
+    const down = (e: KeyboardEvent) => {
+      if (!(e.altKey && e.code === "KeyP") || e.repeat) return;
+      e.preventDefault();
+      if (listener.current) stopListening(); else startListening(true);
+    };
+    const up = (e: KeyboardEvent) => { if (e.key === "Alt") e.preventDefault(); };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
@@ -341,6 +347,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         })
       : null;
     setState("thinking");
+    setNotice(null);
     setReply({ text: "", pending: true, ask: text });
     // common questions are answered from your data without the relay (no tokens)
     if (!mode && !thread) {
@@ -363,6 +370,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       return settle({ text: notConfigured ? "My database isn't connected yet, so I can't answer. Site commands still work." : "Couldn't reach the site's server.", tone: "error" });
     }
     if (!thread) openChat(res.body.conversationId);
+    if (res.body.switched) setNotice(res.body.switched === "new" ? "New topic, so I started a new chat." : `Back to your earlier chat${res.body.switchedTitle ? `: ${res.body.switchedTitle}` : ""}.`);
     setActiveConv(res.body.conversationId);
     if (!res.body.relayOnline) {
       setReply({ text: "Your PC's relay is offline. I've queued this and will answer when it's back.", pending: true, ask: text, tone: "info" });
@@ -437,10 +445,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, setPaletteOpen,
-      model, setModel, chatId, openChat, activeConv, status, refreshStatus, changes, undoApollo,
+      model, setModel, chatId, openChat, activeConv, notice, status, refreshStatus, changes, undoApollo,
       startListening, stopListening, draft, voice: { speak: speakPref, wake, stt }, setSpeak, setWake,
     }),
-    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
+    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, notice, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
   );
   return <ApolloCtx.Provider value={value}>{children}</ApolloCtx.Provider>;
 }

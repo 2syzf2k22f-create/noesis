@@ -15,7 +15,7 @@ const DEFAULT_BOX: Box = { x: 104, y: 12, w: 400, h: 480 };
 
 export function ChatDock() {
   const pathname = usePathname();
-  const { submit, reply, activeConv, chatId, changes, toggleMic, orbState, draft, openChat } = useApollo();
+  const { submit, reply, activeConv, chatId, changes, toggleMic, orbState, draft, openChat, notice } = useApollo();
   const ui = useUi();
   const [text, setText] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -110,6 +110,7 @@ export function ChatDock() {
           </div>
         )}
         {shown.map((m) => <div key={m.id} className={s.msg} data-role={m.role}>{m.content}</div>)}
+        {notice && <div className="label" style={{ textAlign: "center" }}>{notice}</div>}
         {live && <div className={s.msg} data-role="assistant" data-pending={live.pending} data-tone={live.tone}>{live.text || "…"}</div>}
       </div>
       {inputRow}

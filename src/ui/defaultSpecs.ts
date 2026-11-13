@@ -779,6 +779,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Apollo usage",
     subtitle: "Every Apollo job, report and search, in depth. Live plan percentages are in the Apollo panel.",
     blocks: [
+      { type: "planshare", title: "How much of your Pro plan Apollo used", span: 12, bind: { table: "usage_log", days: 7, limit: 500 } },
       { type: "stat", title: "Tokens today", span: 3, bind: { table: "usage_log", days: 1, agg: { fn: "sum", field: "tokens_total" } } },
       { type: "stat", title: "Tokens, 7 days", span: 3, bind: { table: "usage_log", days: 7, agg: { fn: "sum", field: "tokens_total", by: "day" } } },
       { type: "stat", title: "Jobs, 7 days", span: 3, bind: { table: "usage_log", days: 7, agg: { fn: "count", by: "day" } } },
@@ -793,7 +794,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "deepstats", title: "Tokens per job in depth", span: 12, props: { table: "usage_log", field: "tokens_total", groupBy: "feature", better: "lower" } },
       { type: "deepstats", title: "Output tokens in depth", span: 12, props: { table: "usage_log", field: "tokens_out", groupBy: "model", better: "lower" } },
       { type: "deepstats", title: "Job time in depth (ms)", span: 12, props: { table: "usage_log", field: "duration_ms", groupBy: "feature", better: "lower" } },
-      { type: "table", title: "Recent jobs", span: 12, bind: { table: "usage_log", limit: 30 }, props: { columns: ["created_at", "feature", "model", "tokens_in", "tokens_out", "tokens_total", "duration_ms"] } },
+      { type: "bar", title: "Weekly limit used by feature, 30 days (%)", span: 6, bind: { table: "usage_log", days: 30, agg: { fn: "sum", field: "plan_7d_delta", by: { field: "feature" } } } },
+      { type: "line", title: "Weekly limit used (%)", span: 6, bind: { table: "usage_log", days: 30, agg: { fn: "max", field: "plan_7d_pct", by: "day" } } },
+      { type: "table", title: "Recent jobs", span: 12, bind: { table: "usage_log", limit: 30 }, props: { columns: ["created_at", "feature", "model", "tokens_total", "plan_7d_delta", "plan_5h_delta", "duration_ms"] } },
     ],
   },
 

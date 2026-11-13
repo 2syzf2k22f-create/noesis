@@ -71,7 +71,22 @@ export async function ingestUrl(ctx: ToolCtx, a: { url: string; subject?: string
 
 const words = (s: string) => s.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
 
+/** The relay plugs in search-by-meaning here (relay/embed.mts); the website keeps keyword search. */
+type Semantic = (s: Store, q: string, subject?: string, k?: number) => Promise<Record<string, unknown>[] | null>;
+let semantic: Semantic | null = null;
+export const setSemanticSearch = (f: Semantic) => { semantic = f; };
+
 export async function searchNotes(store: Store, query: string, subject?: string, limit = 6) {
+  const kw = await keywordSearch(store, query, subject, limit);
+  if (!semantic) return kw;
+  const sem = await semantic(store, query, subject, limit).catch(() => null);
+  if (!sem?.length) return kw;
+  // meaning matches first, then keyword matches not already included
+  const seen = new Set(sem.map((r) => String(r.text).slice(0, 80)));
+  return [...sem, ...kw.filter((r) => !seen.has(String(r.text).slice(0, 80)))].slice(0, limit + 2);
+}
+
+async function keywordSearch(store: Store, query: string, subject?: string, limit = 6) {
   const q = [...new Set(words(query))];
   if (!q.length) return [];
   const chunks = await store.list("note_chunks", { eq: subject ? { subject } : undefined, limit: 20000 });

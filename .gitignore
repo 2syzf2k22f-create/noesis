@@ -43,4 +43,5 @@ next-env.d.ts
 # local dev store and relay sandbox
 .dev/
 relay/.sandbox/
+relay/.prompts/
 .env.relay

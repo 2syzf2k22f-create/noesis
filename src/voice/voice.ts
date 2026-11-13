@@ -12,26 +12,32 @@ export const ttsSupported = () => typeof window !== "undefined" && "speechSynthe
 export type Listener = { stop: () => void; abort: () => void };
 
 /** One utterance: interim text while you talk, final text when you stop. */
-export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnd: () => void; onError?: (e: string) => void }): Listener | null {
+export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnd: () => void; onError?: (e: string) => void }, opts: { untilStopped?: boolean } = {}): Listener | null {
   const C = Ctor();
   if (!C) return null;
-  const r: Rec = new C();
-  r.lang = "en-GB";
-  r.interimResults = true;
-  r.continuous = false;
-  let final = "";
-  r.onresult = (e: any) => {
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) final += t; else interim += t;
-    }
-    o.onInterim((final + interim).trim());
+  let final = "", stopping = false, done = false;
+  let r: Rec;
+  const finish = () => { if (done) return; done = true; if (final.trim()) o.onFinal(final.trim()); o.onEnd(); };
+  const start = () => {
+    r = new C();
+    r.lang = "en-GB";
+    r.interimResults = true;
+    // untilStopped: keep listening through pauses until stop() (Alt+P again); browsers end a session on silence, so restart it
+    r.continuous = !!opts.untilStopped;
+    r.onresult = (e: any) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += (final && !final.endsWith(" ") ? " " : "") + t.trim(); else interim += t;
+      }
+      o.onInterim(`${final} ${interim}`.trim());
+    };
+    r.onerror = (e: any) => { if (e.error !== "no-speech" && e.error !== "aborted") o.onError?.(e.error ?? "error"); };
+    r.onend = () => { if (opts.untilStopped && !stopping) { try { start(); } catch { finish(); } } else finish(); };
+    r.start();
   };
-  r.onerror = (e: any) => o.onError?.(e.error ?? "error");
-  r.onend = () => { if (final.trim()) o.onFinal(final.trim()); o.onEnd(); };
-  r.start();
-  return { stop: () => r.stop(), abort: () => { r.onend = () => o.onEnd(); r.abort(); } };
+  start();
+  return { stop: () => { stopping = true; r.stop(); }, abort: () => { stopping = true; final = ""; r.abort(); } };
 }
 
 /** Wake word: listens continuously; calls onWake with whatever followed "Apollo" (may be empty). */

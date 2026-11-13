@@ -1,7 +1,7 @@
 // AI backends. Today: Claude Code headless on the Pro plan. Swap in an API backend later
 // by implementing the same interface.
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export type PlanWindow = { utilization: number; resetsAt: number; status: string };
@@ -35,8 +35,37 @@ export interface Backend {
 
 /** Empty working directory so no CLAUDE.md or project settings leak into Apollo jobs. */
 const SANDBOX = join(import.meta.dirname, ".sandbox");
+const PROMPTS = join(import.meta.dirname, ".prompts");
+/** One file per distinct system prompt (named by content), reused across jobs. */
+function sysFile(text: string) {
+  mkdirSync(PROMPTS, { recursive: true });
+  let h = 0; for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+  const f = join(PROMPTS, `system-${(h >>> 0).toString(36)}-${text.length}.txt`);
+  if (!existsSync(f)) writeFileSync(f, text, "utf8");
+  return f;
+}
 
-export const claudeCode = (bin = process.env.CLAUDE_BIN ?? "claude"): Backend => ({
+/**
+ * Find Claude Code's real executable so it can be started WITHOUT a shell. On Windows the npm
+ * "claude" command is a .cmd wrapper, and going through cmd.exe mangles arguments (empty values
+ * vanish, newlines in the system prompt break), which silently re-enabled Claude Code's own tools.
+ */
+export function resolveClaude() {
+  if (process.env.CLAUDE_BIN) return process.env.CLAUDE_BIN;
+  if (process.platform === "win32") {
+    const cands = [
+      join(process.env.APPDATA ?? "", "npm", "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"),
+      join(process.env.USERPROFILE ?? "", ".local", "bin", "claude.exe"),
+      join(process.env.LOCALAPPDATA ?? "", "Programs", "claude", "claude.exe"),
+    ];
+    const hit = cands.find((c) => existsSync(c));
+    if (hit) return hit;
+    throw new Error(`Couldn't find claude.exe (looked in ${cands.join("; ")}). Set CLAUDE_BIN in .env.relay to its full path.`);
+  }
+  return "claude";
+}
+
+export const claudeCode = (bin = resolveClaude()): Backend => ({
   name: "claude-code",
   run(o) {
     mkdirSync(SANDBOX, { recursive: true });
@@ -44,7 +73,8 @@ export const claudeCode = (bin = process.env.CLAUDE_BIN ?? "claude"): Backend =>
       "-p", "--model", o.model,
       "--output-format", "stream-json", "--verbose", "--include-partial-messages",
       "--no-session-persistence",
-      "--system-prompt", o.system,
+      // via a file: exact text, no quoting problems, and the same file content keeps prompt caching
+      "--system-prompt-file", sysFile(o.system),
       // No built-in tools at all (no Bash, no files, no web). Only the site's MCP tools.
       "--tools", [...new Set((o.builtins ?? []).map((b) => b.replace(/\(.*$/, "")))].join(","),
       "--strict-mcp-config",
@@ -53,9 +83,12 @@ export const claudeCode = (bin = process.env.CLAUDE_BIN ?? "claude"): Backend =>
     if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig);
     if (allowed.length) args.push("--allowedTools", ...allowed);
     if (o.permissionMode) args.push("--permission-mode", o.permissionMode);
+    // belt and braces: Apollo jobs never get Claude Code's own file, shell or agent tools
+    if (!o.builtins?.length) args.push("--disallowedTools", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit", "WebFetch", "WebSearch", "Task", "TodoWrite");
 
     return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, { cwd: o.cwd ?? SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" });
+      // never through a shell (see resolveClaude)
+      const child = spawn(bin, args, { cwd: o.cwd ?? SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true });
       const res: RunResult = { text: "", model: o.model, tokensIn: 0, tokensOut: 0, isError: false, rateLimited: null, plan: null };
       let buf = "", errBuf = "", turnText = "";
       const timer = setTimeout(() => child.kill(), o.timeoutMs ?? 5 * 60_000);

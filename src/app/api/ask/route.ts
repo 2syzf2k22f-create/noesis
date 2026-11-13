@@ -2,6 +2,7 @@ import { relayOnline, storeOr503, titleFrom } from "@/core/api";
 import { MODEL_PREFS, type ModelPref } from "@/core/routing";
 import { nowIso } from "@/core/store";
 import { isMode } from "@/core/modes";
+import { pickConversation } from "@/core/threads";
 
 export async function POST(req: Request) {
   const s = storeOr503();
@@ -15,6 +16,12 @@ export async function POST(req: Request) {
   if (convId) {
     const c = await s.get("conversations", convId);
     if (!c || c.deleted_at) convId = null;
+  }
+  // new topic -> new chat; a message about an earlier chat continues it (unless you chose a chat yourself)
+  let switched: { how: "new" | "continued" | null; title?: string } = { how: null };
+  if (!body.thread && body.autoThread !== false) {
+    const p = await pickConversation(s, text, convId).catch(() => null);
+    if (p) { switched = { how: p.how, title: "title" in p ? p.title : undefined }; convId = p.id; }
   }
   // a named thread (e.g. "project:Touchline", "tutor:Physics") keeps its own ongoing chat
   const thread = typeof body.thread === "string" ? body.thread.slice(0, 80) : null;
@@ -32,5 +39,5 @@ export async function POST(req: Request) {
   });
   await s.update("conversations", convId, { updated_at: nowIso() });
   const { online } = await relayOnline(s);
-  return Response.json({ jobId: job.id, conversationId: convId, relayOnline: online });
+  return Response.json({ jobId: job.id, conversationId: convId, relayOnline: online, switched: switched.how === "new" && body.conversationId ? "new" : switched.how === "continued" ? "continued" : null, switchedTitle: switched.title ?? null });
 }

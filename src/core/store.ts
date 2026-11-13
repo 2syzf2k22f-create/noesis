@@ -17,6 +17,8 @@ export type ListOpts = {
 
 export interface Store {
   kind: "supabase" | "file";
+  /** Call a database function (Supabase only). */
+  rpc?(fn: string, args: Record<string, unknown>): Promise<unknown>;
   get(table: string, id: string): Promise<Row | null>;
   list(table: string, opts?: ListOpts): Promise<Row[]>;
   count(table: string, opts?: ListOpts & { since?: { col: string; iso: string } }): Promise<number>;

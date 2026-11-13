@@ -4,12 +4,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { getStore } from "../src/core/getStore";
 import { TOOLS } from "../src/core/tools";
+import { setSemanticSearch } from "../src/core/notes";
+import { semanticSearch } from "./embed.mts";
 
 const store = getStore();
 if (!store) {
   console.error("noesis-mcp: no store configured (set SUPABASE_URL + SUPABASE_SECRET_KEY)");
   process.exit(1);
 }
+
+if (process.env.NOESIS_SMART !== "0") setSemanticSearch(semanticSearch);
 
 const server = new McpServer({ name: "noesis", version: "0.4.0" });
 const ctx = { store, jobId: process.env.NOESIS_JOB_ID || null, actor: process.env.NOESIS_ACTOR || "apollo" };

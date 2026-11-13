@@ -11,6 +11,7 @@
     "relay:dev": "NOESIS_DEV_STORE=.dev/db.json tsx relay/index.mts"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",

@@ -13,7 +13,7 @@ import { BuildBlock } from "./BuildBlock";
 import { WorkoutPlanner } from "./WorkoutPlanner";
 import { SchoolAnalysisBlock, SchoolTestForm, SpecRag } from "./SchoolBlocks";
 import { KnowledgeBlock, WaterBlock } from "./Blocks5";
-import { MonthCalendar, NextRevise, ShoppingList } from "./Blocks6";
+import { MonthCalendar, NextRevise, PlanShare, ShoppingList } from "./Blocks6";
 import { UniExplorer } from "./UniBlocks";
 import { BookRecs, MealPlanner, MealPlanView, RecipeBook } from "./MealBlocks";
 import { BookEta, ChessOpenings, GradePredictor, Habits, PersonalRecords, WordOfDay } from "./Blocks4";
@@ -485,6 +485,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "mealplanview": return <MealPlanView ctx={ctx} />;
     case "recipebook": return <RecipeBook ctx={ctx} />;
     case "bookrecs": return <BookRecs ctx={ctx} />;
+    case "planshare": return <PlanShare ctx={ctx} />;
     case "screentime": return <ScreenTimeBlock ctx={ctx} />;
     case "deepstats": return <DeepStats p={p} />;
     case "benchmark": return <Benchmark ctx={ctx} p={p} />;
