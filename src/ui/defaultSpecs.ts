@@ -471,16 +471,15 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "mind--chess": {
     title: "Chess",
-    subtitle: "Apollo explains; Stockfish calculates (analysis board coming next).",
+    subtitle: "Your chess.com games (synced daily) and practice games, in depth for each time control, plus everything your game reviews reveal.",
     blocks: [
-      { type: "sync", title: "chess.com", span: 4, props: { service: "chess", label: "Sync chess.com games" } },
-      { type: "stat", title: "Rapid", span: 4, bind: { table: "chess_ratings", where: { time_class: "rapid" }, agg: { fn: "last", field: "rating" } } },
-      { type: "donut", title: "Results, 30 days", span: 4, bind: { table: "chess_games", days: 30, agg: { fn: "count", by: { field: "result" } } } },
-      { type: "line", title: "Rating, 60 days", span: 8, bind: { table: "chess_games", days: 60, agg: { fn: "last", field: "rating", by: "day" } } },
-      { type: "donut", title: "Time controls, 60 days", span: 4, bind: { table: "chess_games", days: 60, agg: { fn: "count", by: { field: "time_class" } } } },
-      { type: "deepstats", title: "Rating in depth", span: 12, props: { table: "chess_games", field: "rating", groupBy: "result" } },
-      { type: "list", title: "Recent games", span: 12, bind: { table: "chess_games", limit: 15 }, props: { primary: "opponent", secondary: ["result", "time_class", "rating", "created_at"], link: "{url}" } },
+      { type: "sync", title: "chess.com", span: 3, props: { service: "chess", label: "Sync chess.com games" } },
+      { type: "stat", title: "Rapid", span: 3, bind: { table: "chess_ratings", where: { time_class: "rapid" }, agg: { fn: "last", field: "rating" } } },
+      { type: "stat", title: "Blitz", span: 3, bind: { table: "chess_ratings", where: { time_class: "blitz" }, agg: { fn: "last", field: "rating" } } },
+      { type: "stat", title: "Bullet", span: 3, bind: { table: "chess_ratings", where: { time_class: "bullet" }, agg: { fn: "last", field: "rating" } } },
+      { type: "chessstats", title: "In depth", span: 12, bind: { table: "chess_games", limit: 1 } },
       { type: "chessopenings", title: "How you score by opening", span: 12, bind: { table: "chess_games", limit: 500 } },
+      { type: "list", title: "Recent games", span: 12, bind: { table: "chess_games", limit: 15 }, props: { primary: "opponent", secondary: ["result", "time_class", "rating", "created_at"], link: "{url}" } },
     ],
   },
   "mind--analysis": {
@@ -547,9 +546,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "From the world-countries dataset, not the AI. Confusable neighbours as wrong answers; misses come back sooner.",
     blocks: [
       { type: "geo", title: "Quiz", span: 8 },
-      { type: "stat", title: "Correct, 7 days", span: 4, bind: { table: "geo_attempts", where: { correct: true }, days: 7, agg: { fn: "count" } } },
-      { type: "bar", title: "Most missed", span: 6, bind: { table: "geo_attempts", where: { correct: false }, days: 60, agg: { fn: "count", by: { field: "item" } } } },
-      { type: "donut", title: "By quiz type, 30 days", span: 6, bind: { table: "geo_attempts", days: 30, agg: { fn: "count", by: { field: "kind" } } } },
+      { type: "stat", title: "Correct, 7 days", span: 4, bind: { table: "geo_attempts", where: { correct: true }, days: 7, agg: { fn: "count", by: "day" } } },
+      { type: "geostats", title: "In depth", span: 12, bind: { table: "geo_attempts", limit: 500 } },
     ],
   },
   "mind--brain": {

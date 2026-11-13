@@ -23,18 +23,40 @@ export const boardAnnotations = {
   get: () => annot,
   subscribe(f: () => void) { annotSubs.add(f); return () => { annotSubs.delete(f); }; },
 };
+/* ---- walkthroughs: Apollo steps through positions on the board while explaining ---- */
+export type WalkStep = { fen: string; say: string; arrows?: Arrow[]; squares?: Record<string, string>; lastMove?: { from: string; to: string } };
+type Walk = { title?: string; steps: WalkStep[]; i: number } | null;
+let walk: Walk = null;
+const walkSubs = new Set<() => void>();
+export const boardWalk = {
+  set(w: Walk) { walk = w; walkSubs.forEach((f) => f()); },
+  get: () => walk,
+  step(d: number) { if (walk) boardWalk.set({ ...walk, i: Math.max(0, Math.min(walk.steps.length - 1, walk.i + d)) }); },
+  subscribe(f: () => void) { walkSubs.add(f); return () => { walkSubs.delete(f); }; },
+};
+let walkSpeak: ((text: string) => void) | null = null;
+/** The shell plugs in speech so each step is read out. */
+export const setWalkSpeaker = (f: ((text: string) => void) | null) => { walkSpeak = f; };
+
 const sameFen = (a: string, b: string) => a.split(" ").slice(0, 4).join(" ") === b.split(" ").slice(0, 4).join(" ");
 
 const ARROW = { green: "rgba(21, 120, 27, 0.8)", orange: "rgba(255, 170, 0, 0.82)", red: "rgba(222, 50, 40, 0.8)", blue: "rgba(0, 110, 220, 0.75)", user: "rgba(255, 170, 0, 0.85)" };
 const arrowColor = (k?: string) => (k && k in ARROW ? ARROW[k as keyof typeof ARROW] : k ?? ARROW.green);
 
-export function Board({ fen, orientation = "white", onMove, lastMove, marks, interactive = true, hint, arrows, squares, showAnnotations = true }: {
+export function Board({ fen: ownFen, orientation = "white", onMove, lastMove: lastMoveIn, marks: marksIn, interactive = true, hint: hintIn, arrows: arrowsIn, squares: squaresIn, showAnnotations = true }: {
   fen: string; orientation?: "white" | "black"; onMove?: (from: string, to: string, promotion?: string) => boolean | void;
   lastMove?: { from: string; to: string } | null; marks?: Record<string, Mark>; interactive?: boolean; hint?: { from: string; to: string } | null;
   arrows?: Arrow[]; squares?: Record<string, string>; showAnnotations?: boolean;
 }) {
   const style = useChessStyle();
   const apollo = useSyncExternalStore(boardAnnotations.subscribe, boardAnnotations.get, () => null);
+  const w = useSyncExternalStore(boardWalk.subscribe, boardWalk.get, () => null);
+  const ws = showAnnotations && w ? w.steps[w.i] : null;
+  const fen = ws?.fen ?? ownFen;
+  const arrows = ws ? ws.arrows ?? [] : arrowsIn, squares = ws ? ws.squares ?? {} : squaresIn;
+  const lastMove = ws ? ws.lastMove ?? null : lastMoveIn, marks = ws ? undefined : marksIn, hint = ws ? null : hintIn;
+  // read each step out as it appears
+  useEffect(() => { if (ws?.say) walkSpeak?.(ws.say); }, [ws]); // eslint-disable-line react-hooks/exhaustive-deps
   const game = useMemo(() => { try { return new Chess(fen); } catch { return new Chess(); } }, [fen]);
   const [sel, setSel] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ from: string; x: number; y: number; moved: boolean; size: number } | null>(null);
@@ -186,7 +208,18 @@ export function Board({ fen, orientation = "white", onMove, lastMove, marks, int
         const size = drag.size;
         return p ? <span className={c.ghost} style={{ left: drag.x - size / 2, top: drag.y - size / 2, width: size, height: size }}>{piece(p.color, p.type)}</span> : null;
       })()}
-      {ap?.note && <div className={c.annotNote}><b>Apollo</b> {ap.note}</div>}
+      {ap?.note && !ws && <div className={c.annotNote}><b>Apollo</b> {ap.note}</div>}
+      {ws && w && (
+        <div className={c.annotNote} style={{ display: "grid", gap: 6 }}>
+          <div><b>Apollo{w.title ? ` · ${w.title}` : ""}</b> <span className="label">step {w.i + 1} of {w.steps.length}</span></div>
+          <div>{ws.say}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button className="pill" disabled={w.i === 0} onClick={() => boardWalk.step(-1)}>◀ Back</button>
+            <button className="pill" data-active="true" disabled={w.i >= w.steps.length - 1} onClick={() => boardWalk.step(1)}>Next ▶</button>
+            <button className="pill" onClick={() => boardWalk.set(null)}>✕ Back to my board</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

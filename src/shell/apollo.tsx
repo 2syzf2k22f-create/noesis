@@ -10,7 +10,7 @@ import { MODEL_PREFS, biggerModel, type ModelPref } from "@/core/routing";
 import type { UiAction } from "@/core/tools";
 import { PANEL_KINDS, panelStore, panelTitle, type PanelKind } from "./panelStore";
 import { SPACES, type IconName } from "./spaces";
-import { boardAnnotations } from "@/chess/Board";
+import { boardAnnotations, boardWalk, setWalkSpeaker } from "@/chess/Board";
 import { screenContext, screenshot, wantsScreenshot } from "./screen";
 import { uiStore } from "./uiStore";
 
@@ -70,6 +70,8 @@ type Ctx = {
   activeConv: string | null;
   /** A short note like "New topic, so I started a new chat." */
   notice: string | null;
+  /** Stop Apollo talking right now. */
+  stopSpeaking: () => void;
   /** Where spoken input goes (e.g. a language practice session) while a page wants it; null = main chat. */
   setVoiceTarget: (t: { mode?: string; thread?: string } | null) => void;
   status: Status | null;
@@ -187,6 +189,30 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [clearTimers, micOn, startMic, stopMic]);
 
   const stopListening = useCallback(() => { listener.current?.stop(); }, []);
+  const stopSpeaking = useCallback(() => {
+    speaker.current?.cancel();
+    speaker.current = null;
+    walkSpeaker.current?.cancel();
+    if (ttsSupported()) speechSynthesis.cancel();
+    setState((st) => (st === "speaking" ? "idle" : st));
+  }, []);
+  // walkthrough steps are read aloud (unless voice is off)
+  const walkSpeaker = useRef<ReturnType<typeof createSpeaker> | null>(null);
+  useEffect(() => {
+    setWalkSpeaker((text) => {
+      if (speakPref === "never") return;
+      walkSpeaker.current?.cancel();
+      walkSpeaker.current = createSpeaker({ onStart: () => setState("speaking"), onWord: () => { lastWord.current = performance.now(); }, onEnd: () => setState((st) => (st === "speaking" ? "idle" : st)) });
+      walkSpeaker.current.feed(text, true);
+    });
+    return () => setWalkSpeaker(null);
+  }, [speakPref]);
+  // Esc stops talking
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape" && stateRef.current === "speaking") stopSpeaking(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [stopSpeaking]);
 
   const startListening = useCallback((untilStopped = false) => {
     if (listener.current) return;
@@ -289,6 +315,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     else if (ui.type === "open_window") uiStore.openWindow(ui.to);
     else if (ui.type === "close_window") uiStore.closeWindow(ui.to);
     else if (ui.type === "annotate_board") boardAnnotations.set({ arrows: ui.arrows ?? [], squares: ui.squares ?? {}, note: ui.note, fen: ui.fen });
+    else if (ui.type === "walkthrough") { boardAnnotations.set(null); boardWalk.set({ title: ui.title, steps: ui.steps, i: 0 }); }
   }, [reloadThemes, router, setTheme]);
 
   const actions = useMemo<Action[]>(() => [
@@ -487,10 +514,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, setPaletteOpen,
-      model, setModel, chatId, openChat, activeConv, notice, setVoiceTarget, status, refreshStatus, changes, undoApollo,
+      model, setModel, chatId, openChat, activeConv, notice, setVoiceTarget, stopSpeaking, status, refreshStatus, changes, undoApollo,
       startListening, stopListening, draft, voice: { speak: speakPref, wake, stt }, setSpeak, setWake,
     }),
-    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, notice, setVoiceTarget, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
+    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, notice, setVoiceTarget, stopSpeaking, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
   );
   return <ApolloCtx.Provider value={value}>{children}</ApolloCtx.Provider>;
 }

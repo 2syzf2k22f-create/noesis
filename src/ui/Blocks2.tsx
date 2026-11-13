@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { previewLabel, GRADES, type Grade } from "@/core/srsCore";
 import { useApollo } from "@/shell/apollo";
 import COUNTRIES from "@/data/countries.json";
-import type { BlockCtx } from "./Blocks";
+import { Bars, type BlockCtx } from "./Blocks";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Row = { id: string; [k: string]: any };
 import { useOptions } from "./useOptions";
 import { Chimp, Verbal, Visual } from "./Blocks3";
 import u from "./ui.module.css";
@@ -337,41 +339,65 @@ export function BrainGame({ p, ctx }: { p: P; ctx: BlockCtx }) {
 /* ---------- geography (dataset, not AI) ---------- */
 type Country = { n: string; c: string; r: string; s: string; k: string; a: number };
 const ALL = COUNTRIES as Country[];
+const geoNow = () => Date.now();
+const norm = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z ]/g, "").trim();
+/** Type-to-search box with a dropdown of matches (arrow keys + Enter, or click). */
+function Autocomplete({ options, onPick, disabled, placeholder }: { options: string[]; onPick: (v: string) => void; disabled?: boolean; placeholder: string }) {
+  const [q, setQ] = useState("");
+  const [i, setI] = useState(0);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!disabled) { queueMicrotask(() => { setQ(""); ref.current?.focus(); }); } }, [disabled, placeholder]);
+  const m = q ? options.filter((o) => norm(o).startsWith(norm(q))).concat(options.filter((o) => !norm(o).startsWith(norm(q)) && norm(o).includes(norm(q)))).slice(0, 8) : [];
+  const pick = (v: string) => { setQ(v); onPick(v); };
+  return (
+    <div style={{ position: "relative", maxWidth: 380, width: "100%" }}>
+      <input ref={ref} value={q} disabled={disabled} placeholder={placeholder} autoComplete="off"
+        onChange={(e) => { setQ(e.target.value); setI(0); }}
+        onKeyDown={(e) => { if (e.key === "ArrowDown") { e.preventDefault(); setI(Math.min(i + 1, m.length - 1)); } if (e.key === "ArrowUp") { e.preventDefault(); setI(Math.max(0, i - 1)); } if (e.key === "Enter" && m[i]) { e.preventDefault(); pick(m[i]); } }}
+        style={{ width: "100%", height: 42, padding: "0 12px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 16 }} />
+      {!disabled && m.length > 0 && (
+        <ul role="listbox" style={{ margin: "4px 0 0", padding: 4, listStyle: "none", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)", boxShadow: "0 12px 30px rgba(0,0,0,.4)" }}>
+          {m.map((o, k) => <li key={o} role="option" aria-selected={k === i} onMouseDown={(e) => { e.preventDefault(); pick(o); }} onMouseEnter={() => setI(k)} style={{ padding: "7px 10px", borderRadius: 7, cursor: "pointer", background: k === i ? "var(--accent)" : undefined, color: k === i ? "var(--on-accent)" : undefined }}>{o}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function GeoQuiz({ p, ctx }: { p: P; ctx: BlockCtx }) {
   const kinds = ["flag", "capital", "country-of-capital", "bigger"] as const;
   const [kind, setKind] = useState<(typeof kinds)[number]>(p.kind ?? "flag");
   const [region, setRegion] = useState<string>(p.region ?? "All");
-  // misses this session are asked again sooner (simple in-session spaced repetition)
   const misses = useRef<Country[]>([]);
   const pool = useMemo(() => (region === "All" ? ALL : ALL.filter((c) => c.r === region)), [region]);
   const make = useCallback(() => {
     const pick = misses.current.length && Math.random() < 0.4 ? misses.current.shift()! : pool[Math.floor(Math.random() * pool.length)];
-    // confusable distractors: same subregion first, then same region
     const near = ALL.filter((c) => c.k !== pick.k && c.s === pick.s);
     const wide = ALL.filter((c) => c.k !== pick.k && c.r === pick.r && c.s !== pick.s);
-    const opts = [...near.sort(() => Math.random() - 0.5), ...wide.sort(() => Math.random() - 0.5)].slice(0, 3);
     const other = kind === "bigger" ? near[0] ?? wide[0] : null;
-    return { pick, choices: [pick, ...opts].sort(() => Math.random() - 0.5), other };
+    return { pick, other, t0: Date.now() };
   }, [pool, kind]);
   const [q, setQ] = useState<ReturnType<typeof make> | null>(null);
   const [ans, setAns] = useState<string | null>(null);
-  const [score, setScore] = useState({ right: 0, total: 0 });
+  const [score, setScore] = useState({ right: 0, total: 0, streak: 0 });
   useEffect(() => { queueMicrotask(() => { setQ(make()); setAns(null); }); }, [make]);
+  // type the answer: flags and capital→country want a country; country→capital wants a capital
+  const options = useMemo(() => (kind === "capital" ? ALL.map((c) => c.c).filter(Boolean) : ALL.map((c) => c.n)).sort(), [kind]);
   if (!q) return null;
-  const correctKey = kind === "bigger" && q.other ? (q.pick.a >= q.other.a ? q.pick.k : q.other.k) : q.pick.k;
-  const choose = (k: string) => {
+  const correct = kind === "capital" ? q.pick.c : kind === "bigger" && q.other ? (q.pick.a >= q.other.a ? q.pick.n : q.other.n) : q.pick.n;
+  const answer = (v: string) => {
     if (ans) return;
-    setAns(k);
-    const ok = k === correctKey;
+    setAns(v);
+    const ok = norm(v) === norm(correct);
     if (!ok) misses.current.push(q.pick);
-    setScore((s) => ({ right: s.right + (ok ? 1 : 0), total: s.total + 1 }));
-    void ctx.write("create", "geo_attempts", { kind, item: q.pick.n, answer: ALL.find((c) => c.k === k)?.n ?? k, correct: ok });
+    setScore((s) => ({ right: s.right + (ok ? 1 : 0), total: s.total + 1, streak: ok ? s.streak + 1 : 0 }));
+    void ctx.write("create", "geo_attempts", { kind, item: q.pick.n, answer: v, correct: ok, region: q.pick.r, subregion: q.pick.s, seconds: Math.round((geoNow() - q.t0) / 100) / 10 });
   };
-  const label = (c: Country) => (kind === "country-of-capital" ? c.n : kind === "capital" ? c.c : c.n);
+  const next = () => { setQ(make()); setAns(null); };
   return (
-    <div className={u.geo}>
+    <div className={u.geo} onKeyDown={(e) => { if (ans && e.key === "Enter") next(); }}>
       <div className={u.row}>
-        {kinds.map((x) => <button key={x} className="pill" aria-pressed={x === kind} onClick={() => setKind(x)}>{x.replaceAll("-", " ")}</button>)}
+        {kinds.map((x) => <button key={x} className="pill" aria-pressed={x === kind} onClick={() => setKind(x)}>{x === "country-of-capital" ? "capital → country" : x === "capital" ? "country → capital" : x}</button>)}
         <select value={region} onChange={(e) => setRegion(e.target.value)} className={u.geoSel}>
           {["All", "Africa", "Americas", "Asia", "Europe", "Oceania"].map((r) => <option key={r}>{r}</option>)}
         </select>
@@ -385,18 +411,67 @@ export function GeoQuiz({ p, ctx }: { p: P; ctx: BlockCtx }) {
         {kind === "country-of-capital" && <p><b>{q.pick.c}</b> is the capital of…</p>}
         {kind === "bigger" && q.other && <p>Which is bigger by area?</p>}
       </div>
-      <div className={u.choices}>
-        {(kind === "bigger" && q.other ? [q.pick, q.other] : q.choices).map((c) => (
-          <button key={c.k} data-state={ans ? (c.k === correctKey ? "right" : c.k === ans ? "wrong" : undefined) : undefined} onClick={() => choose(c.k)}>
-            {kind === "bigger" ? c.n : label(c)}
-            {ans && kind === "bigger" && <small> · {c.a.toLocaleString()} km²</small>}
-          </button>
+      {kind === "bigger" && q.other ? (
+        <div className={u.choices}>
+          {[q.pick, q.other].map((c) => (
+            <button key={c.k} data-state={ans ? (c.n === correct ? "right" : c.n === ans ? "wrong" : undefined) : undefined} onClick={() => answer(c.n)}>
+              {c.n}{ans && <small> · {c.a.toLocaleString()} km²</small>}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Autocomplete key={`${q.pick.k}${kind}`} options={options} onPick={answer} disabled={!!ans} placeholder={kind === "capital" ? "Type the capital…" : "Type the country…"} />
+      )}
+      {ans && kind !== "bigger" && (
+        <div style={{ fontSize: 15 }}>{norm(ans) === norm(correct) ? <b style={{ color: "var(--good)" }}>✓ {correct}</b> : <><b style={{ color: "var(--danger)" }}>✗ {ans}</b> · it&apos;s <b>{correct}</b></>} <small className="label">({q.pick.s})</small></div>
+      )}
+      <div className={u.row}>
+        <span className="label">{score.right}/{score.total} this session · streak {score.streak}</span>
+        {ans && <button className="pill" data-active="true" onClick={next}>Next (Enter)</button>}
+      </div>
+    </div>
+  );
+}
+
+/** Geography in depth: accuracy by continent, region and quiz type, hardest countries, speed, trend. */
+export function GeoStats({ ctx }: { ctx: BlockCtx }) {
+  const rows: Row[] = ((ctx.data?.rows ?? []) as Row[]).map((r) => {
+    const c = ALL.find((x) => x.n === r.item || x.c === r.item);
+    return { ...r, region: r.region ?? c?.r ?? "?", subregion: r.subregion ?? c?.s ?? "?" } as Row;
+  });
+  const [kind, setKind] = useState("all");
+  const R = rows.filter((r) => kind === "all" || r.kind === kind);
+  if (!rows.length) return <div className="label">Play a few rounds and your stats by continent, region and country appear here.</div>;
+  const rate = (xs: Row[]) => (xs.length ? Math.round((xs.filter((x) => x.correct).length / xs.length) * 100) : 0);
+  const by = (key: string) => [...new Set(R.map((r) => r[key]))].map((k) => { const xs = R.filter((r) => r[key] === k); return { label: `${k} (${xs.length})`, value: rate(xs), n: xs.length }; }).sort((a, b) => a.value - b.value);
+  const items = [...new Set(R.map((r) => r.item))].map((k) => { const xs = R.filter((r) => r.item === k); return { k, n: xs.length, rate: rate(xs), wrongAs: xs.filter((x) => !x.correct).map((x) => x.answer).slice(-2) }; });
+  const hardest = items.filter((x) => x.rate < 100).sort((a, b) => a.rate - b.rate || b.n - a.n).slice(0, 12);
+  const mastered = items.filter((x) => x.n >= 2 && x.rate === 100).length;
+  const seen = new Set(R.filter((r) => r.correct).map((r) => r.item)).size;
+  const days = [...new Set(R.map((r) => String(r.created_at).slice(0, 10)))].sort();
+  const trend = days.map((d) => ({ label: d, value: rate(R.filter((r) => String(r.created_at).slice(0, 10) === d)) }));
+  const secs = R.map((r) => Number(r.seconds)).filter((x) => x > 0);
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div className={u.row}>{["all", "flag", "capital", "country-of-capital", "bigger"].map((k) => <button key={k} className="pill" data-active={kind === k} onClick={() => setKind(k)}>{k === "country-of-capital" ? "capital → country" : k}</button>)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 6 }}>
+        {[["Accuracy", `${rate(R)}%`], ["Answers", R.length], ["Countries known", `${seen}/${ALL.length}`], ["Mastered (2+ right, no misses)", mastered], ["Average time", secs.length ? `${(secs.reduce((a, b) => a + b, 0) / secs.length).toFixed(1)} s` : "—"]].map(([l, v]) => (
+          <div key={l as string} style={{ padding: "8px 10px", borderRadius: 8, background: "var(--surface)" }}><small className="label">{l}</small><div style={{ fontSize: 20, fontWeight: 700 }}>{v}</div></div>
         ))}
       </div>
-      <div className={u.row}>
-        <span className="label">{score.right}/{score.total} this session</span>
-        {ans && <button className="pill" data-active="true" onClick={() => { setQ(make()); setAns(null); }}>Next</button>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
+        <div><span className="label">Accuracy by continent</span><Bars series={by("region")} h={120} unit="%" /></div>
+        <div><span className="label">Accuracy by region (weakest first)</span><Bars series={by("subregion").slice(0, 12)} h={120} unit="%" /></div>
+        {kind === "all" && <div><span className="label">Accuracy by quiz type</span><Bars series={by("kind")} h={120} unit="%" /></div>}
+        {trend.length > 1 && <div><span className="label">Accuracy per day</span><Bars series={trend} h={120} unit="%" /></div>}
       </div>
+      {hardest.length > 0 && (
+        <div><span className="label">Hardest for you</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 4, marginTop: 4 }}>
+            {hardest.map((h) => <div key={h.k} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--surface)", fontSize: 13 }}><b>{h.k}</b> · {h.rate}% of {h.n}{h.wrongAs.length ? <small className="label"> · you said {h.wrongAs.join(", ")}</small> : null}</div>)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

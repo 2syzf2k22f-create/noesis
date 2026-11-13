@@ -1326,3 +1326,8 @@
   display: grid;
   gap: 8px;
 }
+
+.axesWrap { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
+.yAxis { display: flex; flex-direction: column; justify-content: space-between; font: 10px var(--font-mono), monospace; color: var(--text-dim); text-align: right; padding: 2px 0 18px; }
+.xAxis { display: flex; justify-content: space-between; font: 10px var(--font-mono), monospace; color: var(--text-dim); margin-top: 3px; }
+.barVal { display: block; text-align: center; font: 600 10px var(--font-mono), monospace; color: var(--text-dim); margin-bottom: 2px; white-space: nowrap; }

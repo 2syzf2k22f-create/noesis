@@ -46,7 +46,8 @@ export type UiAction =
   | { type: "chatbox"; x?: number; y?: number; w?: number; h?: number; near?: string; open?: boolean }
   | { type: "open_window"; to: string }
   | { type: "close_window"; to?: string }
-  | { type: "annotate_board"; arrows?: { from: string; to: string; color?: string }[]; squares?: Record<string, string>; note?: string; fen?: string };
+  | { type: "annotate_board"; arrows?: { from: string; to: string; color?: string }[]; squares?: Record<string, string>; note?: string; fen?: string }
+  | { type: "walkthrough"; title?: string; steps: { fen: string; say: string; arrows?: { from: string; to: string; color?: string }[]; squares?: Record<string, string>; lastMove?: { from: string; to: string } }[] };
 
 export type ToolCtx = { store: Store; jobId?: string | null; actor?: string };
 
@@ -294,6 +295,16 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "propose_build",
+    description: "When Reg asks for something that needs a change to the site's CODE (a new feature, behaviour or automation the tools and page layouts can't do), write a clear build request here. It shows him a card with a 'Build it' button; nothing runs until he clicks it. Then Build mode makes the change on a branch, checks it builds and ships on his say-so. Be specific: what to change, where, acceptance criteria. For simple settings (e.g. turning daily syncs on/off) use update_record on settings instead.",
+    input: { request: z.string().min(20).max(3000), summary: z.string().max(140) },
+    async run(ctx, a) {
+      const job = await ctx.store.insert("jobs", { kind: "build", status: "proposed", input: { request: a.request, summary: a.summary, proposed_by: "apollo", from_job: ctx.jobId ?? null }, ui_actions: [], output: { step: "Waiting for Reg to approve" } });
+      await pushUi(ctx, { type: "reload" });
+      return { proposed: job.id, note: "Reg sees a 'Build it' card; nothing changes until he approves." };
+    },
+  },
+  {
     name: "run_sync",
     description: "Run a sync right now and get the result: chess (chess.com games and ratings, needs the chess_username fact), codeforces (needs codeforces_handle), microsoft (Teams, Outlook, OneNote, Arbor). Use it instead of asking Reg to press a sync button.",
     input: { service: z.enum(["chess", "codeforces", "microsoft"]) },
@@ -382,6 +393,23 @@ export const TOOLS: ToolDef[] = [
     async run(ctx, a) {
       await pushUi(ctx, { type: "close_window", to: a.to ? normPage(String(a.to)) : undefined });
       return { ok: true };
+    },
+  },
+  {
+    name: "walkthrough",
+    description: "SHOW a chess explanation on the board, step by step: each step is a position (FEN) with arrows, highlighted squares and one or two sentences to say. Reg sees the board move to each step (with Next/Back) while it's read out. Use this whenever you explain chess (a game, a move, an opening, a plan) instead of writing move lists. 2-8 steps; arrows color green|orange|red|blue. If no board is on screen, navigate to mind--analysis first.",
+    input: {
+      title: z.string().max(80).optional(),
+      steps: z.array(z.object({
+        fen: z.string().min(10), say: z.string().max(400),
+        arrows: z.array(z.object({ from: z.string().regex(/^[a-h][1-8]$/), to: z.string().regex(/^[a-h][1-8]$/), color: z.string().optional() })).max(8).optional(),
+        squares: z.record(z.string().regex(/^[a-h][1-8]$/), z.string()).optional(),
+        lastMove: z.object({ from: z.string(), to: z.string() }).optional(),
+      })).min(1).max(10),
+    },
+    async run(ctx, a) {
+      await pushUi(ctx, { type: "walkthrough", title: a.title, steps: a.steps });
+      return { shown: a.steps.length };
     },
   },
   {

@@ -16,6 +16,8 @@ import { KnowledgeBlock, WaterBlock } from "./Blocks5";
 import { MonthCalendar, NextRevise, PlanShare, ShoppingList } from "./Blocks6";
 import { UniExplorer } from "./UniBlocks";
 import { LanguageConversation } from "./LanguageBlocks";
+import { GeoStats } from "./Blocks2";
+import { ChessStats } from "@/chess/ChessStats";
 import { BookRecs, MealPlanner, MealPlanView, RecipeBook } from "./MealBlocks";
 import { BookEta, ChessOpenings, GradePredictor, Habits, PersonalRecords, WordOfDay } from "./Blocks4";
 import { ScreenTimeBlock } from "./ScreenTimeBlock";
@@ -45,6 +47,10 @@ const cell = (v: unknown) => {
 
 /* ---------- charts ---------- */
 
+/** Chart labels: dates read as "12 Nov", ISO weeks as "w/c 9 Nov". */
+const lab = (l: string) => (/^\d{4}-\d{2}-\d{2}$/.test(l) ? new Date(l).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : l);
+const tip = (l: string, v: number, unit?: string) => `${lab(l)}: ${fmt(v, unit)}`;
+
 function path(vals: number[], w: number, h: number, pad = 4) {
   const max = Math.max(...vals, 1), min = Math.min(...vals, 0);
   const x = (i: number) => (vals.length === 1 ? w / 2 : pad + (i * (w - pad * 2)) / (vals.length - 1));
@@ -52,12 +58,13 @@ function path(vals: number[], w: number, h: number, pad = 4) {
   return { d: vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" "), x, y };
 }
 
-export function Spark({ series, area, h = 56, markers }: { series: Series; area?: boolean; h?: number; markers?: boolean }) {
+export function Spark({ series, area, h = 56, markers, axes, unit }: { series: Series; area?: boolean; h?: number; markers?: boolean; axes?: boolean; unit?: string }) {
   const id = `g${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   if (!series.length) return <NoData />;
   const w = 300, vals = series.map((s) => s.value);
   const { d, x, y } = path(vals, w, h);
-  return (
+  const colW = w / Math.max(1, vals.length);
+  const svg = (
     <svg className={u.chart} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ height: h }}>
       <defs>
         <linearGradient id={id} x1="0" x2="1"><stop offset="0" stopColor="var(--chart-1)" /><stop offset="1" stopColor="var(--chart-2)" /></linearGradient>
@@ -66,19 +73,31 @@ export function Spark({ series, area, h = 56, markers }: { series: Series; area?
       {area && <path d={`${d} L${x(vals.length - 1)},${h} L${x(0)},${h} Z`} fill={`url(#${id}f)`} />}
       <path d={d} fill="none" stroke={`url(#${id})`} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
       {markers && vals.map((v, i) => <circle key={i} cx={x(i)} cy={y(v)} r="2.5" fill="var(--chart-1)" vectorEffect="non-scaling-stroke" />)}
+      {/* hover targets: one invisible column per point */}
+      {series.map((p, i) => <rect key={`h${i}`} x={x(i) - colW / 2} y={0} width={colW} height={h} fill="transparent" data-tip={tip(p.label, p.value, unit)} />)}
     </svg>
+  );
+  if (!axes) return svg;
+  const max = Math.max(...vals), min = Math.min(...vals);
+  return (
+    <div className={u.axesWrap}>
+      <div className={u.yAxis}><span>{fmt(max, unit)}</span><span>{fmt(min, unit)}</span></div>
+      <div>{svg}<div className={u.xAxis}><span>{lab(series[0].label)}</span>{series.length > 2 && <span>{lab(series[Math.floor(series.length / 2)].label)}</span>}<span>{lab(series[series.length - 1].label)}</span></div></div>
+    </div>
   );
 }
 
-export function Bars({ series, h = 140 }: { series: Series; h?: number }) {
+export function Bars({ series, h = 140, unit }: { series: Series; h?: number; unit?: string }) {
   if (!series.length) return <NoData />;
   const max = Math.max(...series.map((s) => s.value), 1);
+  const few = series.length <= 14;
   return (
     <div className={u.bars} style={{ height: h }}>
       {series.map((s) => (
-        <div key={s.label} className={u.barCol} title={`${s.label}: ${fmt(s.value)}`}>
+        <div key={s.label} className={u.barCol} data-tip={tip(s.label, s.value, unit)}>
+          {few && <b className={u.barVal}>{fmt(s.value)}</b>}
           <i style={{ height: `${(s.value / max) * 100}%` }} />
-          <span>{s.label.length === 10 ? s.label.slice(8) : s.label.slice(0, 6)}</span>
+          <span>{/^\d{4}-\d{2}-\d{2}$/.test(s.label) ? lab(s.label).split(" ")[0] : s.label.slice(0, few ? 12 : 6)}</span>
         </div>
       ))}
     </div>
@@ -114,7 +133,7 @@ function Donut({ series }: { series: Series }) {
     <div className={u.donut}>
       <svg viewBox="0 0 100 100">
         {series.map((s, i) => {
-          return <circle key={s.label} cx="50" cy="50" r={r} fill="none" stroke={`var(--chart-${(i % 4) + 1})`} strokeWidth="12" strokeDasharray={`${Math.max(0, lens[i] - 1.5)} ${c}`} strokeDashoffset={-offs[i]} transform="rotate(-90 50 50)" />;
+          return <circle key={s.label} data-tip={`${s.label}: ${fmt(s.value)} (${Math.round((s.value / total) * 100)}%)`} cx="50" cy="50" r={r} fill="none" stroke={`var(--chart-${(i % 4) + 1})`} strokeWidth="12" strokeDasharray={`${Math.max(0, lens[i] - 1.5)} ${c}`} strokeDashoffset={-offs[i]} transform="rotate(-90 50 50)" />;
         })}
       </svg>
       <ul>{series.map((s, i) => <li key={s.label}><i style={{ background: `var(--chart-${(i % 4) + 1})` }} />{s.label}<b>{Math.round((s.value / total) * 100)}%</b></li>)}</ul>
@@ -130,7 +149,7 @@ function Heatmap({ series: all }: { series: Series }) {
   const max = Math.max(...series.map((s) => s.value), 1);
   return (
     <div className={u.heat} style={{ gridTemplateColumns: `repeat(${Math.min(series.length, 14)}, 1fr)` }}>
-      {series.map((s) => <i key={s.label} title={`${s.label}: ${fmt(s.value)}`} style={{ opacity: s.value ? 0.18 + 0.82 * (s.value / max) : 0.07 }} />)}
+      {series.map((s) => <i key={s.label} data-tip={tip(s.label, s.value)} style={{ opacity: s.value ? 0.18 + 0.82 * (s.value / max) : 0.07 }} />)}
     </div>
   );
 }
@@ -431,9 +450,9 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
       );
     }
     case "sparkline": return <Spark series={series} />;
-    case "line": return <Spark series={series} h={150} markers />;
-    case "area": return <Spark series={series} area h={150} />;
-    case "bar": return <Bars series={series} />;
+    case "line": return <Spark series={series} h={150} markers axes unit={p.unit} />;
+    case "area": return <Spark series={series} area h={150} axes unit={p.unit} />;
+    case "bar": return <Bars series={series} unit={p.unit} />;
     case "ring": return <Ring value={valueOf(d)} goal={p.goal} label={p.label} unit={p.unit} />;
     case "donut": return <Donut series={series} />;
     case "heatmap": return <Heatmap series={series} />;
@@ -491,6 +510,8 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "bookrecs": return <BookRecs ctx={ctx} />;
     case "planshare": return <PlanShare ctx={ctx} />;
     case "langconversation": return <LanguageConversation />;
+    case "chessstats": return <ChessStats ctx={ctx} />;
+    case "geostats": return <GeoStats ctx={ctx} />;
     case "screentime": return <ScreenTimeBlock ctx={ctx} />;
     case "deepstats": return <DeepStats p={p} />;
     case "benchmark": return <Benchmark ctx={ctx} p={p} />;

@@ -210,6 +210,18 @@ function coach(p: Ply, x: { captured?: string; piece: string; to: string; bookNa
   }
 }
 
+/** Classify one move from its win-chance loss (same thresholds as the full review). */
+export function classifyLoss(loss: number, isBest: boolean): Cls {
+  if (loss >= 20) return "blunder";
+  if (loss >= 10) return "mistake";
+  if (loss >= 5) return "inaccuracy";
+  if (isBest || loss < 1) return "best";
+  if (loss < 2.5) return "excellent";
+  return "good";
+}
+/** What accuracy is "good" depends on the time control. */
+export const TC_EXPECT: Record<string, number> = { bullet: 70, blitz: 78, rapid: 85, daily: 90, untimed: 88, practice: 85 };
+
 /** Positions from your own mistakes, as single-move puzzles (only where the best move clearly stands out). */
 export function puzzlesFromReview(r: Review, me: "w" | "b") {
   return r.plies

@@ -31,7 +31,8 @@ Rules:
 const ALLOWED = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(npx tsc:*)", "Bash(npx eslint:*)", "Bash(npm run lint:*)", "Bash(npm run build:*)", "Bash(ls:*)", "Bash(cat:*)"];
 
 function netlify(args: string[]) {
-  if (!process.env.NETLIFY_AUTH_TOKEN || !process.env.NETLIFY_SITE_ID) return { url: null as string | null, note: "No NETLIFY_AUTH_TOKEN / NETLIFY_SITE_ID in .env.relay, so no preview was deployed (see relay/README.md)." };
+  // Hosting is on Vercel now: pushing the branch makes Vercel build a preview, and pushing main deploys the live site.
+  if (!process.env.NETLIFY_AUTH_TOKEN || !process.env.NETLIFY_SITE_ID) return { url: null as string | null, note: args.includes("--prod") ? "Pushed to main: Vercel deploys it to the live site in about 2 minutes." : "Vercel is building a preview of this branch: open vercel.com → noesis → Deployments to try it before shipping." };
   const r = sh(win ? "npx.cmd" : "npx", ["-y", "netlify-cli@17", "deploy", "--build", "--json", "--site", process.env.NETLIFY_SITE_ID, ...args], { allowFail: true, timeout: 20 * 60_000 });
   const j = (() => { try { return JSON.parse(r.out.slice(r.out.indexOf("{"))); } catch { return null; } })();
   return r.ok && j ? { url: (j.deploy_url ?? j.url) as string, note: null } : { url: null, note: `Netlify deploy failed: ${r.out.slice(-400)}` };

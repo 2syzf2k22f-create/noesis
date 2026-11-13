@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import u from "./ui.module.css";
 
-type B = { id: string; status: string; request: string; at: string; step?: string; branch?: string; summary?: string; diffstat?: string; preview?: string | null; note?: string | null; shipped?: boolean; rolled_back?: boolean; error?: string | null; prod?: string | null };
+type B = { id: string; status: string; request: string; title?: string | null; proposed?: boolean; at: string; step?: string; branch?: string; summary?: string; diffstat?: string; preview?: string | null; note?: string | null; shipped?: boolean; rolled_back?: boolean; error?: string | null; prod?: string | null };
 
 export function BuildBlock() {
   const [d, setD] = useState<{ autoShip: boolean; relayOnline: boolean; builds: B[] } | null>(null);
@@ -30,7 +30,7 @@ export function BuildBlock() {
       </div>
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
         {d.builds.map((b) => {
-          const state = b.rolled_back ? "rolled back" : b.shipped ? "shipped" : b.status === "error" ? "failed" : b.status === "done" ? "ready" : b.status;
+          const state = b.rolled_back ? "rolled back" : b.shipped ? "shipped" : b.status === "error" ? "failed" : b.status === "done" ? "ready" : b.status === "proposed" ? "Apollo's proposal" : b.status === "cancelled" ? "declined" : b.status;
           return (
             <li key={b.id} style={{ padding: 12, borderRadius: 10, background: "var(--surface)", display: "grid", gap: 6 }}>
               <div className={u.row}>
@@ -41,6 +41,8 @@ export function BuildBlock() {
               {b.error && <small style={{ color: "var(--danger)", whiteSpace: "pre-wrap" }}>{b.error.slice(0, 600)}</small>}
               {b.note && <small className="label">{b.note}</small>}
               <div className={u.row}>
+                {b.status === "proposed" && <button className="pill" data-active="true" onClick={() => act(b.id, "approve")}>Build it</button>}
+                {b.status === "proposed" && <button className="pill" onClick={() => act(b.id, "decline")}>No thanks</button>}
                 {b.preview && <a className="pill" href={b.preview} target="_blank" rel="noreferrer">Open preview ↗</a>}
                 {b.status === "done" && !b.shipped && !b.rolled_back && <button className="pill" data-active="true" onClick={() => act(b.id, "ship")}>Ship it</button>}
                 {b.status === "done" && !b.rolled_back && <button className="pill" onClick={() => act(b.id, "rollback")}>{b.shipped ? "Roll back (revert)" : "Discard"}</button>}

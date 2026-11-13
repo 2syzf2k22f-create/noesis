@@ -10,7 +10,7 @@ const cap = (m: string) => m[0].toUpperCase() + m.slice(1);
 
 /** Home: the only control on the page. Extra controls appear only when they're relevant. */
 export function CommandBar() {
-  const { submit, toggleMic, orbState, reply, micError, setPaletteOpen, model, setModel, status, changes, undoApollo, startListening, stopListening, draft, voice } = useApollo();
+  const { submit, toggleMic, orbState, stopSpeaking, reply, micError, setPaletteOpen, model, setModel, status, changes, undoApollo, startListening, stopListening, draft, voice } = useApollo();
   const [text, setText] = useState("");
   // tap = toggle; hold (>300 ms) = push-to-talk, sends on release
   const press = useRef<{ t: number; held: boolean; timer: number } | null>(null);

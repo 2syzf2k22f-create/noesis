@@ -10,7 +10,7 @@ import type { BlockCtx } from "@/ui/Blocks";
 import { Board, EvalBar, StylePicker, type Arrow, type Mark } from "./Board";
 import { Engine, fmtEval, winPct, type Analysis } from "./engine";
 import { OPENINGS, type Opening } from "./openings";
-import { BAD_CLS, CLS, CLS_ORDER, KEY_CLS, puzzlesFromReview, reviewGame, uciLineToSan, type Phase, type Review } from "./review";
+import { BAD_CLS, CLS, CLS_ORDER, KEY_CLS, TC_EXPECT, classifyLoss, puzzlesFromReview, reviewGame, uciLineToSan, type Cls, type Phase, type Review } from "./review";
 import c from "./chess.module.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -419,14 +419,15 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
   const [pz, setPz] = usePersist<Puzzle | null>("puzzle.pz", null);
   const [step, setStep] = usePersist("puzzle.step", 0);
   const [fen, setFen] = usePersist<string | null>("puzzle.fen", null);
-  const [state, setState] = usePersist<"play" | "wrong" | "solved" | "shown">("puzzle.state", "play");
+  const [state, setState] = usePersist<"play" | "wrong" | "solved" | "shown" | "failed">("puzzle.state", "play");
+  const [lives, setLives] = usePersist("puzzle.lives", 3);
   const [err, setErr] = useState<string | null>(null);
   const [rating, setRating] = useState(1500);
   const failed = useRef(false);
   useEffect(() => { try { const r = Number(localStorage.getItem(RKEY)); if (r) queueMicrotask(() => setRating(r)); } catch {} }, []);
 
   const next = async () => {
-    setErr(null); setState("play"); setStep(0); failed.current = false;
+    setErr(null); setState("play"); setStep(0); failed.current = false; setLives(3);
     try {
       let p: Puzzle;
       if (source === "mine") {
@@ -448,13 +449,20 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
     void ctx.write("create", "puzzle_attempts", { source: pz.source, puzzle_id: pz.id, rating: pz.rating ?? null, solved, themes: (pz.themes ?? []).join(" ") });
   };
   const onMove = (from: string, to: string, promotion?: string) => {
-    if (!pz || !fen || state === "solved" || state === "shown") return;
+    if (!pz || !fen || state === "solved" || state === "shown" || state === "failed") return;
     const g = new Chess(fen);
     let mv;
     try { mv = g.move({ from, to, promotion: promotion ?? "q" }); } catch { return; }
     const want = pz.solution[step];
     const ok = mv.from + mv.to === want.slice(0, 4) || g.isCheckmate();
-    if (!ok) { setState("wrong"); if (!failed.current) { failed.current = true; record(false); } return; }
+    if (!ok) {
+      // three lives: only the third wrong move counts as a fail
+      const left = lives - 1;
+      setLives(left);
+      if (left <= 0) { setState("failed"); if (!failed.current) { failed.current = true; record(false); } }
+      else setState("wrong");
+      return;
+    }
     setState("play");
     if (g.isCheckmate() || step + 1 >= pz.solution.length) { setFen(g.fen()); setState("solved"); if (!failed.current) record(true); return; }
     // opponent's reply
@@ -473,17 +481,17 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
           {source === "lichess" && <select className={c.sel} value={theme} onChange={(e) => setTheme(e.target.value)}>{THEMES.map((t) => <option key={t} value={t}>{t}</option>)}</select>}
           {source === "lichess" && <select className={c.sel} value={diff} onChange={(e) => setDiff(e.target.value)}>{["easiest", "easier", "normal", "harder", "hardest"].map((t) => <option key={t}>{t}</option>)}</select>}
         </div>
-        <div className="label">Your puzzle rating {rating}{pz?.rating ? ` · this puzzle ${pz.rating}` : ""}</div>
+        <div className="label">Your puzzle rating {rating}{pz?.rating ? ` · this puzzle ${pz.rating}` : ""}{pz && state !== "solved" && state !== "shown" ? ` · ${"♥".repeat(Math.max(0, lives))}${"♡".repeat(3 - Math.max(0, lives))}` : ""}</div>
         {err && <div className={c.msg} data-tone="bad">{err}</div>}
         {pz && <div className={c.msg} data-tone={state === "solved" ? "good" : state === "wrong" ? "bad" : undefined}>
-          {state === "solved" ? "Solved ✓" : state === "wrong" ? "Not that one. Try again, or show the solution." : state === "shown" ? `Solution: ${(() => { const g = new Chess(pz.fen); return pz.solution.map((u) => { try { return g.move(uciMove(u)).san; } catch { return u; } }).join(" "); })()}` : `Find the best move for ${toMove}.`}
+          {state === "solved" ? "Solved ✓" : state === "wrong" ? `Not that one. ${lives} ${lives === 1 ? "life" : "lives"} left.` : state === "failed" ? "Out of lives: counted as a miss. Show the solution to see it." : state === "shown" ? `Solution: ${(() => { const g = new Chess(pz.fen); return pz.solution.map((u) => { try { return g.move(uciMove(u)).san; } catch { return u; } }).join(" "); })()}` : `Find the best move for ${toMove}.`}
           {pz.note && <><br /><small>{pz.note}</small></>}
-          {pz.themes && state !== "play" && <><br /><small>{pz.themes.join(", ")}</small></>}
+          {pz.themes && (state === "solved" || state === "shown") && <><br /><small>Themes: {pz.themes.join(", ")}</small></>}
         </div>}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button className="pill" data-active="true" onClick={next}>Next puzzle</button>
           {pz && state !== "solved" && <button className="pill" onClick={() => { if (!failed.current) { failed.current = true; record(false); } setState("shown"); }}>Show solution</button>}
-          {pz && <button className="pill" onClick={() => { setFen(pz.fen); setStep(0); setState("play"); }}>Retry</button>}
+          {pz && <button className="pill" onClick={() => { setFen(pz.fen); setStep(0); setState("play"); setLives(3); }}>Retry</button>}
         </div>
       </div>
     </div>
@@ -493,7 +501,9 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
 
 /* ======================= game review (chess.com style) ======================= */
 type Init = { sans: string[]; startFen: string; me: "w" | "b"; gameId: string | null; title?: string };
-type View = { kind: "game" } | { kind: "line"; fen: string; sans: string[]; k: number; label: string } | { kind: "retry"; ply: number; tries: number; msg: string | null; ok: boolean | null };
+type TryResult = { san: string; cls: Cls; loss: number; bestSan: string | null; line: string[]; fen: string; from: string; to: string };
+type View = { kind: "game" } | { kind: "line"; fen: string; sans: string[]; k: number; label: string } | { kind: "retry"; ply: number; tries: number; msg: string | null; ok: boolean | null }
+  | { kind: "try"; fen: string; label: string; back: { kind: "game" } | { kind: "line"; fen: string; sans: string[]; k: number; label: string }; busy: boolean; result: TryResult | null };
 const PHASES: Phase[] = ["opening", "middlegame", "endgame"];
 const phaseIcon = (a?: number) => (a == null ? { sym: "–", color: "var(--text-dim)" } : a >= 90 ? CLS.best : a >= 80 ? CLS.good : a >= 70 ? CLS.inaccuracy : a >= 55 ? CLS.mistake : CLS.blunder);
 const DEPTHS = [{ d: 10, label: "Fast" }, { d: 13, label: "Standard" }, { d: 16, label: "Deep" }];
@@ -568,9 +578,17 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
     let lm: { from: string; to: string } | null = null;
     for (const s of view.sans.slice(0, view.k)) { try { const m = g.move(s); lm = { from: m.from, to: m.to }; } catch { break; } }
     boardFen = g.fen(); lastMove = lm;
+    interactive = true; // spotted a better move in the line? play it to get it rated
   } else if (view.kind === "retry" && rev) {
     boardFen = rev.plies[view.ply - 1].fenBefore;
     interactive = view.ok !== true;
+  } else if (view.kind === "try") {
+    boardFen = view.result?.fen ?? view.fen;
+    interactive = !view.busy && !view.result;
+    if (view.result) {
+      marks[view.result.to] = { label: CLS[view.result.cls].sym, color: CLS[view.result.cls].color };
+      squares[view.result.from] = squares[view.result.to] = `${CLS[view.result.cls].color}88`;
+    }
   }
 
   const evalNow = view.kind === "game" ? (ply ? ply.after : rev?.plies[0]?.before) : undefined;
@@ -611,10 +629,34 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
     setView({ ...view, tries: view.tries + 1, ok, msg: ok ? `${m.san} is ${uci === pl.best ? "the best move" : "also a good move"}. ✓` : `${m.san} isn't it. Try again.` });
   };
 
+  // your own move from any position (the move before, or a point in a shown line): rated like the others
+  const onTry = async (base: string, back: Extract<View, { kind: "try" }>["back"], label: string, from: string, to: string, promotion?: string) => {
+    if (!engine) return;
+    const g = new Chess(base);
+    let m;
+    try { m = g.move({ from, to, promotion: promotion ?? "q" }); } catch { return; }
+    setView({ kind: "try", fen: base, label, back, busy: true, result: null });
+    const mover = new Chess(base).turn();
+    const pov = (wp: number) => (mover === "w" ? wp : 100 - wp);
+    const before = await engine.analyse(base, { depth: depth + 1, multipv: 1 });
+    const after = g.isGameOver() ? { best: null, lines: [{ cp: g.isCheckmate() ? null : 0, mate: g.isCheckmate() ? (mover === "w" ? 0.5 : -0.5) : null, pv: [], depth: 0 }] } : await engine.analyse(g.fen(), { depth: depth + 1, multipv: 1 });
+    const uci = m.from + m.to + (m.promotion ?? "");
+    const loss = Math.max(0, Math.round((pov(winPct(before.lines[0])) - pov(winPct(after.lines[0]))) * 10) / 10);
+    const cls = classifyLoss(loss, before.best === uci);
+    setView({ kind: "try", fen: base, label, back, busy: false, result: { san: m.san, cls, loss, bestSan: before.best ? uciLineToSan(base, [before.best], 1)[0] ?? null : null, line: uciLineToSan(g.fen(), after.lines[0]?.pv ?? []), fen: g.fen(), from: m.from, to: m.to } });
+  };
+  const onBoardMove = (from: string, to: string, promotion?: string) => {
+    if (view.kind === "retry") return onRetry(from, to, promotion);
+    if (view.kind === "line") { const g = new Chess(view.fen); for (const x of view.sans.slice(0, view.k)) { try { g.move(x); } catch { break; } } void onTry(g.fen(), view, `Your idea in the line`, from, to, promotion); }
+    if (view.kind === "try" && !view.result) void onTry(view.fen, view.back, view.label, from, to, promotion);
+  };
+  const timeClass = String(game?.time_class ?? (initial ? "practice" : "")) || null;
+  const tcNote = timeClass ? ` This was a ${timeClass} game${TC_EXPECT[timeClass] ? ` (around ${TC_EXPECT[timeClass]}% accuracy is strong at that speed)` : ""}: judge decisions with that clock in mind.` : "";
+
   const askWhy = () => {
     if (!rev || !ply) return;
     const n = Math.ceil(idx / 2);
-    submit(`Explain move ${n}${ply.color === "w" ? "." : "..."} ${ply.san} in my game (I was ${me === "w" ? "White" : "Black"}). Stockfish classified it as ${CLS[ply.cls].label} (win-chance loss ${ply.loss}%). Eval before ${fmtEval(ply.before)}, after ${fmtEval(ply.after)}. Position before the move (FEN): ${ply.fenBefore}. Best was ${ply.bestSan ?? "?"} with ${ply.bestLine.join(" ")}. After ${ply.san}, the opponent's best reply line: ${ply.replyLine.join(" ") || "none"}. Explain WHY it's ${CLS[ply.cls].label.toLowerCase()} and why the best move is better, in plain words for a club player: threats, tactics, plans. Use annotate_board on the position after my move (FEN ${ply.fenAfter}) to draw arrows for the threats and the better move. Don't change the classification.`, { thread: "chess:review" });
+    submit(`Explain move ${n}${ply.color === "w" ? "." : "..."} ${ply.san} in my game (I was ${me === "w" ? "White" : "Black"}). Stockfish classified it as ${CLS[ply.cls].label} (win-chance loss ${ply.loss}%). Eval before ${fmtEval(ply.before)}, after ${fmtEval(ply.after)}. Position before the move (FEN): ${ply.fenBefore}. Best was ${ply.bestSan ?? "?"} with ${ply.bestLine.join(" ")}. After ${ply.san}, the opponent's best reply line: ${ply.replyLine.join(" ") || "none"}. Explain WHY it's ${CLS[ply.cls].label.toLowerCase()} and why the best move is better, in plain words for a club player: threats, tactics, plans.${tcNote} Use annotate_board on the position after my move (FEN ${ply.fenAfter}) to draw arrows for the threats and the better move. Don't change the classification.`, { thread: "chess:review" });
   };
 
   const graph = rev ? [rev.plies[0] ? winPct(rev.plies[0].before) : 50, ...rev.plies.map((x) => winPct(x.after))] : [];
@@ -663,7 +705,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
       <div className={c.boardCol}>
         <EvalBar pct={winPct(view.kind === "game" ? evalNow : undefined)} label={view.kind === "game" ? fmtEval(evalNow) : "…"} flip={me === "b"} />
         <div className={c.boardStack}>
-          <Board fen={boardFen} orientation={me === "w" ? "white" : "black"} interactive={interactive} onMove={onRetry}
+          <Board fen={boardFen} orientation={me === "w" ? "white" : "black"} interactive={interactive} onMove={onBoardMove}
             marks={marks} squares={squares} arrows={arrows} lastMove={lastMove} />
         </div>
       </div>
@@ -681,7 +723,17 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
         <div className={c.coach}>
           <i className={c.coachOrb} />
           <div>
-            {view.kind === "line" ? <p><b>{view.label}</b> {view.sans.slice(0, view.k).join(" ")}</p>
+            {view.kind === "try" ? (
+                <p>{view.busy ? "Checking your move with Stockfish…" : view.result ? (
+                  <>
+                    <i className={c.cls} style={{ background: CLS[view.result.cls].color }}>{CLS[view.result.cls].sym}</i>{" "}
+                    Your move <b>{view.result.san}</b> is {/^[aeiou]/i.test(CLS[view.result.cls].label) ? "an" : "a"} <b style={{ color: CLS[view.result.cls].color }}>{CLS[view.result.cls].label.toLowerCase()}</b> move{view.result.loss >= 1 ? ` (−${view.result.loss}% win chance)` : ""}.
+                    {view.result.bestSan && view.result.bestSan !== view.result.san ? <> Best here was <b>{view.result.bestSan}</b>.</> : null}
+                    {view.result.line.length > 0 && <><br /><small>Engine line after your move: {view.result.line.join(" ")}</small></>}
+                  </>
+                ) : <>{view.label}: drag a piece to play the move you have in mind. It gets rated like every other move.</>}</p>
+              )
+              : view.kind === "line" ? <p><b>{view.label}</b> {view.sans.slice(0, view.k).join(" ")}<br /><small className="label">Spotted something else? Play it on the board to rate it.</small></p>
               : view.kind === "retry" ? <p>{view.msg ?? `Find a better move than ${rev.plies[view.ply - 1].san}.`}</p>
               : ply ? (
                 <p>
@@ -690,7 +742,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
                   <br />{ply.coach}
                 </p>
               ) : (
-                <p>{rev.opening ? `${rev.opening}. ` : ""}{myAcc >= 90 ? "Excellent game, very accurate." : myAcc >= 80 ? "A solid game with a few slips." : myAcc >= 65 ? "Some good ideas, and some moments to learn from." : "A tough one. Let's find the key moments."} Your accuracy was <b>{myAcc}</b>.</p>
+                <p>{rev.opening ? `${rev.opening}. ` : ""}{myAcc >= 90 ? "Excellent game, very accurate." : myAcc >= 80 ? "A solid game with a few slips." : myAcc >= 65 ? "Some good ideas, and some moments to learn from." : "A tough one. Let's find the key moments."} Your accuracy was <b>{myAcc}</b>{timeClass && TC_EXPECT[timeClass] ? <> ({myAcc >= TC_EXPECT[timeClass] ? "strong" : myAcc >= TC_EXPECT[timeClass] - 8 ? "about normal" : "below par"} for {timeClass}, where ~{TC_EXPECT[timeClass]}% is strong)</> : null}.</p>
               )}
           </div>
         </div>
@@ -702,6 +754,9 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
               {view.kind === "line" && <button className="pill" onClick={() => setView({ ...view, k: Math.max(0, view.k - 1) })}>◀</button>}
               {view.kind === "line" && <button className="pill" onClick={() => setView({ ...view, k: Math.min(view.sans.length, view.k + 1) })}>▶</button>}
               {view.kind === "retry" && !view.ok && view.tries > 0 && <button className="pill" onClick={() => { const pl = rev.plies[view.ply - 1]; showLine(pl.fenBefore, pl.bestLine, "Best line:"); }}>Show the answer</button>}
+              {view.kind === "try" && view.result && view.result.line.length > 0 && <button className="pill" onClick={() => showLine(view.result!.fen, view.result!.line, `After your ${view.result!.san}:`)}>Show what happens next</button>}
+              {view.kind === "try" && view.result && <button className="pill" onClick={() => setView({ ...view, result: null })}>Try another move</button>}
+              {view.kind === "try" && view.back.kind === "line" && <button className="pill" onClick={() => setView(view.back)}>Back to the line</button>}
               <button className="pill" data-active="true" onClick={() => setView({ kind: "game" })}>Back to game</button>
             </>
           ) : ply ? (
@@ -709,6 +764,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
               {ply.bestSan && ply.bestSan !== ply.san && <button className="pill" onClick={() => showLine(ply.fenBefore, ply.bestLine, "Best:")}>Best</button>}
               {ply.replyLine.length > 0 && <button className="pill" onClick={() => showLine(ply.fenAfter, ply.replyLine, "Follow-up:")}>Show follow-up</button>}
               {ply.color === me && BAD_CLS.includes(ply.cls) && <button className="pill" onClick={() => setView({ kind: "retry", ply: idx, tries: 0, msg: null, ok: null })}>↻ Retry</button>}
+              <button className="pill" onClick={() => setView({ kind: "try", fen: ply.fenBefore, label: `Instead of ${ply.san}`, back: { kind: "game" }, busy: false, result: null })}>✎ Try your own move</button>
               <button className="pill" onClick={askWhy}>Ask Apollo why</button>
               {keyIdx.some((i) => i > idx) && <button className="pill" onClick={() => goto(keyIdx.find((i) => i > idx)!)}>Next key moment ›</button>}
             </>
@@ -802,7 +858,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
         <div className={c.toolbar}>
           <button className="pill" onClick={() => {
             const bad = rev.plies.map((x, i) => ({ ...x, n: Math.floor(i / 2) + 1 })).filter((x) => x.color === me && BAD_CLS.includes(x.cls));
-            submit(`Coach me on this whole chess game (I was ${me === "w" ? "White" : "Black"}${game?.opponent ? ` vs ${game.opponent}` : ""}). Accuracy W ${rev.accuracy.w} / B ${rev.accuracy.b}. ${rev.opening ? `Opening: ${rev.opening}. ` : ""}Moves: ${rev.plies.map((x) => x.san).join(" ")}. My flagged moves (Stockfish): ${bad.map((x) => `${x.n}. ${x.san} = ${x.cls}, best ${x.bestSan} (${x.bestLine.join(" ")})`).join("; ") || "none"}. Give the 3 key moments, the recurring weakness, and one thing to practise. Don't change the classifications.`, { thread: "chess:review" });
+            submit(`Coach me on this whole chess game (I was ${me === "w" ? "White" : "Black"}${game?.opponent ? ` vs ${game.opponent}` : ""}). Accuracy W ${rev.accuracy.w} / B ${rev.accuracy.b}. ${rev.opening ? `Opening: ${rev.opening}. ` : ""}Moves: ${rev.plies.map((x) => x.san).join(" ")}. My flagged moves (Stockfish): ${bad.map((x) => `${x.n}. ${x.san} = ${x.cls}, best ${x.bestSan} (${x.bestLine.join(" ")})`).join("; ") || "none"}. Give the 3 key moments, the recurring weakness, and one thing to practise.${tcNote} Use walkthrough to show each key moment on the board as you explain it (FEN before each move: ${bad.slice(0, 6).map((x) => `${x.n}${x.color === "w" ? "." : "..."}${x.san}: ${x.fenBefore}`).join(" | ")}). Don't change the classifications.`, { thread: "chess:review" });
           }}>Coach me on this game</button>
           {!initial && <button className="pill" onClick={() => { setRev(null); setGame(null); }}>Another game</button>}
         </div>

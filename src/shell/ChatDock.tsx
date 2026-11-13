@@ -16,7 +16,7 @@ const DEFAULT_BOX: Box = { x: 104, y: 12, w: 400, h: 480 };
 
 export function ChatDock() {
   const pathname = usePathname();
-  const { submit, reply, activeConv, chatId, changes, toggleMic, orbState, draft, openChat, notice } = useApollo();
+  const { submit, reply, activeConv, chatId, changes, toggleMic, orbState, draft, openChat, notice, stopSpeaking } = useApollo();
   const ui = useUi();
   const [text, setText] = useState("");
   const [imgs, setImgs] = useState<string[]>([]);
@@ -105,6 +105,7 @@ export function ChatDock() {
         onPaste={(e) => { const fs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/")); if (fs.length) { e.preventDefault(); void addFiles(fs); } }}
         onChange={(e) => setText(e.target.value)} onFocus={() => uiStore.setChat({ open: true })}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } if (e.key === "Escape") { (e.target as HTMLElement).blur(); uiStore.setChat({ open: false }); } }} />
+      {orbState === "speaking" && <button className={s.mic} onClick={stopSpeaking} title="Stop talking (Esc)" aria-label="Stop talking">■</button>}
       <button className={s.mic} data-on={orbState === "listening"} onClick={toggleMic} aria-label="Talk"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></button>
       <button className={s.send} onClick={send} aria-label="Send" disabled={!text.trim() && !imgs.length}>↑</button>
     </div>
@@ -124,6 +125,7 @@ export function ChatDock() {
         <i className={s.dot} data-state={orbState} />
         <b>Apollo</b>
         <span className={s.headTools}>
+          {orbState === "speaking" && <button onClick={stopSpeaking} title="Stop talking (Esc)" style={{ color: "var(--danger)" }}>■ Stop</button>}
           <button onClick={() => { openChat(null); setMsgs([]); }} title="New chat">New</button>
           <button onClick={() => uiStore.setChat({ box: null })} title="Back beside the orb">Reset</button>
           <button onClick={() => uiStore.setChat({ open: false })} aria-label="Collapse"><Icon name="close" size={14} /></button>
@@ -138,11 +140,37 @@ export function ChatDock() {
         )}
         {shown.map((m) => <div key={m.id} className={s.msg} data-role={m.role}>{m.content}</div>)}
         {notice && <div className="label" style={{ textAlign: "center" }}>{notice}</div>}
+        <Proposals />
         {live && <div className={s.msg} data-role="assistant" data-pending={live.pending} data-tone={live.tone}>{live.text || "…"}</div>}
       </div>
       {inputRow}
       <span className={s.grip} onPointerDown={(e) => begin("size", e)} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-hidden />
     </section>
+  );
+}
+
+/** Apollo's proposed code changes: one click to build (nothing runs without it). */
+function Proposals() {
+  const { changes, reply } = useApollo();
+  const [list, setList] = useState<{ id: string; title: string | null; request: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/build").then((r) => (r.ok ? r.json() : null)).then((j) => setList((j?.builds ?? []).filter((b: { status: string }) => b.status === "proposed"))).catch(() => {});
+  }, [changes, reply?.pending]);
+  const act = async (id: string, action: string) => { await fetch(`/api/build/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }); setList((l) => l.filter((x) => x.id !== id)); };
+  if (!list.length) return null;
+  return (
+    <>
+      {list.map((b) => (
+        <div key={b.id} className={s.msg} data-role="assistant" style={{ borderLeft: "3px solid var(--accent)" }}>
+          <b>Proposed change to NOESIS</b>{b.title ? `: ${b.title}` : ""}
+          <details><summary className="label" style={{ cursor: "pointer" }}>What it would do</summary><div style={{ whiteSpace: "pre-wrap", fontSize: 12.5 }}>{b.request}</div></details>
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <button className="pill" data-active="true" onClick={() => act(b.id, "approve")}>Build it</button>
+            <button className="pill" onClick={() => act(b.id, "decline")}>No thanks</button>
+          </div>
+        </div>
+      ))}
+    </>
   );
 }
 

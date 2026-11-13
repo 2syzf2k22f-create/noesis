@@ -13,6 +13,7 @@ import { nowIso, type Row, type Store } from "../src/core/store";
 import { claudeCode, type Backend, type RunResult } from "./backend.mts";
 import { runBuild, runRollback, runShip } from "./build.mts";
 import { syncMicrosoft } from "../src/core/microsoft";
+import { syncChess, syncCodeforces } from "../src/core/sync";
 import { indexPending } from "./embed.mts";
 import { runStt } from "./stt.mts";
 
@@ -254,6 +255,17 @@ async function schedule() {
     };
     if (now.getDay() >= 1 && (now.getDay() > 1 || now.getHours() >= 7) && data.last_report_week !== thisWeek && data.auto_report !== false) await queue("report", { weeks_ago: 1 }, "last_report_week");
     if (now.getDay() === 0 && now.getHours() >= 18 && data.last_opps_week !== thisWeek && data.auto_opportunities !== false) await queue("research", { topic: "opportunities" }, "last_opps_week");
+    // daily syncs (on by default; Apollo can switch them off with settings.data.auto_chess_sync = false)
+    const today = now.toISOString().slice(0, 10);
+    if (data.auto_chess_sync !== false && data.last_chess_sync !== today && now.getHours() >= 6) {
+      const r = await syncChess(store!).catch((e) => ({ error: (e as Error).message }));
+      if (!("error" in r && /username/.test(String(r.error)))) log("daily chess.com sync", JSON.stringify(r).slice(0, 80));
+      await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), last_chess_sync: today } });
+    }
+    if (data.auto_codeforces_sync !== false && data.last_cf_sync !== today && now.getHours() >= 6) {
+      await syncCodeforces(store!).catch(() => null);
+      await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), last_cf_sync: today } });
+    }
     // book recommendations every other Saturday afternoon
     const lastBooks = data.last_books_week ? Date.parse(data.last_books_week) : 0;
     if (now.getDay() === 6 && now.getHours() >= 15 && now.getTime() - lastBooks > 13 * 864e5 && data.auto_books !== false) await queue("research", { topic: "books" }, "last_books_week");
