@@ -13,7 +13,12 @@ export function BuildBlock() {
   const [open, setOpen] = useState<string | null>(null);
   const load = () => fetch("/api/build").then((r) => (r.ok ? r.json() : null)).then(setD).catch(() => {});
   useEffect(() => { void load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, []);
-  const act = async (id: string, action: string) => { await fetch(`/api/build/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }); void load(); };
+  const [err, setErr] = useState<string | null>(null);
+  const act = async (id: string, action: string) => {
+    const r = await fetch(`/api/build/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }).then((x) => x.json()).catch(() => null);
+    setErr(r?.error ?? null);
+    void load();
+  };
   if (!d) return <div className="label">Loading…</div>;
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -28,9 +33,10 @@ export function BuildBlock() {
         </label>
         <span className="label">Relay {d.relayOnline ? "online" : "offline: builds wait in the queue"}</span>
       </div>
+      {err && <div className="label" style={{ color: "var(--danger)" }}>{err}</div>}
       <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
         {d.builds.map((b) => {
-          const state = b.rolled_back ? "rolled back" : b.shipped ? "shipped" : b.status === "error" ? "failed" : b.status === "done" ? "ready" : b.status === "proposed" ? "Apollo's proposal" : b.status === "cancelled" ? "declined" : b.status;
+          const state = b.rolled_back ? "rolled back" : b.shipped ? "shipped" : b.status === "error" ? "failed" : b.status === "done" ? "ready" : b.status === "proposed" ? "Apollo's proposal" : b.status === "cancelled" ? (b.step === "Declined" ? "declined" : "cancelled") : b.status;
           return (
             <li key={b.id} style={{ padding: 12, borderRadius: 10, background: "var(--surface)", display: "grid", gap: 6 }}>
               <div className={u.row}>
@@ -43,6 +49,7 @@ export function BuildBlock() {
               <div className={u.row}>
                 {b.status === "proposed" && <button className="pill" data-active="true" onClick={() => act(b.id, "approve")}>Build it</button>}
                 {b.status === "error" && <button className="pill" data-active="true" onClick={() => act(b.id, "retry")}>↻ Retry</button>}
+                {b.status === "queued" && <button className="pill" onClick={() => act(b.id, "cancel")}>✕ Cancel</button>}
                 {b.status === "proposed" && <button className="pill" onClick={() => act(b.id, "decline")}>No thanks</button>}
                 {b.preview && <a className="pill" href={b.preview} target="_blank" rel="noreferrer">Open preview ↗</a>}
                 {b.status === "done" && !b.shipped && !b.rolled_back && <button className="pill" data-active="true" onClick={() => act(b.id, "ship")}>Ship it</button>}
