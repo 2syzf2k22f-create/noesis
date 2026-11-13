@@ -321,3 +321,38 @@
     right: 12px;
   }
 }
+
+.inputWrap {
+  display: grid;
+  gap: 6px;
+}
+
+.thumbs {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px 0;
+}
+
+.thumb {
+  position: relative;
+}
+
+.thumb img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.thumb button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 10px;
+}

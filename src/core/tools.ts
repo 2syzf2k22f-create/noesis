@@ -26,7 +26,8 @@ export const WRITABLE = [
   "chess_practice", "poker_practice",
   "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items",
 ] as const;
-const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
+// Apollo can read everything except your private journal and stored sign-in tokens
+const READABLE = [...WRITABLE, "action_log", "trash", "page_versions", "jobs", "usage_log", "relay_status", "messages", "chat_summaries", "reviews", "note_chunks", "spec_topics", "subjects"] as const;
 const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
 /** What the user's own forms may write (the journal is private: Apollo can't write or read it). */
 export const USER_WRITABLE = new Set<string>([...WRITABLE, "journal_entries", "geo_attempts", "memory_sessions"]);
@@ -90,11 +91,13 @@ export const TOOLS: ToolDef[] = [
     description: `List rows of a table (newest first). Tables: ${READABLE.join(", ")}.`,
     input: { table: readEnum, where: json.optional(), include_deleted: z.boolean().optional(), limit: z.number().int().min(1).max(100).optional() },
     async run({ store }, a) {
-      const rows = await store.list(a.table, {
+      const base = {
         eq: a.where as Record<string, string | number | boolean | null> | undefined,
         isNull: SOFT_DELETE.has(a.table) && !a.include_deleted ? ["deleted_at"] : undefined,
-        order: { col: "created_at", asc: false }, limit: a.limit ?? 20,
-      });
+        limit: a.limit ?? 20,
+      };
+      // newest first where the table has created_at (settings and a few others don't)
+      const rows = await store.list(a.table, { ...base, order: { col: "created_at", asc: false } }).catch(() => store.list(a.table, base));
       return rows.map(trim);
     },
   },
@@ -288,6 +291,17 @@ export const TOOLS: ToolDef[] = [
       for (const b of fresh) { const row = await ctx.store.insert("opportunities", { kind: "book", title: b.title, author: b.author, url: b.url, summary: b.why, subject: b.subject ?? null, deleted_at: null }); await log(ctx, "create_record", "opportunities", row.id, null, row); }
       if (fresh.length) await ctx.store.insert("inbox_items", { source: "books", title: `${fresh.length} book recommendation${fresh.length === 1 ? "" : "s"}`, body: fresh.map((b: { title: string; author: string }) => `- ${b.title} by ${b.author}`).join("\n"), link: "/s/school/opportunities", read_at: null, deleted_at: null });
       return { saved: fresh.length, skipped: a.items.length - fresh.length };
+    },
+  },
+  {
+    name: "run_sync",
+    description: "Run a sync right now and get the result: chess (chess.com games and ratings, needs the chess_username fact), codeforces (needs codeforces_handle), microsoft (Teams, Outlook, OneNote, Arbor). Use it instead of asking Reg to press a sync button.",
+    input: { service: z.enum(["chess", "codeforces", "microsoft"]) },
+    async run(ctx, a) {
+      const { syncChess, syncCodeforces } = await import("./sync");
+      const r = a.service === "chess" ? await syncChess(ctx.store) : a.service === "codeforces" ? await syncCodeforces(ctx.store) : await (await import("./microsoft")).syncMicrosoft(ctx.store);
+      await pushUi(ctx, { type: "reload" });
+      return r;
     },
   },
   {
@@ -573,12 +587,13 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "remember_fact",
-    description: "Store or update a short durable fact about the user (used as memory between chats).",
+    description: "Store or update a short durable fact about the user (used as memory between chats). Keys are lowercase_snake_case; known keys the site reads: chess_username (chess.com), codeforces_handle, target_grade.",
     input: { key: z.string(), value: z.string() },
     async run(ctx, a) {
-      const existing = (await ctx.store.list("profile_facts", { eq: { key: a.key }, limit: 1 }))[0] ?? null;
+      a.key = String(a.key).trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const existing = (await ctx.store.list("profile_facts", { limit: 500 })).find((f) => String(f.key).toLowerCase() === a.key) ?? null;
       const row = existing
-        ? await ctx.store.update("profile_facts", existing.id, { value: a.value, updated_at: nowIso() })
+        ? await ctx.store.update("profile_facts", existing.id, { key: a.key, value: a.value, updated_at: nowIso() })
         : await ctx.store.insert("profile_facts", { key: a.key, value: a.value, updated_at: nowIso() });
       await log(ctx, "remember_fact", "profile_facts", row!.id, existing, row);
       return row;

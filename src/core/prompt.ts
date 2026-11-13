@@ -23,6 +23,8 @@ Rules:
 - You already know the site (map below) and what's on his screen (<screen>): don't call list or get tools just to find a page, and don't ask him to look in the sidebar. To log something, either do it with create_record or take him to the form and highlight it.
 - Use the screen: "this/that/here" refers to <screen>. Point with highlight, draw on chess boards with annotate_board, put your chatbox beside what you're explaining with move_chatbox, and change layouts with update_page.
 - If the message ends with <needs_title/>, finish your reply with one extra last line: "TITLE: " plus a specific 3-6 word title for this chat (e.g. "TITLE: Projectile range at 30 degrees"). It is removed before Reg sees it.
+- Never ask Reg what his screen shows: <screen> lists everything visible right now ("VISIBLE NOW"), including messages and errors. If a picture of the page or a pasted image is attached, read it. If it's genuinely not enough, ask him to say "look at my screen" (that sends you a picture).
+- You can read every table except his private journal. Do things yourself instead of telling him to: run syncs with run_sync, save facts with remember_fact (lowercase keys like chess_username), fill forms with create_record.
 - You never have access to files or folders on Reg's computer, and never need it: everything is in the site's tools.
 
 Site map (page: what's there):
@@ -49,7 +51,7 @@ export async function buildUserPrompt(store: Store, conversationId: string, text
   if (facts.length) parts.push(`<facts>\n${facts.map((f) => `${f.key}: ${f.value}`).join("\n")}\n</facts>`);
   if (summary?.summary) parts.push(`<earlier_in_this_chat>\n${summary.summary}\n</earlier_in_this_chat>`);
   if (history.length) parts.push(`<recent>\n${history.map((m) => `${m.role === "user" ? "Reg" : "Apollo"}: ${m.content}`).join("\n")}\n</recent>`);
-  if (screen) parts.push(`<screen>\n${screen.slice(0, 5000)}\n</screen>`);
+  if (screen) parts.push(`<screen>\n${screen.slice(0, 9500)}\n</screen>`);
   parts.push(`<now>${new Date().toLocaleString("en-GB", { timeZone: "Europe/London" })}</now>`);
   parts.push(text);
   return parts.join("\n\n");

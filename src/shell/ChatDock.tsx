@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useApollo } from "./apollo";
 import { Icon } from "./Icon";
 import { findTarget, uiStore, useUi, type Box } from "./uiStore";
+import { shrinkImage } from "./images";
 import s from "./dock.module.css";
 
 type Msg = { id: string; role: string; content: string };
@@ -18,6 +19,7 @@ export function ChatDock() {
   const { submit, reply, activeConv, chatId, changes, toggleMic, orbState, draft, openChat, notice } = useApollo();
   const ui = useUi();
   const [text, setText] = useState("");
+  const [imgs, setImgs] = useState<string[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const drag = useRef<{ mode: "move" | "size"; sx: number; sy: number; b: Box } | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -51,11 +53,18 @@ export function ChatDock() {
 
   const send = () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t && !imgs.length) return;
     setText("");
-    setMsgs((m) => [...m, { id: `local-${m.length}`, role: "user", content: t }]);
+    const pics = imgs;
+    setImgs([]);
+    setMsgs((m) => [...m, { id: `local-${m.length}`, role: "user", content: `${t}${pics.length ? ` [${pics.length} image${pics.length > 1 ? "s" : ""}]` : ""}` }]);
     uiStore.setChat({ open: true });
-    submit(t);
+    submit(t, pics.length ? { images: pics } : undefined);
+  };
+  const addFiles = async (files: Iterable<File>) => {
+    const out: string[] = [];
+    for (const f of files) if (f.type.startsWith("image/")) out.push(await shrinkImage(f));
+    if (out.length) { setImgs((x) => [...x, ...out].slice(0, 4)); uiStore.setChat({ open: true }); }
   };
   const begin = (mode: "move" | "size", e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button,textarea")) return;
@@ -75,12 +84,30 @@ export function ChatDock() {
   const shown = msgs.filter((m) => !(live && !live.pending && m.role === "assistant" && m.content === live.text));
 
   const inputRow = (
+    <div className={s.inputWrap} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }}>
+    {imgs.length > 0 && (
+      <div className={s.thumbs}>
+        {imgs.map((src, i) => (
+          <span key={i} className={s.thumb}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt="" />
+            <button onClick={() => setImgs(imgs.filter((_, j) => j !== i))} aria-label="Remove">✕</button>
+          </span>
+        ))}
+      </div>
+    )}
     <div className={s.inputRow}>
-      <textarea ref={input} rows={1} value={draft || text} placeholder={orbState === "listening" ? "Listening…" : "Ask Apollo anything  ( / )"}
+      <label className={s.mic} title="Attach a picture (or paste / drop one)" style={{ cursor: "pointer" }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-8 8" /></svg>
+        <input type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
+      </label>
+      <textarea ref={input} rows={1} value={draft || text} placeholder={orbState === "listening" ? "Listening… (Alt+P again to send)" : "Ask Apollo anything, or paste a screenshot  ( / )"}
+        onPaste={(e) => { const fs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/")); if (fs.length) { e.preventDefault(); void addFiles(fs); } }}
         onChange={(e) => setText(e.target.value)} onFocus={() => uiStore.setChat({ open: true })}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } if (e.key === "Escape") { (e.target as HTMLElement).blur(); uiStore.setChat({ open: false }); } }} />
       <button className={s.mic} data-on={orbState === "listening"} onClick={toggleMic} aria-label="Talk"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></button>
-      <button className={s.send} onClick={send} aria-label="Send" disabled={!text.trim()}>↑</button>
+      <button className={s.send} onClick={send} aria-label="Send" disabled={!text.trim() && !imgs.length}>↑</button>
+    </div>
     </div>
   );
 

@@ -27,6 +27,8 @@ export type RunOpts = {
   /** Build mode only: run inside the repo with file edits auto-accepted. */
   cwd?: string;
   permissionMode?: "acceptEdits";
+  /** Pictures sent with the question (data URLs): passed to Claude as image content. */
+  images?: string[];
 };
 export interface Backend {
   name: string;
@@ -79,6 +81,9 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
       "--tools", [...new Set((o.builtins ?? []).map((b) => b.replace(/\(.*$/, "")))].join(","),
       "--strict-mcp-config",
     ];
+    // with images, the question goes in as a structured message (text + pictures) on stdin
+    const imgs = (o.images ?? []).map((d) => /^data:(image\/[a-z]+);base64,(.+)$/.exec(d)).filter((m): m is RegExpExecArray => !!m);
+    if (imgs.length) args.push("--input-format", "stream-json");
     const allowed = [...(o.mcpConfig ? ["mcp__noesis"] : []), ...(o.builtins ?? [])];
     if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig);
     if (allowed.length) args.push("--allowedTools", ...allowed);
@@ -135,7 +140,10 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
         if (!res.rateLimited && /usage limit|rate limit|limit reached/i.test(res.text) && res.isError) res.rateLimited = { resetsAt: null };
         resolve(res);
       });
-      child.stdin.end(o.prompt);
+      if (imgs.length) {
+        const content = [...imgs.map((m) => ({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } })), { type: "text", text: o.prompt }];
+        child.stdin.end(`${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`);
+      } else child.stdin.end(o.prompt);
     });
   },
 });

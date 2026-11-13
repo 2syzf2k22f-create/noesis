@@ -143,15 +143,30 @@ export function AskBlock({ p }: { p: P }) {
 /* ---------- sync from a public API ---------- */
 export function SyncBlock({ p, ctx }: { p: P; ctx: BlockCtx }) {
   const [msg, setMsg] = useState<string | null>(null);
+  const [needUser, setNeedUser] = useState(false);
+  const [user, setUser] = useState("");
+  const factKey = p.service === "chess" ? "chess_username" : "codeforces_handle";
+  const run = async () => {
+    setMsg("Syncing…");
+    const r = await fetch(`/api/sync/${p.service}`, { method: "POST" }).then((x) => x.json()).catch(() => ({ error: "couldn't reach the server" }));
+    if (r.error && /username|handle/i.test(r.error)) { setNeedUser(true); setMsg(null); return; }
+    setNeedUser(false);
+    setMsg(r.error ?? (p.service === "chess" ? `${r.added} new games for ${r.user}` : `rating ${r.rating ?? "unrated"}, ${r.solved} solved`));
+    if (!r.error) ctx.refresh?.();
+  };
   return (
-    <div className={u.row}>
-      <button className="pill" data-active="true" onClick={async () => {
-        setMsg("Syncing…");
-        const r = await fetch(`/api/sync/${p.service}`, { method: "POST" }).then((x) => x.json()).catch(() => ({ error: "couldn't reach the server" }));
-        setMsg(r.error ?? (p.service === "chess" ? `${r.added} new games for ${r.user}` : `rating ${r.rating ?? "unrated"}, ${r.solved} solved`));
-        if (!r.error) ctx.refresh?.();
-      }}>{p.label ?? `Sync ${p.service}`}</button>
-      {msg && <span className="label">{msg}</span>}
+    <div style={{ display: "grid", gap: 8 }}>
+      <div className={u.row}>
+        <button className="pill" data-active="true" onClick={run}>{p.label ?? `Sync ${p.service}`}</button>
+        {msg && <span className="label">{msg}</span>}
+      </div>
+      {needUser && (
+        <div className={u.row}>
+          <input value={user} onChange={(e) => setUser(e.target.value)} placeholder={p.service === "chess" ? "Your chess.com username" : "Your Codeforces handle"}
+            style={{ height: 34, padding: "0 10px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" }} />
+          <button className="pill" disabled={!user.trim()} onClick={async () => { await ctx.write("create", "profile_facts", { key: factKey, value: user.trim() }); setNeedUser(false); await run(); }}>Save &amp; sync</button>
+        </div>
+      )}
     </div>
   );
 }

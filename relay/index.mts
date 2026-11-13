@@ -14,6 +14,7 @@ import { claudeCode, type Backend, type RunResult } from "./backend.mts";
 import { runBuild, runRollback, runShip } from "./build.mts";
 import { syncMicrosoft } from "../src/core/microsoft";
 import { indexPending } from "./embed.mts";
+import { runStt } from "./stt.mts";
 
 const VERSION = "0.5.0";
 const HEARTBEAT_MS = 15_000;
@@ -98,7 +99,8 @@ async function runApollo(s: Store, job: Row) {
       if (escalatable && ESCALATE.startsWith(t.trim().slice(0, ESCALATE.length))) return; // don't flash "ESCALATE"
       void s.update("jobs", job.id, { output: { text: stripTitle(t), model, streaming: true } });
     }, 250);
-    const r = await backend.run({ model, system: systemFor(mode, escalatable), prompt, mcpConfig: mcp, onText: stream.push });
+    const images = Array.isArray(job.input?.images) ? (job.input.images as string[]) : [];
+    const r = await backend.run({ model, system: systemFor(mode, escalatable), prompt: images.length ? `${prompt}\n\n(${images.length} image${images.length > 1 ? "s" : ""} attached above: look at them.)` : prompt, mcpConfig: mcp, onText: stream.push, images });
     stream.done();
     return r;
   };
@@ -130,6 +132,8 @@ async function runApollo(s: Store, job: Row) {
   await logUsage(s, { job_id: job.id, feature: ({ chat: "chat", conversation: "language practice", mealplan: "meal plan", flashcards: "flashcard maker", questions: "question writer", tutor: "tutor", report: "weekly report" } as Record<string, string>)[mode] ?? mode, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
   await s.update("conversations", convId, { updated_at: nowIso() });
   const actions = await s.count("action_log", { eq: { job_id: job.id } });
+  // don't keep big image data in the jobs table once answered
+  if (Array.isArray(job.input?.images) && job.input.images.length) await s.update("jobs", job.id, { input: { ...job.input, images: [], had_images: job.input.images.length } });
   await s.update("jobs", job.id, {
     status: "done", finished_at: nowIso(), model: r.model,
     output: { text: r.text, model: r.model, family: pick.model, escalated, reason: pick.reason, message_id: msg.id, tokens: r.tokensIn + r.tokensOut, actions },
@@ -169,6 +173,7 @@ async function tick() {
     if (job.kind === "apollo") await runApollo(store!, job);
     else if (job.kind === "report") await runReport(store!, job);
     else if (job.kind === "research") await runResearch(store!, job);
+    else if (job.kind === "stt") await runStt(store!, job);
     else if (job.kind === "build") await runBuild(store!, backend, job, log);
     else if (job.kind === "ship") await runShip(store!, job, log);
     else if (job.kind === "rollback") await runRollback(store!, job, log);

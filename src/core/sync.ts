@@ -4,8 +4,12 @@ import type { Store } from "./store";
 
 const UA = { "user-agent": "NOESIS personal dashboard (single user)" };
 
+/** Profile facts are matched loosely ("CHESS_USERNAME", "chess username", "chess.com username" all count). */
 async function fact(store: Store, key: string) {
-  return (await store.list("profile_facts", { eq: { key }, limit: 1 }))[0]?.value as string | undefined;
+  const norm = (k: unknown) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const want = norm(key), alt = want.replace("chessusername", "chesscomusername");
+  const f = (await store.list("profile_facts", { limit: 500 })).find((r) => norm(r.key) === want || norm(r.key) === alt);
+  return (f?.value as string | undefined)?.trim();
 }
 
 export async function syncChess(store: Store) {

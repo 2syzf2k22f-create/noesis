@@ -9,6 +9,8 @@ export async function POST(req: Request) {
   if (s instanceof Response) return s;
   const body = await req.json().catch(() => ({}));
   const text = String(body.text ?? "").trim().slice(0, 8000);
+  // up to 4 images (pasted screenshots or a picture of the page), JPEG/PNG data URLs, ~2 MB each max
+  const images: string[] = (Array.isArray(body.images) ? body.images : []).filter((x: unknown) => typeof x === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(x) && x.length < 2_800_000).slice(0, 4);
   if (!text) return Response.json({ error: "empty" }, { status: 400 });
   const model: ModelPref = MODEL_PREFS.includes(body.model) ? body.model : "auto";
 
@@ -31,10 +33,10 @@ export async function POST(req: Request) {
   if (!convId) {
     convId = (await s.insert("conversations", { title: thread ? thread.replace(/^\w+:/, "").trim() + " · chat" : titleFrom(text), space: thread, pinned: false, deleted_at: null, updated_at: nowIso() })).id;
   }
-  const msg = await s.insert("messages", { conversation_id: convId, role: "user", content: thread?.startsWith("project:") ? `[Project: ${thread.slice(8)}] ${text}` : text });
+  const msg = await s.insert("messages", { conversation_id: convId, role: "user", content: `${thread?.startsWith("project:") ? `[Project: ${thread.slice(8)}] ` : ""}${text}${images.length ? ` [${images.length} image${images.length > 1 ? "s" : ""}]` : ""}` });
   const job = await s.insert("jobs", {
     kind: "apollo", status: "queued", conversation_id: convId,
-    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", screen: typeof body.screen === "string" ? body.screen.slice(0, 6000) : null },
+    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", images, screen: typeof body.screen === "string" ? body.screen.slice(0, 10000) : null },
     ui_actions: [], output: null,
   });
   await s.update("conversations", convId, { updated_at: nowIso() });

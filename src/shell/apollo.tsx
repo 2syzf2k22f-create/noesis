@@ -4,14 +4,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import { ORB_STATES, type OrbState } from "@/orb/ApolloOrb";
 import { syntheticSpeech, useOrbAudio } from "@/orb/useOrbAudio";
-import { createSpeaker, listenOnce, pickVoice, sttSupported, ttsSupported, wakeWord, type Listener } from "@/voice/voice";
+import { createSpeaker, listenOnce, pickVoice, startRecorder, sttSupported, ttsSupported, wakeWord, type Listener } from "@/voice/voice";
 import { useTheme } from "@/theme/ThemeProvider";
 import { MODEL_PREFS, biggerModel, type ModelPref } from "@/core/routing";
 import type { UiAction } from "@/core/tools";
 import { PANEL_KINDS, panelStore, panelTitle, type PanelKind } from "./panelStore";
 import { SPACES, type IconName } from "./spaces";
 import { boardAnnotations } from "@/chess/Board";
-import { screenContext } from "./screen";
+import { screenContext, screenshot, wantsScreenshot } from "./screen";
 import { uiStore } from "./uiStore";
 
 export type Action = {
@@ -50,7 +50,7 @@ type Ctx = {
   actions: Action[];
   runAction: (a: Action) => void;
   /** Site commands run instantly in the browser; anything else goes to Apollo via the relay. */
-  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string }) => void;
+  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[] }) => void;
   toggleMic: () => void;
   /** Push-to-talk: start on press, stop (and send) on release. */
   startListening: () => void;
@@ -194,18 +194,49 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     speaker.current = null;
     void setOrbState("listening");
     setDraft("");
+    const target = voiceTarget.current;
+    const lang = target?.thread?.startsWith("lang:") ? target.thread.split(":")[1] : "en";
+    let heard = "";
+    let speechError: string | null = null;
+    // backup: record the audio too, so the relay can transcribe it if the browser's speech-to-text gives nothing
+    const recP = startRecorder().catch(() => null);
+    const send = (t: string) => { setDraft(""); submitRef.current(t, { spoken: true, ...(target ?? {}) }); };
+    const backup = async () => {
+      const rec = await recP;
+      const pcm = rec?.stop() ?? null;
+      if (!pcm) { if (speechError) setReply({ text: `I didn't catch that (${speechError}).`, tone: "info" }); return; }
+      setDraft("Transcribing…");
+      const r = await fetch("/api/stt", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pcm, lang }) }).then((x) => x.json()).catch(() => null);
+      if (!r?.jobId) { setDraft(""); return setReply({ text: r?.error === "relay offline" ? "Your browser's speech-to-text isn't working here and the relay is offline, so I couldn't transcribe that. Chrome or Edge usually works." : "Couldn't transcribe that.", tone: "error" }); }
+      for (let i = 0; i < 60; i++) {
+        await sleep(i < 10 ? 500 : 1000);
+        const j = await fetch(`/api/jobs/${r.jobId}`).then((x) => x.json()).catch(() => null);
+        if (j?.status === "done") { const t = String(j.output?.text ?? "").trim(); if (t) { setDraft(t); return setTimeout(() => send(t), 400); } setDraft(""); return setReply({ text: "I didn't catch that.", tone: "info" }); }
+        if (j?.status === "error") break;
+      }
+      setDraft("");
+      setReply({ text: "Transcription took too long.", tone: "error" });
+    };
+    const finishWith = (t: string) => { heard = t; };
     const l = listenOnce({
       onInterim: setDraft,
-      onFinal: (t) => { setDraft(""); submitRef.current(t, { spoken: true, ...(voiceTarget.current ?? {}) }); },
+      onFinal: finishWith,
       onEnd: () => {
         listener.current = null;
-        setDraft("");
         if (stateRef.current === "listening") void setOrbState("idle");
+        if (heard.trim()) { void recP.then((r) => r?.cancel()); send(heard.trim()); }
+        else void backup();
       },
-      onError: (e) => { if (e === "not-allowed") setReply({ text: "Microphone permission is blocked for this site.", tone: "error" }); },
-    }, { untilStopped });
-    if (!l) setReply({ text: "This browser has no speech recognition. Chrome, Edge or Safari do.", tone: "info" });
-    listener.current = l;
+      onError: (e) => {
+        speechError = e;
+        if (e === "not-allowed") setReply({ text: "Microphone permission is blocked for this site: click the padlock in the address bar → Microphone → Allow.", tone: "error" });
+        else if (e === "network" || e === "service-not-allowed") setReply({ text: "This browser's speech service isn't available, so I'll transcribe on your PC instead when you stop.", tone: "info" });
+      },
+    }, { untilStopped, lang: lang === "en" ? "en-GB" : ({ Spanish: "es-ES", French: "fr-FR", Mandarin: "zh-CN" } as Record<string, string>)[lang] });
+    if (l) { listener.current = l; return; }
+    // no speech recognition in this browser at all: record only, transcribe on the relay
+    setDraft("Listening (I'll transcribe when you stop)…");
+    listener.current = { stop: () => { listener.current = null; if (stateRef.current === "listening") void setOrbState("idle"); void backup(); }, abort: () => { listener.current = null; void recP.then((r) => r?.cancel()); void setOrbState("idle"); } };
   }, [setOrbState]);
 
   const toggleMic = useCallback(() => {
@@ -338,7 +369,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     settle({ text: a.done }, 4200);
   }, [clearTimers, micOn, settle, stopMic]);
 
-  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string) => {
+  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string, images: string[] = []) => {
     const my = ++runId.current;
     clearTimers();
     if (micOn) stopMic();
@@ -365,9 +396,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         return settle({ text: quick.answer, model: "instant", ask: text }, 30_000);
       }
     }
+    // "look at my screen": attach a real picture of the page
+    if (!images.length && wantsScreenshot(text)) { const shot = await screenshot(); if (shot) images = [shot]; }
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot() }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot(), images }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
@@ -426,9 +459,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUi, clearTimers, micOn, openChat, refreshStatus, settle, stopMic]);
 
-  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string }) => {
+  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[] }) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
-    if (!q) return;
+    if (!q && !opts?.images?.length) return;
     // Build mode starts only from Reg's own words: "build: <change>"
     const bm = /^\s*build\s*:\s*([\s\S]{5,})$/i.exec(text);
     if (bm) {
@@ -438,7 +471,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       router.push("/s/projects/build");
       return;
     }
-    if (!opts?.model && !opts?.mode && !opts?.thread) {
+    if (!opts?.model && !opts?.mode && !opts?.thread && !opts?.images?.length) {
       const bare = q.replace(VERBS, "").replace(/\s+(panel|space|page|style|theme|preset)$/, (m) => (m.trim() === "panel" ? m : ""));
       const find = (t: string) => actions.find((a) => a.label.toLowerCase() === t || a.keywords.includes(t));
       const hit = find(q) ?? find(bare);
@@ -447,7 +480,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setPaletteOpen(false);
     // language practice is always spoken (unless voice is set to never)
     const speak = speakPref === "always" || (speakPref === "voice" && (!!opts?.spoken || opts?.mode === "conversation"));
-    void ask(text.trim(), opts?.model ?? model, speak, opts?.mode, opts?.thread);
+    void ask(text.trim() || "What do you make of this?", opts?.model ?? model, speak, opts?.mode, opts?.thread, opts?.images ?? []);
   }, [actions, ask, model, runAction, speakPref, router, settle]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 

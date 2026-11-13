@@ -12,7 +12,7 @@ export const ttsSupported = () => typeof window !== "undefined" && "speechSynthe
 export type Listener = { stop: () => void; abort: () => void };
 
 /** One utterance: interim text while you talk, final text when you stop. */
-export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnd: () => void; onError?: (e: string) => void }, opts: { untilStopped?: boolean } = {}): Listener | null {
+export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnd: () => void; onError?: (e: string) => void }, opts: { untilStopped?: boolean; lang?: string } = {}): Listener | null {
   const C = Ctor();
   if (!C) return null;
   let final = "", interimNow = "", stopping = false, done = false;
@@ -21,7 +21,7 @@ export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: str
   const finish = () => { if (done) return; done = true; const all = `${final} ${interimNow}`.trim(); if (all) o.onFinal(all); o.onEnd(); };
   const start = () => {
     r = new C();
-    r.lang = "en-GB";
+    r.lang = opts.lang ?? "en-GB";
     r.interimResults = true;
     // untilStopped: keep listening through pauses until stop() (Alt+P again); browsers end a session on silence, so restart it
     r.continuous = !!opts.untilStopped;
@@ -34,7 +34,12 @@ export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: str
       interimNow = interim.trim();
       o.onInterim(`${final} ${interim}`.trim());
     };
-    r.onerror = (e: any) => { if (e.error !== "no-speech" && e.error !== "aborted") o.onError?.(e.error ?? "error"); };
+    r.onerror = (e: any) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      o.onError?.(e.error ?? "error");
+      // the browser's service is unusable: stop retrying and let the backup transcribe the recording
+      if (e.error === "network" || e.error === "service-not-allowed" || e.error === "not-allowed") stopping = true;
+    };
     r.onend = () => { if (opts.untilStopped && !stopping) { try { start(); } catch { finish(); } } else finish(); };
     r.start();
   };
@@ -166,5 +171,33 @@ export function createSpeaker(o: { onStart: () => void; onEnd: () => void; onWor
       if (isDone && pending === 0 && !cancelled) o.onEnd();
     },
     cancel() { cancelled = true; current?.pause(); if (ttsSupported()) speechSynthesis.cancel(); },
+  };
+}
+
+/** Records 16 kHz mono audio while you talk (backup for when the browser's own speech-to-text fails). */
+export async function startRecorder(maxSeconds = 90) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const src = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
+  const chunks: Float32Array[] = [];
+  let n = 0;
+  proc.onaudioprocess = (e) => { if (n < maxSeconds * 16000) { const d = new Float32Array(e.inputBuffer.getChannelData(0)); chunks.push(d); n += d.length; } };
+  src.connect(proc); proc.connect(ctx.destination);
+  const close = () => { try { proc.disconnect(); src.disconnect(); } catch {} stream.getTracks().forEach((t) => t.stop()); void ctx.close(); };
+  return {
+    /** Stop and return 16-bit PCM as base64 (null if it was basically silent). */
+    stop(): string | null {
+      close();
+      const pcm = new Int16Array(n);
+      let o = 0, loud = 0;
+      for (const c of chunks) for (let i = 0; i < c.length && o < n; i++, o++) { const v = Math.max(-1, Math.min(1, c[i])); pcm[o] = v * 32767; if (Math.abs(v) > 0.04) loud++; }
+      if (n < 8000 || loud < 1600) return null; // under half a second, or no speech-level sound
+      const bytes = new Uint8Array(pcm.buffer);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return btoa(bin);
+    },
+    cancel: close,
   };
 }
