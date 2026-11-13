@@ -22,6 +22,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await s.update("jobs", id, { status: "cancelled", finished_at: new Date().toISOString(), output: { ...(now.output ?? {}), step: "Cancelled before it started" } });
     return Response.json({ ok: true });
   }
+  // put a cancelled build back in the queue, or delete it for good
+  if (b.action === "requeue") {
+    if (build.status !== "cancelled" || build.output?.step === "Declined") return Response.json({ error: "only cancelled builds can be requeued" }, { status: 409 });
+    await s.update("jobs", id, { status: "queued", finished_at: null, input: { ...build.input, by: "reg" }, output: { step: "Queued: waiting for the relay on your PC" } });
+    return Response.json({ ok: true });
+  }
+  if (b.action === "delete") {
+    if (build.status !== "cancelled") return Response.json({ error: "only cancelled builds can be deleted" }, { status: 409 });
+    await s.remove("jobs", id);
+    return Response.json({ ok: true });
+  }
   // retry a failed build with the same request (your click, like any build)
   if (b.action === "retry") {
     if (build.status !== "error") return Response.json({ error: "only failed builds can be retried" }, { status: 409 });

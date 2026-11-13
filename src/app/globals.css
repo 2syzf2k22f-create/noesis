@@ -120,3 +120,5 @@ option:checked, option:hover {
   background-color: var(--accent);
   color: var(--on-accent);
 }
+
+@keyframes pulse { to { opacity: 0.35; } }

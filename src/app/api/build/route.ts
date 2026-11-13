@@ -7,10 +7,10 @@ export async function GET() {
   await connection();
   const s = storeOr503();
   if (s instanceof Response) return s;
-  const jobs = await s.list("jobs", { eq: { kind: "build" }, order: { col: "created_at", asc: false }, limit: 30 });
+  const jobs = await s.list("jobs", { eq: { kind: "build" }, order: { col: "created_at", asc: false }, limit: 300 });
   const settings = await s.get("settings", "main");
   const { online } = await relayOnline(s);
-  return Response.json({ autoShip: !!settings?.data?.auto_ship, relayOnline: online, builds: jobs.map((j) => ({ id: j.id, status: j.status, request: j.input?.request, title: j.input?.summary ?? null, proposed: j.input?.proposed_by === "apollo", at: j.created_at, finished: j.finished_at, error: j.error, ...(j.output ?? {}) })) });
+  return Response.json({ autoShip: !!settings?.data?.auto_ship, relayOnline: online, builds: jobs.map((j) => ({ id: j.id, status: j.status, request: j.input?.request, title: j.input?.summary ?? null, proposed: j.input?.proposed_by === "apollo", at: j.created_at, started: j.started_at ?? null, finished: j.finished_at, error: j.error, ...(j.output ?? {}) })) });
 }
 
 export async function POST(req: Request) {
