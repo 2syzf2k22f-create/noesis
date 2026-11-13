@@ -37,7 +37,7 @@ async function heartbeat() {
   try {
     await store!.insert("relay_status", {
       id: "main", last_heartbeat: nowIso(), version: VERSION,
-      info: { host: hostname(), backend: backend.name, busy, plan, plan_at: plan ? nowIso() : null },
+      info: { host: hostname(), backend: backend.name, busy, building: buildBusy, plan, plan_at: plan ? nowIso() : null },
     });
   } catch (e) {
     log("heartbeat failed:", (e as Error).message);
@@ -163,14 +163,12 @@ async function maybeSummarise(s: Store, convId: string) {
   }
 }
 
-async function tick() {
-  if (busy) return;
-  let job: Row | null = null;
+const BUILD_KINDS = ["build", "ship", "rollback"];
+let buildBusy = false;
+
+async function runJob(job: Row) {
+  log(`job ${job.id.slice(0, 8)} ${job.kind}`);
   try {
-    job = await store!.claimNextJob();
-    if (!job) return;
-    busy = true;
-    log(`job ${job.id.slice(0, 8)} ${job.kind}`);
     if (job.kind === "apollo") await runApollo(store!, job);
     else if (job.kind === "report") await runReport(store!, job);
     else if (job.kind === "research") await runResearch(store!, job);
@@ -181,11 +179,39 @@ async function tick() {
     else await store!.update("jobs", job.id, { status: "error", error: `unknown job kind ${job.kind}`, finished_at: nowIso() });
   } catch (e) {
     log("job failed:", (e as Error).message);
-    if (job) await store!.update("jobs", job.id, { status: "error", error: (e as Error).message.slice(0, 500), finished_at: nowIso() }).catch(() => {});
-  } finally {
-    busy = false;
+    await store!.update("jobs", job.id, { status: "error", error: (e as Error).message.slice(0, 1500), finished_at: nowIso() }).catch(() => {});
   }
 }
+
+/** Two lanes: chats/reports/research/speech never wait behind a long build, and builds run one at a time. */
+async function tick() {
+  if (!busy) {
+    try {
+      const job = await store!.claimNextJob({ notKinds: BUILD_KINDS });
+      if (job) { busy = true; void runJob(job).finally(() => { busy = false; }); }
+    } catch (e) { log("claim failed:", (e as Error).message); }
+  }
+  if (!buildBusy) {
+    try {
+      const job = await store!.claimNextJob({ kinds: BUILD_KINDS });
+      if (job) { buildBusy = true; void runJob(job).finally(() => { buildBusy = false; }); }
+    } catch (e) { log("claim failed:", (e as Error).message); }
+  }
+}
+
+/** On start: anything still "running" was interrupted (relay closed or PC restarted). Chats go back in the queue; builds are marked failed so you can Retry. */
+async function recoverStale() {
+  try {
+    const stale = await store!.list("jobs", { eq: { status: "running" }, limit: 100 });
+    for (const j of stale) {
+      if (BUILD_KINDS.includes(j.kind)) await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay stopped while this was running. Press Retry.", finished_at: nowIso() });
+      else if (j.kind === "apollo" || j.kind === "stt") await store!.update("jobs", j.id, { status: "queued", started_at: null });
+      else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay restarted.", finished_at: nowIso() });
+    }
+    if (stale.length) log(`recovered ${stale.length} interrupted job(s)`);
+  } catch (e) { log("recovery failed:", (e as Error).message); }
+}
+await recoverStale();
 
 /** Weekly report: scores come from code; the model only writes commentary. */
 async function runReport(s: Store, job: Row) {
@@ -295,7 +321,7 @@ setTimeout(msTick, 30_000);
 
 // Smart search index: embed new notes, OneNote pages and knowledge sources a batch at a time while idle.
 async function indexTick() {
-  if (busy) return;
+  if (busy || buildBusy) return;
   try { const n = await indexPending(store!); if (n) log(`indexed ${n} sections for smart search`); }
   catch (e) { log("indexing failed:", (e as Error).message.slice(0, 160)); }
 }

@@ -26,7 +26,8 @@ export interface Store {
   update(table: string, id: string, patch: Partial<Row>): Promise<Row | null>;
   remove(table: string, id: string): Promise<void>;
   /** Atomically move the oldest queued (or due rate-limited) job to running. */
-  claimNextJob(): Promise<Row | null>;
+  /** Claim the oldest runnable job; `kinds` limits it to those kinds, `notKinds` skips them. */
+  claimNextJob(o?: { kinds?: string[]; notKinds?: string[] }): Promise<Row | null>;
 }
 
 export const nowIso = () => new Date().toISOString();
@@ -103,11 +104,12 @@ export class FileStore implements Store {
     db[table] = (db[table] ?? []).filter((r) => r.id !== id);
     this.write(db);
   }
-  async claimNextJob() {
+  async claimNextJob(o: { kinds?: string[]; notKinds?: string[] } = {}) {
     const db = this.read();
     const t = nowIso();
     const job = (db.jobs ?? [])
       .filter((j) => j.status === "queued" || (j.status === "rate_limited" && (!j.retry_at || j.retry_at <= t)))
+      .filter((j) => (!o.kinds || o.kinds.includes(j.kind)) && (!o.notKinds || !o.notKinds.includes(j.kind)))
       .sort((a, b) => (a.created_at > b.created_at ? 1 : -1))[0];
     if (!job) return null;
     Object.assign(job, { status: "running", started_at: t, error: null });

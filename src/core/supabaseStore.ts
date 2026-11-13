@@ -51,13 +51,13 @@ export class SupabaseStore implements Store {
   async remove(table: string, id: string) {
     this.ok(await this.db.from(table).delete().eq("id", id));
   }
-  async claimNextJob() {
+  async claimNextJob(o: { kinds?: string[]; notKinds?: string[] } = {}) {
     const t = nowIso();
-    const cand = this.ok(
-      await this.db.from("jobs").select("id,status")
-        .or(`status.eq.queued,and(status.eq.rate_limited,retry_at.lte.${t})`)
-        .order("created_at", { ascending: true }).limit(1),
-    ) as Row[];
+    let q = this.db.from("jobs").select("id,status")
+      .or(`status.eq.queued,and(status.eq.rate_limited,retry_at.lte.${t})`);
+    if (o.kinds) q = q.in("kind", o.kinds);
+    if (o.notKinds) q = q.not("kind", "in", `(${o.notKinds.join(",")})`);
+    const cand = this.ok(await q.order("created_at", { ascending: true }).limit(1)) as Row[];
     if (!cand?.length) return null;
     // Only one claimer wins: the update is conditional on the status it was read with.
     return this.ok(
