@@ -24,6 +24,9 @@ export type RunOpts = {
   builtins?: string[];
   onText?: (soFar: string) => void;
   timeoutMs?: number;
+  /** Build mode only: run inside the repo with file edits auto-accepted. */
+  cwd?: string;
+  permissionMode?: "acceptEdits";
 };
 export interface Backend {
   name: string;
@@ -43,15 +46,16 @@ export const claudeCode = (bin = process.env.CLAUDE_BIN ?? "claude"): Backend =>
       "--no-session-persistence",
       "--system-prompt", o.system,
       // No built-in tools at all (no Bash, no files, no web). Only the site's MCP tools.
-      "--tools", (o.builtins ?? []).join(","),
+      "--tools", [...new Set((o.builtins ?? []).map((b) => b.replace(/\(.*$/, "")))].join(","),
       "--strict-mcp-config",
     ];
     const allowed = [...(o.mcpConfig ? ["mcp__noesis"] : []), ...(o.builtins ?? [])];
     if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig);
     if (allowed.length) args.push("--allowedTools", ...allowed);
+    if (o.permissionMode) args.push("--permission-mode", o.permissionMode);
 
     return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, { cwd: SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" });
+      const child = spawn(bin, args, { cwd: o.cwd ?? SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: process.platform === "win32" });
       const res: RunResult = { text: "", model: o.model, tokensIn: 0, tokensOut: 0, isError: false, rateLimited: null, plan: null };
       let buf = "", errBuf = "", turnText = "";
       const timer = setTimeout(() => child.kill(), o.timeoutMs ?? 5 * 60_000);

@@ -62,6 +62,7 @@ export const SPACES: Space[] = [
     { id: "notes", name: "Notes", blurb: "Notes per project" },
     { id: "links", name: "Links", blurb: "Links per project" },
     { id: "chat", name: "Chat", blurb: "A chat per project, with its context" },
+    { id: "build", name: "Build NOESIS", blurb: "Change the site's own code, with preview and rollback" },
   ] },
   { id: "mind", name: "Mind sports", icon: "mind", blurb: "Chess, poker, geography, brain tests, memory, programming", subs: [
     { id: "chess", name: "Chess", blurb: "chess.com sync, ratings and results" },

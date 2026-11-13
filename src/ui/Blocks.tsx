@@ -9,6 +9,9 @@ import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./
 import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
 import { QuestionBank } from "./QuestionBank";
 import { MicrosoftBlock } from "./MicrosoftBlock";
+import { BuildBlock } from "./BuildBlock";
+import { BookEta, ChessOpenings, GradePredictor, Habits, PersonalRecords, WordOfDay } from "./Blocks4";
+import { ScreenTimeBlock } from "./ScreenTimeBlock";
 import { AnalysisBoard, GameReview, OpeningTrainer, Puzzles } from "@/chess/ChessBlocks";
 import { DeepStats } from "./DeepStats";
 import { Benchmark } from "./Benchmark";
@@ -455,6 +458,14 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "gamereview": return <GameReview ctx={ctx} p={p} />;
     case "questionbank": return <QuestionBank ctx={ctx} />;
     case "microsoft": return <MicrosoftBlock ctx={ctx} />;
+    case "build": return <BuildBlock />;
+    case "gradepredictor": return <GradePredictor ctx={ctx} />;
+    case "prs": return <PersonalRecords ctx={ctx} />;
+    case "habits": return <Habits ctx={ctx} />;
+    case "booketa": return <BookEta ctx={ctx} />;
+    case "chessopenings": return <ChessOpenings ctx={ctx} />;
+    case "wordofday": return <WordOfDay ctx={ctx} />;
+    case "screentime": return <ScreenTimeBlock ctx={ctx} />;
     case "deepstats": return <DeepStats p={p} />;
     case "benchmark": return <Benchmark ctx={ctx} p={p} />;
     case "poker": return <PokerTable ctx={ctx} />;

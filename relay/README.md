@@ -89,3 +89,27 @@ To turn either off, ask Apollo to set `settings.data.auto_report` or `settings.d
 npm run build && NOESIS_DEV_STORE=.dev/db.json npx next start
 NOESIS_DEV_STORE=.dev/db.json npx tsx relay/index.mts
 ```
+
+## Build mode (Apollo changing the site's code)
+
+Build jobs only start from your own words: the **Projects › Build NOESIS** page, or a chat message starting `build:`. Apollo's tools can't start one, so text Apollo reads (websites, emails, notes) can't trigger a code change.
+
+For each request the relay:
+1. creates a branch `build/<id>` from `origin/main` in `C:\noesis` (or `NOESIS_REPO`),
+2. runs Claude Code in the repo (it can read and edit files and run the typecheck, lint and build; it has no git or other shell access),
+3. runs `tsc`, `npm run lint` and `npm run build`, giving Claude one chance to fix a failure,
+4. commits and pushes the branch, and deploys a Netlify preview,
+5. shows it on the Build page with **Ship it** (merge into main and deploy production) and **Discard / Roll back** (delete the branch, or revert a shipped merge and redeploy).
+
+Extra setup for previews and shipping:
+- `git push` from `C:\noesis` must work, so sign in to GitHub once (`git push` asks), or use GitHub Desktop.
+- Add to `.env.relay`:
+  ```
+  NETLIFY_SITE_ID=dcd03b8d-b45c-4e5c-94c1-a429c7e713e3
+  NETLIFY_AUTH_TOKEN=<Netlify → User settings → Applications → Personal access tokens>
+  ```
+  Without these, builds still run and push their branch, but no preview is deployed and Ship it only pushes to GitHub.
+- Keep `C:\noesis` clean (no uncommitted edits): a build refuses to start otherwise.
+- The relay handles one job at a time, so Apollo waits while a build runs (usually a few minutes).
+
+Auto-ship (off by default, toggle on the Build page) ships changes of 40 lines or fewer without asking.

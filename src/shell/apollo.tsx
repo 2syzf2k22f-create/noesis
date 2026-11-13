@@ -404,6 +404,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string }) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
     if (!q) return;
+    // Build mode starts only from Reg's own words: "build: <change>"
+    const bm = /^\s*build\s*:\s*([\s\S]{5,})$/i.exec(text);
+    if (bm) {
+      void fetch("/api/build", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: bm[1].trim() }) })
+        .then((r) => r.json()).then((j) => settle({ text: j.id ? "Build queued. Follow it on Projects › Build NOESIS." : j.error ?? "Couldn't queue the build.", tone: j.id ? undefined : "error" }, 6000))
+        .catch(() => settle({ text: "Couldn't reach the server.", tone: "error" }));
+      router.push("/s/projects/build");
+      return;
+    }
     if (!opts?.model && !opts?.mode && !opts?.thread) {
       const bare = q.replace(VERBS, "").replace(/\s+(panel|space|page|style|theme|preset)$/, (m) => (m.trim() === "panel" ? m : ""));
       const find = (t: string) => actions.find((a) => a.label.toLowerCase() === t || a.keywords.includes(t));
@@ -412,7 +421,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     setPaletteOpen(false);
     void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken), opts?.mode, opts?.thread);
-  }, [actions, ask, model, runAction, speakPref]);
+  }, [actions, ask, model, runAction, speakPref, router, settle]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 
   const value = useMemo(

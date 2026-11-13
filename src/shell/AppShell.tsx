@@ -13,6 +13,7 @@ import { Icon } from "./Icon";
 import { PanelLayer } from "./Panels";
 import { ChatDock, Highlighter } from "./ChatDock";
 import { SideWindows } from "./SideWindows";
+import { ShellExtras } from "./ShellExtras";
 import { panelStore } from "./panelStore";
 import { SPACES } from "./spaces";
 import s from "./shell.module.css";
@@ -76,6 +77,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
       <div className={s.content}>{home ? children : <SideWindows>{children}</SideWindows>}</div>
       <ChatDock />
+      {!home && <ShellExtras />}
       <Highlighter />
       <PanelLayer />
       <CommandPalette />

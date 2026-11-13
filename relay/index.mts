@@ -10,8 +10,9 @@ import { weeklyScores, weekStart } from "../src/core/scores";
 import { ESCALATE, pickModel, type ModelPref } from "../src/core/routing";
 import { nowIso, type Row, type Store } from "../src/core/store";
 import { claudeCode, type Backend, type RunResult } from "./backend.mts";
+import { runBuild, runRollback, runShip } from "./build.mts";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 const HEARTBEAT_MS = 15_000;
 const POLL_MS = 1_500;
 const SUMMARY_EVERY = 20; // messages
@@ -144,7 +145,10 @@ async function tick() {
     if (job.kind === "apollo") await runApollo(store!, job);
     else if (job.kind === "report") await runReport(store!, job);
     else if (job.kind === "research") await runResearch(store!, job);
-    else await store!.update("jobs", job.id, { status: "error", error: "Build mode isn't available yet (phase 12)", finished_at: nowIso() });
+    else if (job.kind === "build") await runBuild(store!, backend, job, log);
+    else if (job.kind === "ship") await runShip(store!, job, log);
+    else if (job.kind === "rollback") await runRollback(store!, job, log);
+    else await store!.update("jobs", job.id, { status: "error", error: `unknown job kind ${job.kind}`, finished_at: nowIso() });
   } catch (e) {
     log("job failed:", (e as Error).message);
     if (job) await store!.update("jobs", job.id, { status: "error", error: (e as Error).message.slice(0, 500), finished_at: nowIso() }).catch(() => {});

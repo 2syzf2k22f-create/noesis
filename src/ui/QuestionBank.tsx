@@ -62,10 +62,11 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
   const cur = run ? run.qs[run.i] : null;
   useScreenContext("question", cur ? `Question bank: ${cur.subject} ${cur.topic ?? ""} ${cur.subtopic ?? ""} [${cur.marks} marks] ${cur.question}${run?.revealed ? `\nMark scheme: ${cur.mark_scheme ?? "none"}\nReg's answer: ${run.answers[cur.id] ?? ""}` : ""}` : null);
 
-  const start = async (mode: "practice" | "test", n: number) => {
+  const mistakes = pool.filter((q) => { const a = byQ.get(q.id); const last = a?.[0]; return last && last.pct != null && Number(last.pct) < 60; });
+  const start = async (mode: "practice" | "test", n: number, only?: Row[]) => {
     // weakest first in practice: unattempted, then lowest-scoring
     const score = (q: Row) => { const a = byQ.get(q.id); if (!a?.length) return -1; return a.reduce((x, y) => x + (Number(y.pct) || 0), 0) / a.length; };
-    const chosen = mode === "practice" ? shuffle(pool).sort((a, b) => score(a) - score(b)).slice(0, n) : shuffle(pool).slice(0, n);
+    const chosen = only ? shuffle(only).slice(0, n) : mode === "practice" ? shuffle(pool).sort((a, b) => score(a) - score(b)).slice(0, n) : shuffle(pool).slice(0, n);
     if (!chosen.length) return;
     let testId: string | null = null;
     const total = chosen.reduce((a, q) => a + Number(q.marks), 0);
@@ -161,6 +162,7 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
       </div>
       <div className={s.row}>
         <button className="pill" data-active="true" disabled={!pool.length} onClick={() => start("practice", 10)}>Practise (weakest first)</button>
+        <button className="pill" disabled={!mistakes.length} onClick={() => start("practice", 20, mistakes)}>Redo my mistakes ({mistakes.length})</button>
         <button className="pill" disabled={!pool.length} onClick={() => start("test", 8)}>Timed test (8 questions)</button>
         <button className="pill" disabled={!pool.length} onClick={() => start("test", 20)}>Full test (20)</button>
       </div>

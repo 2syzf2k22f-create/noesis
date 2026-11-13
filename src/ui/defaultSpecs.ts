@@ -41,6 +41,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "streaks", title: "Streaks", span: 4 },
       { type: "scores", title: "This week", span: 5, props: { report: false } },
       { type: "insights", title: "Patterns", span: 3 },
+      { type: "habits", title: "Habits", span: 8, bind: { table: "habit_logs", days: 120, limit: 500 } },
+      { type: "wordofday", title: "Word of the day", span: 4, bind: { table: "flashcards", limit: 500 } },
     ],
   },
 
@@ -146,6 +148,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "ask", title: "Fix my weak topics", span: 6, props: { submit: "Do it", template: "Find my 3 weakest topics in {subject} from past_paper_topics (lowest pct). For each: make 6 targeted flashcards (deck {subject}), add a 45-minute practice session to plan_items in the next week, and tell me in 3 lines.",
         fields: [{ name: "subject", type: "select", options: SUBJ }] } },
       { type: "table", title: "Papers", span: 12, bind: { table: "past_papers", limit: 30 }, props: { columns: ["created_at", "subject", "paper", "year", "marks", "total", "pct"] } },
+      { type: "gradepredictor", title: "Predicted grades", span: 12, bind: { table: "past_papers", limit: 500 } },
     ],
   },
   "school--tutor": {
@@ -274,6 +277,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "bar", title: "Weekly volume (kg), 12 weeks", span: 12, bind: { table: "sets", days: 84, agg: { fn: "sum", field: "volume", by: "week" } } },
       { type: "deepstats", title: "Volume per set in depth", span: 12, props: { table: "sets", field: "volume", unit: "kg", groupBy: "exercise" } },
       { type: "deepstats", title: "Weight lifted in depth", span: 12, props: { table: "sets", field: "weight_kg", unit: "kg", groupBy: "exercise" } },
+      { type: "prs", title: "Personal records & estimated 1RM", span: 12, bind: { table: "sets", limit: 500 } },
     ],
   },
   "fitness--routines": {
@@ -354,14 +358,23 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "deepstats", title: "Sleep in depth", span: 12, props: { table: "sleep_logs", field: "hours", unit: "h" } },
     ],
   },
+  "projects--build": {
+    title: "Build NOESIS",
+    subtitle: "Ask for a change to the site itself. It's made on a branch with a preview; nothing goes live until you ship it, and anything can be rolled back.",
+    blocks: [{ type: "build", span: 12 }],
+  },
   "nutrition--screentime": {
     title: "Screen time",
-    subtitle: "iPhone can't share Screen Time with websites: log it here (or send Apollo a screenshot once uploads arrive). On Android this can be automated.",
+    subtitle: "Screenshot your Screen Time (or Digital Wellbeing) and it's read on your device, or log it by hand.",
     blocks: [
+      { type: "screentime", title: "From a screenshot", span: 12 },
       { type: "form", title: "Log a day", span: 4, props: { table: "screentime_days", fields: [{ name: "minutes", type: "number", required: true }, { name: "source", type: "select", options: ["iPhone", "Android", "Laptop"] }] } },
       { type: "stat", title: "Daily average, 7 days", span: 4, props: { unit: "min" }, bind: { table: "screentime_days", days: 7, agg: { fn: "avg", field: "minutes" } } },
       { type: "stat", title: "Yesterday", span: 4, props: { unit: "min" }, bind: { table: "screentime_days", agg: { fn: "last", field: "minutes" } } },
       { type: "bar", title: "Minutes per day, 30 days", span: 12, bind: { table: "screentime_days", days: 30, agg: { fn: "sum", field: "minutes", by: "day" } } },
+      { type: "bar", title: "Top apps, 7 days (min)", span: 6, bind: { table: "screentime_apps", days: 7, agg: { fn: "sum", field: "minutes", by: { field: "app" } } } },
+      { type: "donut", title: "App share, 30 days", span: 6, bind: { table: "screentime_apps", days: 30, agg: { fn: "sum", field: "minutes", by: { field: "app" } } } },
+      { type: "deepstats", title: "Screen time in depth", span: 12, props: { table: "screentime_days", field: "minutes", unit: "min", better: "lower" } },
     ],
   },
 
@@ -433,6 +446,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "donut", title: "Time controls, 60 days", span: 4, bind: { table: "chess_games", days: 60, agg: { fn: "count", by: { field: "time_class" } } } },
       { type: "deepstats", title: "Rating in depth", span: 12, props: { table: "chess_games", field: "rating", groupBy: "result" } },
       { type: "list", title: "Recent games", span: 12, bind: { table: "chess_games", limit: 15 }, props: { primary: "opponent", secondary: ["result", "time_class", "rating", "created_at"], link: "{url}" } },
+      { type: "chessopenings", title: "How you score by opening", span: 12, bind: { table: "chess_games", limit: 500 } },
     ],
   },
   "mind--analysis": {
@@ -545,6 +559,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "bar", title: "Cards due per language", span: 5, bind: { table: "flashcards", due: { field: "due_at", includeNull: true }, whereIn: { deck: LANGS }, agg: { fn: "count", by: { field: "deck" } } } },
       ...LANGS.map((l) => tile(l, `/s/languages/${l.toLowerCase()}`, { table: "flashcards", where: { deck: l }, agg: { fn: "count" } }, "cards")),
       tile("Conversation", "/s/languages/conversation", undefined, "practise with Apollo", undefined, 12),
+      { type: "wordofday", title: "Word of the day", span: 4, bind: { table: "flashcards", limit: 500 } },
     ],
   },
   ...Object.fromEntries(LANGS.map((l) => [`languages--${l.toLowerCase()}`, {
@@ -591,6 +606,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "form", title: "Add a book", span: 4, props: { table: "books", defaults: { status: "to read" }, fields: [{ name: "title", required: true }, { name: "author" }, { name: "pages", type: "number" }] } },
       { type: "form", title: "Log reading", span: 4, props: { table: "reading_logs", submit: "Log", fields: [{ name: "book", type: "select", optionsFrom: { table: "books", field: "title" } }, { name: "pages", type: "number", required: true }] } },
       { type: "stat", title: "Pages this week", span: 4, bind: { table: "reading_logs", days: 7, agg: { fn: "sum", field: "pages", by: "day" } } },
+      { type: "booketa", title: "When you'll finish", span: 12, bind: { table: "reading_logs", days: 60, limit: 500 } },
     ],
   },
   "library--journal": {
