@@ -109,7 +109,7 @@ Extra setup for previews and shipping:
   NETLIFY_AUTH_TOKEN=<Netlify → User settings → Applications → Personal access tokens>
   ```
   Without these, builds still run and push their branch, but no preview is deployed and Ship it only pushes to GitHub.
-- Keep `C:\noesis` clean (no uncommitted edits): a build refuses to start otherwise.
+- Builds run in a separate folder, `C:\noesis-build`, made automatically and reset clean before each build, so files in `C:\noesis` (like relay.log) never block a build.
 - The relay handles one job at a time, so Apollo waits while a build runs (usually a few minutes).
 
 Auto-ship (off by default, toggle on the Build page) ships changes of 40 lines or fewer without asking.

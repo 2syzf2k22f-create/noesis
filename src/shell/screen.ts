@@ -21,7 +21,8 @@ export const screenContext = {
     const blocks = [...document.querySelectorAll<HTMLElement>("[data-ui=block]")];
     const visible = blocks.filter(inView).map((b) => {
       const head = b.querySelector("[data-ui=block-head]")?.textContent?.trim() ?? "(untitled block)";
-      return `[${head}]\n${clean(b.innerText).slice(0, 900)}`;
+      const win = (b.closest("[data-window-title]") as HTMLElement | null)?.dataset.windowTitle;
+      return `[${win ? `side window "${win}" › ` : ""}${head}]\n${clean(b.innerText).slice(0, 900)}`;
     });
     const below = blocks.filter((b) => !inView(b)).map((b) => b.querySelector("[data-ui=block-head]")?.textContent?.trim()).filter(Boolean);
     const dialogs = [...document.querySelectorAll<HTMLElement>("[role=dialog]")].filter(inView).map((d) => clean(d.innerText).slice(0, 600));

@@ -45,3 +45,8 @@ next-env.d.ts
 relay/.sandbox/
 relay/.prompts/
 .env.relay
+
+# relay's own files on your PC
+relay.log
+*.log
+run-relay.cmd
