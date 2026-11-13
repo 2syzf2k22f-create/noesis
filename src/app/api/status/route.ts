@@ -8,6 +8,8 @@ export async function GET() {
   await connection();
   const s = storeOr503();
   if (s instanceof Response) return Response.json({ configured: false, env: envReport() });
+  const db = await s.list("settings", { limit: 1 }).then(() => "ok").catch((e: Error) => e.message);
+  if (db !== "ok") return Response.json({ configured: true, store: s.kind, db, env: envReport() });
   const { row, online } = await relayOnline(s);
   const queued = await s.count("jobs", { eq: { status: "queued" } });
   const now = Date.now();
@@ -18,7 +20,7 @@ export async function GET() {
     .reduce((a, u) => a + (u.tokens_in ?? 0) + (u.tokens_out ?? 0), 0);
   const limited = (await s.list("jobs", { eq: { status: "rate_limited" }, order: { col: "retry_at", asc: true }, limit: 1 }))[0];
   return Response.json({
-    configured: true, store: s.kind,
+    configured: true, store: s.kind, env: envReport(), db,
     relay: { online, lastHeartbeat: row?.last_heartbeat ?? null, busy: !!row?.info?.busy, host: row?.info?.host ?? null },
     queued, backAt: limited?.retry_at ?? null,
     plan: row?.info?.plan ?? null, planAt: row?.info?.plan_at ?? null,
