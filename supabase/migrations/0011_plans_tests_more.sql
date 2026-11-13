@@ -1,0 +1,13 @@
+create table noesis.workout_plans (id uuid primary key default gen_random_uuid(), title text not null, inputs jsonb, plan jsonb, active boolean not null default true, created_at timestamptz not null default now(), updated_at timestamptz);
+create table noesis.school_tests (id uuid primary key default gen_random_uuid(), subject text not null, title text not null, date date, score numeric not null, total numeric not null, pct numeric, grade text, topics jsonb not null default '[]', notes text, created_at timestamptz not null default now(), updated_at timestamptz);
+create table noesis.mistakes (id uuid primary key default gen_random_uuid(), subject text, topic text, source text, what text not null, why text, fix text, resolved boolean not null default false, created_at timestamptz not null default now(), updated_at timestamptz);
+create table noesis.water_logs (id uuid primary key default gen_random_uuid(), ml int not null, created_at timestamptz not null default now(), updated_at timestamptz);
+create table noesis.goals (id uuid primary key default gen_random_uuid(), title text not null, area text, target numeric, current numeric, unit text, due date, done boolean not null default false, created_at timestamptz not null default now(), updated_at timestamptz);
+alter table noesis.spec_topics add column if not exists confidence int;
+alter table noesis.spec_topics add column if not exists last_reviewed timestamptz;
+alter table noesis.sources add column if not exists notes text;
+alter table noesis.sources add column if not exists deleted_at timestamptz;
+do $$ declare t text; begin foreach t in array array['workout_plans','school_tests','mistakes','water_logs','goals'] loop execute format('alter table noesis.%I enable row level security', t); execute format('grant all on noesis.%I to service_role', t); end loop; end $$;
+create table noesis.body_metrics (id uuid primary key default gen_random_uuid(), weight_kg numeric, bodyfat_pct numeric, waist_cm numeric, notes text, created_at timestamptz not null default now(), updated_at timestamptz);
+alter table noesis.body_metrics enable row level security;
+grant all on noesis.body_metrics to service_role;

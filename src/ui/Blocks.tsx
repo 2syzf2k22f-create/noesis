@@ -10,6 +10,10 @@ import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Strea
 import { QuestionBank } from "./QuestionBank";
 import { MicrosoftBlock } from "./MicrosoftBlock";
 import { BuildBlock } from "./BuildBlock";
+import { WorkoutPlanner } from "./WorkoutPlanner";
+import { SchoolAnalysisBlock, SchoolTestForm, SpecRag } from "./SchoolBlocks";
+import { KnowledgeBlock, WaterBlock } from "./Blocks5";
+import { MonthCalendar, NextRevise, ShoppingList } from "./Blocks6";
 import { BookEta, ChessOpenings, GradePredictor, Habits, PersonalRecords, WordOfDay } from "./Blocks4";
 import { ScreenTimeBlock } from "./ScreenTimeBlock";
 import { AnalysisBoard, GameReview, OpeningTrainer, Puzzles } from "@/chess/ChessBlocks";
@@ -465,6 +469,15 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "booketa": return <BookEta ctx={ctx} />;
     case "chessopenings": return <ChessOpenings ctx={ctx} />;
     case "wordofday": return <WordOfDay ctx={ctx} />;
+    case "workoutplanner": return <WorkoutPlanner ctx={ctx} />;
+    case "schoolanalysis": return <SchoolAnalysisBlock ctx={ctx} />;
+    case "schooltest": return <SchoolTestForm ctx={ctx} />;
+    case "specrag": return <SpecRag ctx={ctx} />;
+    case "knowledge": return <KnowledgeBlock />;
+    case "water": return <WaterBlock ctx={ctx} />;
+    case "nextrevise": return <NextRevise ctx={ctx} />;
+    case "monthcalendar": return <MonthCalendar />;
+    case "shoppinglist": return <ShoppingList ctx={ctx} />;
     case "screentime": return <ScreenTimeBlock ctx={ctx} />;
     case "deepstats": return <DeepStats p={p} />;
     case "benchmark": return <Benchmark ctx={ctx} p={p} />;

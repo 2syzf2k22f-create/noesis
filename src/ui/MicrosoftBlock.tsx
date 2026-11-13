@@ -12,7 +12,7 @@ const line = (k: string, v: unknown) => {
   if (o?.error) return `${k}: ${o.error}`;
   if (k === "assignments") return `Teams: ${o.assignments} assignments (${o.added} new)`;
   if (k === "calendar" || k === "ics") return `${k === "ics" ? "Arbor" : "Calendar"}: ${o.events} events, ${o.lessons} lessons`;
-  if (k === "mail") return `Mail: ${o.added} new emails`;
+  if (k === "mail") return `Mail: ${o.added} new emails${o.skipped ? ` (${o.skipped} marketing/spam ignored)` : ""}`;
   if (k === "onenote") return `OneNote: ${o.pages} pages (${o.fetched} updated)`;
   return `${k}: ${String(v)}`;
 };

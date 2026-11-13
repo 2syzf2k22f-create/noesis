@@ -30,8 +30,13 @@ export const MODES = {
     cap: "When done, reply with one line: how many questions, which topic, and where to practise them (School › Questions).",
   },
   report: {
-    prompt: `WEEKLY REPORT WRITER. You get precomputed scores and stats as JSON. The scores are final: never change or invent numbers. Write the commentary: a 2-sentence summary, then for each area one line on what went well or badly and one concrete suggestion, then 2-3 patterns you notice across areas. Plain text, "- " lists.`,
-    cap: "Under 250 words.",
+    prompt: `WEEKLY REPORT WRITER. You get precomputed scores and stats as JSON. The numbers are final: never change or invent any. Write the commentary:
+1. A 2-sentence summary of the week.
+2. SCHOOL (the most important part; data in "school"): for each subject say what the stats show about his skill (level, trend, weakest topics) and about his revision (minutes, share, flashcard retention, overdue homework), whether the revision matches the weaknesses, and exactly what to do next week to close the gap to the target grade (A*): which topics, how many minutes, what kind of practice. Say plainly if there isn't enough evidence yet.
+3. Other areas: one line each on what went well or badly and one concrete suggestion.
+4. 2-3 patterns across areas (e.g. sleep vs marks, screen time vs revision).
+Plain text, "- " lists, short sentences.`,
+    cap: "Under 450 words.",
   },
 } as const;
 export type Mode = keyof typeof MODES;

@@ -197,15 +197,31 @@ export async function syncIcs(store: Store, url: string) {
 /* ---------- Outlook inbox -> inbox ---------- */
 async function syncMail(store: Store, token: string) {
   const since = new Date(Date.now() - 7 * 864e5).toISOString();
-  const msgs = await all(token, `/me/mailFolders/inbox/messages?$filter=receivedDateTime ge ${since}&$orderby=receivedDateTime desc&$top=50&$select=id,subject,bodyPreview,from,webLink,receivedDateTime,isRead`, 100);
-  let added = 0;
+  const msgs = await all(token, `/me/mailFolders/inbox/messages?$filter=receivedDateTime ge ${since}&$orderby=receivedDateTime desc&$top=50&$select=id,subject,bodyPreview,from,webLink,receivedDateTime,isRead,inferenceClassification,importance`, 100);
+  const myDomain = String((await store.get("ms_auth", "main"))?.account ?? "").split("@")[1]?.toLowerCase() ?? "";
+  let added = 0, skipped = 0;
   for (const m of msgs) {
+    if (isJunk(m, myDomain)) { skipped++; continue; }
     const id = uid(`inbox_items:outlook:${m.id}`);
     if (await store.get("inbox_items", id)) continue;
     await store.insert("inbox_items", { id, external_id: `outlook:${m.id}`, source: "outlook", title: m.subject || "(no subject)", body: `${m.from?.emailAddress?.name ?? ""}: ${m.bodyPreview ?? ""}`.slice(0, 1000), link: m.webLink, read_at: m.isRead ? nowIso() : null, created_at: m.receivedDateTime });
     added++;
   }
-  return { emails: msgs.length, added };
+  return { emails: msgs.length, added, skipped };
+}
+
+/** Marketing, newsletters and other noise: kept out of NOESIS (they stay in Outlook). School mail always gets through. */
+export function isJunk(m: Row, myDomain: string) {
+  const from = String(m.from?.emailAddress?.address ?? "").toLowerCase();
+  const domain = from.split("@")[1] ?? "";
+  if (myDomain && (domain === myDomain || domain.endsWith(`.${myDomain}`))) return false;
+  if (/teams\.microsoft\.com|sharepoint|office365|microsoft\.com$/.test(domain) && /assignment|teams|due|class/i.test(m.subject ?? "")) return false;
+  if (m.importance === "high") return false;
+  if (m.inferenceClassification === "other") return true;
+  const subj = String(m.subject ?? "").toLowerCase(), body = String(m.bodyPreview ?? "").toLowerCase();
+  if (/(newsletter|marketing|promo|offers?|deals?|mailer|mailchimp|sendgrid|hubspot|campaign|news@|info@|hello@)/.test(from)) return true;
+  if (/(unsubscribe|% off|\bsale\b|limited time|special offer|discount|webinar|win a|free trial|last chance|black friday|sponsored)/.test(subj + " " + body)) return true;
+  return false;
 }
 
 /* ---------- OneNote -> notes ---------- */

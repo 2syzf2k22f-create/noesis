@@ -14,7 +14,7 @@ export const screenContext = {
     const title = document.querySelector("h1")?.textContent?.trim();
     const windows = [...document.querySelectorAll<HTMLElement>("[data-window-title]")].map((w) => w.dataset.windowTitle).filter(Boolean);
     const blocks = [...document.querySelectorAll<HTMLElement>("[data-ui=block-head]")].map((b) => b.textContent?.trim()).filter(Boolean).slice(0, 30);
-    const main = (document.querySelector("main") ?? document.body).innerText.replace(/\s+\n/g, "\n").replace(/\n{2,}/g, "\n").slice(0, 2500);
+    const main = (document.querySelector("main") ?? document.body).innerText.replace(/\s+\n/g, "\n").replace(/\n{2,}/g, "\n").slice(0, 1500);
     return [
       `url: ${location.pathname}`,
       title ? `page: ${title}` : "",
@@ -33,3 +33,6 @@ export function useScreenContext(key: string, value: string | null) {
     return () => screenContext.set(key, null);
   }, [key, value]);
 }
+
+/** Only send the screen when the question is about it (saves tokens on everything else). */
+export const aboutScreen = (q: string) => /\b(this|these|that|here|screen|page|shown|showing|see|graph|chart|board|position|move|question|explain|what does|what's this|whats this|why is|highlight|point|where)\b/i.test(q);

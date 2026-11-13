@@ -43,6 +43,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "insights", title: "Patterns", span: 3 },
       { type: "habits", title: "Habits", span: 8, bind: { table: "habit_logs", days: 120, limit: 500 } },
       { type: "wordofday", title: "Word of the day", span: 4, bind: { table: "flashcards", limit: 500 } },
+      { type: "form", title: "Set a goal", span: 4, props: { table: "goals", submit: "Add goal", defaults: { done: false }, fields: [{ name: "title", required: true }, { name: "area", type: "select", options: ["School", "Fitness", "Nutrition", "Mind", "Languages", "Reading", "Other"] }, { name: "target", type: "number" }, { name: "unit" }, { name: "due", type: "date" }] } },
+      { type: "list", title: "Goals", span: 8, bind: { table: "goals", where: { done: false }, limit: 20 }, props: { primary: "title", secondary: ["area", "target", "unit", "due"], action: { label: "Done", op: "update", data: { done: true } } } },
+      { type: "monthcalendar", title: "This month", span: 12 },
     ],
   },
 
@@ -51,6 +54,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "School",
     subtitle: "Maths (OCR) · Further Maths (OCR) · Physics (AQA) · Economics (Edexcel)",
     blocks: [
+      { type: "schoolanalysis", title: "Path to A*", span: 12, bind: { table: "school_tests", limit: 1 } },
+      { type: "nextrevise", title: "What to revise now", span: 6, bind: { table: "study_sessions", limit: 1 } },
       tile("Flashcards", "/s/school/flashcards", dueCards(SUBJ), "due now"),
       tile("Revise", "/s/school/revise", revision7, "minutes this week", "min"),
       tile("Homework", "/s/school/homework", hwOpen, "to do"),
@@ -98,6 +103,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       ] } },
       { type: "deepstats", title: "Revision in depth", span: 12, props: { table: "study_sessions", field: "minutes", unit: "min", groupBy: "subject" } },
       { type: "table", title: "Recent sessions", span: 12, bind: { table: "study_sessions", limit: 15 }, props: { columns: ["created_at", "subject", "topic", "minutes"] } },
+      { type: "heatmap", title: "Revision heatmap, 120 days (min)", span: 12, bind: { table: "study_sessions", days: 120, agg: { fn: "sum", field: "minutes", by: "day" } } },
+      { type: "bar", title: "Minutes by topic, 28 days", span: 12, bind: { table: "study_sessions", days: 28, agg: { fn: "sum", field: "minutes", by: { field: "topic" } } } },
     ],
   },
   "school--planner": {
@@ -116,6 +123,23 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
         { name: "date", type: "date", required: true }, { name: "subject", type: "select", options: SUBJ }, { name: "topic", required: true }, { name: "minutes", type: "number" },
       ] } },
       { type: "list", title: "Overdue", span: 6, bind: { table: "plan_items", where: { done: false }, due: { field: "date" }, limit: 20 }, props: { primary: "topic", secondary: ["subject", "date"], action: { label: "Done", op: "update", data: { done: true } } } },
+    ],
+  },
+  "school--tests": {
+    title: "School tests",
+    subtitle: "Log every test with marks per topic. It feeds your predicted grades, weakest topics and the weekly report.",
+    blocks: [
+      { type: "schooltest", title: "Add a test", span: 7 },
+      { type: "bar", title: "Average % by subject", span: 5, bind: { table: "school_tests", agg: { fn: "avg", field: "pct", by: { field: "subject" } } } },
+      { type: "line", title: "Test % over time", span: 6, bind: { table: "school_tests", days: 365, dateField: "date", agg: { fn: "avg", field: "pct", by: "week" } } },
+      { type: "stat", title: "Tests logged", span: 3, bind: { table: "school_tests", agg: { fn: "count" } } },
+      { type: "stat", title: "Average %", span: 3, props: { unit: "%" }, bind: { table: "school_tests", agg: { fn: "avg", field: "pct" } } },
+      { type: "table", title: "All tests", span: 12, bind: { table: "school_tests", limit: 100, order: { col: "date", asc: false } }, props: { columns: ["date", "subject", "title", "score", "total", "pct", "grade"] } },
+      { type: "deepstats", title: "Test scores in depth", span: 12, props: { table: "school_tests", field: "pct", unit: "%", groupBy: "subject" } },
+      { type: "form", title: "Mistake log: write down what went wrong", span: 5, props: { table: "mistakes", submit: "Log it", defaults: { resolved: false }, fields: [{ name: "subject", type: "select", options: ["Maths", "Further Maths", "Physics", "Economics"] }, { name: "topic" }, { name: "source", label: "Where (test, paper, homework)" }, { name: "what", label: "The mistake", type: "textarea", required: true }, { name: "why", label: "Why it happened", type: "select", options: ["didn't know it", "misread the question", "careless slip", "ran out of time", "method error", "units / sig figs", "exam technique"] }, { name: "fix", label: "What to do next time", type: "textarea" }] } },
+      { type: "list", title: "Unresolved mistakes (redo, then tick)", span: 7, bind: { table: "mistakes", where: { resolved: false }, limit: 40 }, props: { primary: "what", secondary: ["subject", "topic", "why"], action: { label: "Fixed", op: "update", data: { resolved: true } } } },
+      { type: "donut", title: "Why marks are lost", span: 6, bind: { table: "mistakes", agg: { fn: "count", by: { field: "why" } } } },
+      { type: "bar", title: "Mistakes by topic", span: 6, bind: { table: "mistakes", agg: { fn: "count", by: { field: "topic" } } } },
     ],
   },
   "school--questions": {
@@ -209,6 +233,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       ] } },
       { type: "agenda", title: "Next 30 days", span: 6, props: { days: 30, limit: 15 } },
       { type: "table", title: "All lessons", span: 12, bind: { table: "timetable", limit: 300, order: { col: "day", asc: true } }, props: { columns: ["day", "start", "end", "subject", "room"] } },
+      { type: "monthcalendar", title: "Month view", span: 12 },
     ],
   },
   "school--resources": {
@@ -241,6 +266,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
         { name: "subject", type: "select", options: SUBJ }, { name: "code", label: "Spec code" }, { name: "title", required: true },
       ] } },
       { type: "list", title: "Spec topics", span: 6, bind: { table: "spec_topics", limit: 100, order: { col: "subject", asc: true } }, props: { primary: "title", secondary: ["subject", "code"] } },
+      { type: "specrag", title: "Spec checklist: how confident are you?", span: 12, bind: { table: "spec_topics", limit: 500, order: { col: "subject", asc: true } } },
     ],
   },
 
@@ -278,6 +304,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "deepstats", title: "Volume per set in depth", span: 12, props: { table: "sets", field: "volume", unit: "kg", groupBy: "exercise" } },
       { type: "deepstats", title: "Weight lifted in depth", span: 12, props: { table: "sets", field: "weight_kg", unit: "kg", groupBy: "exercise" } },
       { type: "prs", title: "Personal records & estimated 1RM", span: 12, bind: { table: "sets", limit: 500 } },
+      { type: "form", title: "Body measurements", span: 4, props: { table: "body_metrics", submit: "Log", fields: [{ name: "weight_kg", label: "Weight (kg)", type: "number" }, { name: "bodyfat_pct", label: "Body fat % (optional)", type: "number" }, { name: "waist_cm", label: "Waist (cm, optional)", type: "number" }] } },
+      { type: "line", title: "Body weight, 180 days (kg)", span: 8, bind: { table: "body_metrics", days: 180, agg: { fn: "last", field: "weight_kg", by: "week" } } },
     ],
   },
   "fitness--routines": {
@@ -344,6 +372,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "ask", title: "Suggest a recipe", span: 6, props: { submit: "Suggest", template: "Suggest one {kind} recipe ({extra}). If I like it I'll ask you to save it; then save it to recipes with kcal and protein per serving.",
         fields: [{ name: "kind", type: "select", options: ["high-protein", "quick (under 20 min)", "cheap", "breakfast", "post-workout"] }, { name: "extra", label: "Anything else", type: "text" }] } },
       { type: "list", title: "Your recipes", span: 12, bind: { table: "recipes", limit: 60, order: { col: "name", asc: true } }, props: { primary: "name", secondary: ["kcal", "protein_g", "tags", "ingredients"] } },
+      { type: "shoppinglist", title: "Shopping list", span: 12, bind: { table: "recipes", limit: 200 } },
     ],
   },
   "nutrition--sleep": {
@@ -356,6 +385,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "ring", title: "vs 8 h", span: 4, props: { goal: 8, unit: "h" }, bind: { table: "sleep_logs", days: 7, agg: { fn: "avg", field: "hours" } } },
       { type: "line", title: "Hours, 30 days", span: 12, bind: { table: "sleep_logs", days: 30, agg: { fn: "avg", field: "hours", by: "day" } } },
       { type: "deepstats", title: "Sleep in depth", span: 12, props: { table: "sleep_logs", field: "hours", unit: "h" } },
+      { type: "water", title: "Water today", span: 6, bind: { table: "water_logs", days: 2, limit: 200 } },
+      { type: "bar", title: "Water per day, 14 days (ml)", span: 6, bind: { table: "water_logs", days: 14, agg: { fn: "sum", field: "ml", by: "day" } } },
     ],
   },
   "projects--build": {
@@ -619,6 +650,16 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "list", title: "Entries", span: 8, bind: { table: "journal_entries", limit: 30 }, props: { primary: "text", secondary: ["mood", "created_at"] } },
       { type: "donut", title: "Mood, 30 days", span: 4, bind: { table: "journal_entries", days: 30, agg: { fn: "count", by: { field: "mood" } } } },
     ],
+  },
+  "library--knowledge": {
+    title: "Knowledge",
+    subtitle: "Websites, files and text Apollo learns from and uses as context.",
+    blocks: [{ type: "knowledge", span: 12 }],
+  },
+  "fitness--plan": {
+    title: "Workout plan",
+    subtitle: "Tell it about you; it builds the plan in seconds (no AI needed), and you can save the days as routines.",
+    blocks: [{ type: "workoutplanner", span: 12, bind: { table: "workout_plans", limit: 20 } }],
   },
   "library--files": {
     title: "Files",

@@ -8,6 +8,7 @@ import { BlockSchema, parseSpec } from "../ui/spec";
 import { derive } from "./derive";
 import { runBind } from "./query";
 import { weeklyScores } from "./scores";
+import { compactAnalysis, schoolAnalysis } from "./schoolAnalysis";
 import { ingestUrl, searchNotes } from "./notes";
 import { BindSchema } from "../ui/spec";
 import { nowIso, type Row, type Store } from "./store";
@@ -23,7 +24,7 @@ export const WRITABLE = [
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
-  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs",
+  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics",
 ] as const;
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
 const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
@@ -203,6 +204,15 @@ export const TOOLS: ToolDef[] = [
       if (a.kind === "widget" && !(a.widget && (await ctx.store.get("widgets", a.widget)))) return { error: "widget not found" };
       await pushUi(ctx, { type: "open_panel", kind: a.kind, widget: a.widget });
       return { opened: a.kind };
+    },
+  },
+  {
+    name: "get_school_analysis",
+    description: "Reg's school stats computed in code, per subject: level %, predicted grade, gap to the target grade (A*), trend, evidence counts, revision minutes and share, flashcard retention, overdue homework, weakest topics. Use it for any question about how he's doing at school or what to revise. Never change these numbers.",
+    input: { full: z.boolean().optional() },
+    async run(ctx, a) {
+      const r = await schoolAnalysis(ctx.store);
+      return a.full ? r : compactAnalysis(r);
     },
   },
   {

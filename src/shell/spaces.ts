@@ -36,6 +36,7 @@ export const SPACES: Space[] = [
     { id: "flashcards", name: "Flashcards", blurb: "Spaced repetition by subject" },
     { id: "revise", name: "Revise", blurb: "Timer and revision stats" },
     { id: "planner", name: "Planner", blurb: "Exam countdown and a day-by-day revision plan" },
+    { id: "tests", name: "Tests", blurb: "School tests by topic, mistake log and stats" },
     { id: "questions", name: "Questions", blurb: "Question bank: past-paper and exam-style questions, practice and tests" },
     { id: "papers", name: "Past papers", blurb: "Marks by paper and topic, weak-topic finder" },
     { id: "tutor", name: "Tutor", blurb: "Step-by-step help aimed at full marks" },
@@ -47,6 +48,7 @@ export const SPACES: Space[] = [
     { id: "subjects", name: "Subjects", blurb: "Boards, options and spec topics" },
   ] },
   { id: "fitness", name: "Fitness", icon: "fitness", blurb: "Training, progress, recovery", subs: [
+    { id: "plan", name: "Workout plan", blurb: "A plan built around you" },
     { id: "log", name: "Log", blurb: "Log sets as you train" },
     { id: "progress", name: "Progress", blurb: "Lifts, records and volume" },
     { id: "routines", name: "Routines", blurb: "Push, pull, legs templates" },
@@ -85,6 +87,7 @@ export const SPACES: Space[] = [
   ] },
   { id: "library", name: "Library", icon: "library", blurb: "Books, journal, files, weekly reports", subs: [
     { id: "books", name: "Books", blurb: "Reading list and log" },
+    { id: "knowledge", name: "Knowledge", blurb: "Websites, files and text Apollo learns from" },
     { id: "journal", name: "Journal", blurb: "Private by default" },
     { id: "files", name: "Files", blurb: "Things made with Apollo or Claude" },
     { id: "reports", name: "Reports", blurb: "Weekly reports" },

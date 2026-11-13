@@ -11,7 +11,7 @@ import type { UiAction } from "@/core/tools";
 import { PANEL_KINDS, panelStore, panelTitle, type PanelKind } from "./panelStore";
 import { SPACES, type IconName } from "./spaces";
 import { boardAnnotations } from "@/chess/Board";
-import { screenContext } from "./screen";
+import { aboutScreen, screenContext } from "./screen";
 import { uiStore } from "./uiStore";
 
 export type Action = {
@@ -342,9 +342,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       : null;
     setState("thinking");
     setReply({ text: "", pending: true, ask: text });
+    // common questions are answered from your data without the relay (no tokens)
+    if (!mode && !thread) {
+      const quick = await fetch("/api/quick", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (quick?.answer && my === runId.current) {
+        setState("speaking");
+        speaker.current?.feed(quick.answer, true);
+        if (!speaker.current) later(1500, () => setState("idle"));
+        return settle({ text: quick.answer, model: "instant", ask: text }, 30_000);
+      }
+    }
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot() }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: aboutScreen(text) ? screenContext.snapshot() : undefined }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {

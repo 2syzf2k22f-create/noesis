@@ -7,6 +7,7 @@ import { getStore } from "../src/core/getStore";
 import { buildUserPrompt, systemFor } from "../src/core/prompt";
 import { isMode } from "../src/core/modes";
 import { weeklyScores, weekStart } from "../src/core/scores";
+import { compactAnalysis, schoolAnalysis } from "../src/core/schoolAnalysis";
 import { ESCALATE, pickModel, type ModelPref } from "../src/core/routing";
 import { nowIso, type Row, type Store } from "../src/core/store";
 import { claudeCode, type Backend, type RunResult } from "./backend.mts";
@@ -162,7 +163,8 @@ async function runReport(s: Store, job: Row) {
   const weeksAgo = Number(job.input?.weeks_ago ?? 1);
   const scores = await weeklyScores(s, weeksAgo);
   const prev = await weeklyScores(s, weeksAgo + 1);
-  const compact = { week_starting: scores.week, overall: scores.overall, grade: scores.grade, areas: scores.areas, previous_week: { overall: prev.overall, areas: prev.areas.map((a) => ({ area: a.area, score: a.score })) } };
+  const school = compactAnalysis(await schoolAnalysis(s));
+  const compact = { week_starting: scores.week, overall: scores.overall, grade: scores.grade, areas: scores.areas, previous_week: { overall: prev.overall, areas: prev.areas.map((a) => ({ area: a.area, score: a.score })) }, school };
   let commentary = "";
   if (scores.overall != null) {
     const r = await backend.run({ model: "sonnet", system: systemFor("report"), prompt: JSON.stringify(compact) });
