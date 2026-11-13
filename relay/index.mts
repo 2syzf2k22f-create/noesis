@@ -12,6 +12,7 @@ import { ESCALATE, pickModel, type ModelPref } from "../src/core/routing";
 import { nowIso, type Row, type Store } from "../src/core/store";
 import { claudeCode, type Backend, type RunResult } from "./backend.mts";
 import { runBuild, runRollback, runShip } from "./build.mts";
+import { syncMicrosoft } from "../src/core/microsoft";
 
 const VERSION = "0.5.0";
 const HEARTBEAT_MS = 15_000;
@@ -240,3 +241,16 @@ setInterval(heartbeat, HEARTBEAT_MS);
 setInterval(tick, POLL_MS);
 void schedule();
 setInterval(schedule, 10 * 60_000);
+
+// Microsoft (Teams, Outlook, OneNote, Arbor) every 15 minutes while the PC is on; backs off during outages.
+async function msTick() {
+  try {
+    const a = await store!.get("ms_auth", "main");
+    const ics = (await store!.get("settings", "main"))?.data?.arbor_ics_url;
+    if (!a?.refresh_token && !ics) return;
+    const r = await syncMicrosoft(store!, undefined, { scheduled: true });
+    if (!("skipped" in r)) log("microsoft sync", Object.keys(r).filter((k) => k !== "_health").join(", "));
+  } catch (e) { log("microsoft sync failed:", (e as Error).message); }
+}
+setTimeout(msTick, 30_000);
+setInterval(msTick, 15 * 60_000);
