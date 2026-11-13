@@ -24,7 +24,7 @@ export const WRITABLE = [
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
-  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics",
+  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items",
 ] as const;
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions"] as const;
 const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
@@ -204,6 +204,90 @@ export const TOOLS: ToolDef[] = [
       if (a.kind === "widget" && !(a.widget && (await ctx.store.get("widgets", a.widget)))) return { error: "widget not found" };
       await pushUi(ctx, { type: "open_panel", kind: a.kind, widget: a.widget });
       return { opened: a.kind };
+    },
+  },
+  {
+    name: "save_unis",
+    description: "Save or update universities you researched (matched by name). Only fill fields you found on a real page this session, and list every page used in sources [{url, title}]. Leave a field out rather than guess. Percentages as numbers 0-100; costs in GBP; lat/lon of the main campus.",
+    input: { items: z.array(z.object({
+      name: z.string(), city: z.string().optional(), region: z.string().optional(), country: z.string().optional(), lat: z.number().optional(), lon: z.number().optional(),
+      setting: z.enum(["campus", "city", "collegiate", "town"]).optional(), russell_group: z.boolean().optional(), founded: z.number().optional(),
+      students_total: z.number().optional(), undergrads: z.number().optional(), postgrads: z.number().optional(), intl_pct: z.number().optional(), female_pct: z.number().optional(), state_school_pct: z.number().optional(),
+      satisfaction_pct: z.number().optional(), continuation_pct: z.number().optional(), graduate_prospects_pct: z.number().optional(), employment_pct: z.number().optional(), median_salary: z.number().optional(),
+      entry_tariff: z.number().optional(), rank_cug: z.number().optional(), rank_guardian: z.number().optional(), rank_times: z.number().optional(), rank_qs: z.number().optional(),
+      accommodation_cost_week: z.number().optional(), living_cost_rating: z.string().optional(), sports: z.string().optional(), clubs: z.string().optional(), website: z.string().optional(), notes: z.string().optional(),
+      sources: z.array(z.object({ url: z.string().url(), title: z.string().optional() })).min(1),
+    })).min(1).max(10) },
+    async run(ctx, a) {
+      const out: string[] = [];
+      for (const u of a.items) {
+        const old = (await ctx.store.list("unis", { eq: { name: u.name }, limit: 1 }))[0];
+        const row = old ? await ctx.store.update("unis", old.id, { ...u, sources: [...(old.sources ?? []), ...u.sources].slice(-20), updated_at: nowIso() }) : await ctx.store.insert("unis", { ...u, shortlisted: false });
+        await log(ctx, old ? "update_record" : "create_record", "unis", row!.id, old ?? null, row);
+        out.push(u.name);
+      }
+      await pushUi(ctx, { type: "reload" });
+      return { saved: out };
+    },
+  },
+  {
+    name: "save_courses",
+    description: "Save or update university courses you researched (matched by uni + name). Only facts from real pages this session, with sources [{url, title}]; leave out anything you didn't find. typical_offer like 'A*AA'; percentages 0-100; salaries/fees in GBP.",
+    input: { items: z.array(z.object({
+      uni: z.string(), name: z.string(), ucas_code: z.string().optional(), degree: z.string().optional(), years: z.number().optional(),
+      typical_offer: z.string().optional(), contextual_offer: z.string().optional(), required_subjects: z.string().optional(), admissions_test: z.string().optional(), interview: z.boolean().optional(),
+      applicants_per_place: z.number().optional(), offer_rate_pct: z.number().optional(), intake: z.number().optional(), satisfaction_pct: z.number().optional(), teaching_pct: z.number().optional(),
+      employment_pct: z.number().optional(), salary_15m: z.number().optional(), salary_5y: z.number().optional(), placement: z.boolean().optional(), year_abroad: z.boolean().optional(), fees_home: z.number().optional(),
+      modules: z.string().optional(), assessment: z.string().optional(), url: z.string().optional(), notes: z.string().optional(),
+      sources: z.array(z.object({ url: z.string().url(), title: z.string().optional() })).min(1),
+    })).min(1).max(15) },
+    async run(ctx, a) {
+      const out: string[] = [];
+      for (const c of a.items) {
+        const uni = (await ctx.store.list("unis", { eq: { name: c.uni }, limit: 1 }))[0];
+        const old = (await ctx.store.list("courses", { eq: { uni: c.uni, name: c.name }, limit: 1 }))[0];
+        const row = old ? await ctx.store.update("courses", old.id, { ...c, uni_id: uni?.id ?? old.uni_id, sources: [...(old.sources ?? []), ...c.sources].slice(-20), updated_at: nowIso() }) : await ctx.store.insert("courses", { ...c, uni_id: uni?.id ?? null, status: "researching" });
+        await log(ctx, old ? "update_record" : "create_record", "courses", row!.id, old ?? null, row);
+        out.push(`${c.name} at ${c.uni}`);
+      }
+      await pushUi(ctx, { type: "reload" });
+      return { saved: out };
+    },
+  },
+  {
+    name: "save_meal_plan",
+    description: "Save a meal plan: recipes (new ones; reuse a saved recipe by putting its exact name and no ingredients) and the plan items (date YYYY-MM-DD, slot breakfast|lunch|dinner|snack, recipe name). Give realistic per-serving kcal/protein/carbs/fat and minutes; ingredients one per line with amounts; short numbered steps.",
+    input: {
+      title: z.string(), start_date: z.string(), weeks: z.number().min(1).max(6), prefs: z.record(z.string(), z.unknown()).optional(),
+      recipes: z.array(z.object({ name: z.string(), servings: z.number().optional(), kcal: z.number().optional(), protein_g: z.number().optional(), carbs_g: z.number().optional(), fat_g: z.number().optional(), minutes: z.number().optional(), cuisine: z.string().optional(), tags: z.string().optional(), cost_gbp: z.number().optional(), ingredients: z.string().optional(), steps: z.string().optional() })).max(60),
+      items: z.array(z.object({ date: z.string(), slot: z.string(), recipe: z.string() })).max(200),
+    },
+    async run(ctx, a) {
+      const byName = new Map<string, string>();
+      for (const r of await ctx.store.list("recipes", { isNull: ["deleted_at"], limit: 2000 })) byName.set(String(r.name).toLowerCase(), r.id);
+      for (const r of a.recipes) {
+        if (byName.has(r.name.toLowerCase()) || !r.ingredients) continue;
+        const row = await ctx.store.insert("recipes", { ...r, source: "apollo", favourite: false, deleted_at: null });
+        await log(ctx, "create_record", "recipes", row.id, null, row);
+        byName.set(r.name.toLowerCase(), row.id);
+      }
+      const plan = await ctx.store.insert("meal_plans", { title: a.title, prefs: a.prefs ?? null, start_date: a.start_date, weeks: a.weeks });
+      await log(ctx, "create_record", "meal_plans", plan.id, null, plan);
+      for (const it of a.items) await ctx.store.insert("meal_plan_items", { plan_id: plan.id, date: it.date, slot: it.slot, recipe_id: byName.get(it.recipe.toLowerCase()) ?? null, recipe_name: it.recipe, eaten: false });
+      await pushUi(ctx, { type: "reload" });
+      return { plan: plan.id, recipes: a.recipes.length, items: a.items.length };
+    },
+  },
+  {
+    name: "save_book_recs",
+    description: "Save book recommendations for Reg to the Opportunities page (kind 'book'). Each needs a real url (publisher, Goodreads, Wikipedia or a review) and one line on why it suits him. Skips books already recommended or already in his library.",
+    input: { items: z.array(z.object({ title: z.string(), author: z.string(), url: z.string().url(), why: z.string(), subject: z.string().optional() })).min(1).max(8) },
+    async run(ctx, a) {
+      const have = new Set([...(await ctx.store.list("opportunities", { eq: { kind: "book" }, limit: 2000 })).map((o) => String(o.title).toLowerCase()), ...(await ctx.store.list("books", { limit: 2000 })).map((b) => String(b.title).toLowerCase())]);
+      const fresh = a.items.filter((b: { title: string }) => !have.has(b.title.toLowerCase()));
+      for (const b of fresh) { const row = await ctx.store.insert("opportunities", { kind: "book", title: b.title, author: b.author, url: b.url, summary: b.why, subject: b.subject ?? null, deleted_at: null }); await log(ctx, "create_record", "opportunities", row.id, null, row); }
+      if (fresh.length) await ctx.store.insert("inbox_items", { source: "books", title: `${fresh.length} book recommendation${fresh.length === 1 ? "" : "s"}`, body: fresh.map((b: { title: string; author: string }) => `- ${b.title} by ${b.author}`).join("\n"), link: "/s/school/opportunities", read_at: null, deleted_at: null });
+      return { saved: fresh.length, skipped: a.items.length - fresh.length };
     },
   },
   {
@@ -434,12 +518,12 @@ export const TOOLS: ToolDef[] = [
   {
     name: "save_opportunities",
     description: "Save extracurricular/super-curricular opportunities you found. Each needs a real source url. Only give a deadline if the source states one (ISO date), otherwise null. Duplicates (same url) are skipped. Adds one inbox item summarising new ones.",
-    input: { items: z.array(z.object({ title: z.string(), url: z.string().url(), summary: z.string(), subject: z.string().optional(), deadline: z.string().nullable().optional() })).min(1).max(15) },
+    input: { items: z.array(z.object({ title: z.string(), url: z.string().url(), summary: z.string(), subject: z.string().optional(), deadline: z.string().nullable().optional(), kind: z.enum(["opportunity", "open day", "summer school", "taster", "uni scheme", "competition", "work experience"]).optional(), uni: z.string().optional() })).min(1).max(15) },
     async run(ctx, a) {
       const have = new Set((await ctx.store.list("opportunities", { limit: 2000 })).map((o) => o.url));
-      const fresh = (a.items as { title: string; url: string; summary: string; subject?: string; deadline?: string | null }[]).filter((i) => !have.has(i.url));
+      const fresh = (a.items as { title: string; url: string; summary: string; subject?: string; deadline?: string | null; kind?: string; uni?: string }[]).filter((i) => !have.has(i.url));
       for (const i of fresh) {
-        const row = await ctx.store.insert("opportunities", { title: i.title, url: i.url, summary: i.summary, subject: i.subject ?? null, deadline: i.deadline ?? null, deleted_at: null });
+        const row = await ctx.store.insert("opportunities", { title: i.title, url: i.url, summary: i.summary, subject: i.subject ?? null, deadline: i.deadline ?? null, kind: i.kind ?? "opportunity", uni: i.uni ?? null, deleted_at: null });
         await log(ctx, "create_record", "opportunities", row.id, null, row);
       }
       if (fresh.length) {

@@ -29,6 +29,14 @@ export const MODES = {
 - Default 5 questions of rising difficulty unless asked.`,
     cap: "When done, reply with one line: how many questions, which topic, and where to practise them (School › Questions).",
   },
+  mealplan: {
+    prompt: `MEAL PLANNER. Build the meal plan Reg asks for from his preferences (JSON in the message) and save it with save_meal_plan in ONE call.
+- Respect allergies and diet strictly; avoid dislikes; match cuisines, budget, cooking time, skill, equipment and servings/batch cooking.
+- Hit his daily calorie and protein targets on average (say if they're unrealistic). Vary meals; reuse batch-cooked dishes across days when asked; favourites (listed) can recur.
+- Keep recipes practical: ingredients one per line with amounts, 4-8 short steps, realistic per-serving macros and cost.
+- Don't write the plan out in chat: just save it.`,
+    cap: "When done, reply in 2 lines: what the plan covers and the average kcal/protein per day.",
+  },
   report: {
     prompt: `WEEKLY REPORT WRITER. You get precomputed scores and stats as JSON. The numbers are final: never change or invent any. Write the commentary:
 1. A 2-sentence summary of the week.

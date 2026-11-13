@@ -26,8 +26,28 @@ export function authUrl(origin: string, state: string, challenge: string) {
   return `${AUTH()}/authorize?${q}`;
 }
 
+/** Microsoft has outages: retry network errors, 429 and 5xx a few times (honouring Retry-After), quickly enough to fit a 30 s scheduled run. */
+export class MsOutage extends Error { outage = true; }
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function msFetch(url: string, init: RequestInit, tries = 3): Promise<Response> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) });
+      if (r.status !== 429 && r.status < 500) return r;
+      last = new MsOutage(`Microsoft answered ${r.status}`);
+      const ra = Number(r.headers.get("retry-after"));
+      await wait(Math.min(5000, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 800 * 2 ** i));
+    } catch (e) {
+      last = new MsOutage(`Couldn't reach Microsoft (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message})`);
+      await wait(800 * 2 ** i);
+    }
+  }
+  throw last;
+}
+
 async function tokenRequest(body: Record<string, string>) {
-  const r = await fetch(`${AUTH()}/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: msClientId(), scope: MS_SCOPES, ...body }) });
+  const r = await msFetch(`${AUTH()}/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: msClientId(), scope: MS_SCOPES, ...body }) });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error_description?.split("\n")[0] ?? j.error ?? `token error ${r.status}`);
   return j as { access_token: string; refresh_token?: string; expires_in: number };
@@ -62,7 +82,7 @@ const SUBJECTS: [RegExp, string][] = [[/further\s*math|f\.?\s*maths|\bfm\b/i, "F
 export const subjectOf = (...s: (string | undefined | null)[]) => { const t = s.filter(Boolean).join(" "); return SUBJECTS.find(([r]) => r.test(t))?.[1] ?? null; };
 
 async function graph<T = Row>(token: string, path: string): Promise<T> {
-  const r = await fetch(path.startsWith("http") ? path : `${G}${path}`, { headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="Europe/London"' } });
+  const r = await msFetch(path.startsWith("http") ? path : `${G}${path}`, { headers: { authorization: `Bearer ${token}`, prefer: 'outlook.timezone="Europe/London"' } });
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(`${path.split("?")[0]}: ${j.error?.message ?? r.status}`); }
   return r.json();
 }
@@ -233,7 +253,8 @@ async function syncOneNote(store: Store, token: string, maxBodies = 12) {
     const old = await store.get("notes", id);
     if (old && old.updated_at && Date.parse(old.updated_at) >= Date.parse(p.lastModifiedDateTime)) { skipped++; continue; }
     if (fetched >= maxBodies) continue; // the rest next run (keeps each run fast)
-    const html = await fetch(`${G}/me/onenote/pages/${p.id}/content`, { headers: { authorization: `Bearer ${token}` } }).then((r) => (r.ok ? r.text() : "")).catch(() => "");
+    const html = await msFetch(`${G}/me/onenote/pages/${p.id}/content`, { headers: { authorization: `Bearer ${token}` } }, 2).then((r) => (r.ok ? r.text() : null)).catch(() => null);
+    if (html == null) continue; // couldn't fetch now: keep the old copy, try next run
     fetched++;
     const row = { subject: subjectOf(p.parentNotebook?.displayName, p.parentSection?.displayName, p.title), kind: "lesson", topic: p.parentSection?.displayName ?? null, title: p.title || "Untitled page", body: strip(html).slice(0, 20000) || "(empty page)", link: p.links?.oneNoteWebUrl?.href ?? null, source: "onenote", deleted_at: null };
     if (old) await store.update("notes", id, { ...row, updated_at: p.lastModifiedDateTime });
@@ -243,10 +264,25 @@ async function syncOneNote(store: Store, token: string, maxBodies = 12) {
 }
 
 /** Run every part; one failing (e.g. a permission the school blocks) doesn't stop the others. */
-export async function syncMicrosoft(store: Store, parts: string[] = ["assignments", "calendar", "mail", "onenote", "ics"]) {
+/**
+ * Run every part; one failing (a permission the school blocks, or Microsoft being down) doesn't stop
+ * the others, and nothing already synced is deleted on failure. During an outage the scheduled sync
+ * backs off (5, 10, 20, then 30 minutes) instead of hammering Microsoft; "Sync now" always tries.
+ */
+export async function syncMicrosoft(store: Store, parts: string[] = ["assignments", "calendar", "mail", "onenote", "ics"], opts: { scheduled?: boolean } = {}) {
+  const prev = await store.get("ms_auth", "main");
+  const health = (prev?.last_result?._health ?? {}) as { outageSince?: string; nextTry?: string; fails?: number; okAt?: Record<string, string> };
+  if (opts.scheduled && health.nextTry && Date.parse(health.nextTry) > Date.now()) return { skipped: `backing off until ${health.nextTry} (Microsoft outage)` };
   const result: Record<string, unknown> = {};
-  const token = await accessToken(store).catch((e) => { result.auth = (e as Error).message; return null; });
-  const run = async (k: string, f: () => Promise<unknown>) => { if (!parts.includes(k)) return; try { result[k] = await f(); } catch (e) { result[k] = { error: (e as Error).message }; } };
+  let outage = false;
+  const okAt = { ...(health.okAt ?? {}) };
+  const token = await accessToken(store).catch((e) => { if ((e as MsOutage).outage) outage = true; result.auth = (e as Error).message; return null; });
+  const run = async (k: string, f: () => Promise<unknown>) => {
+    if (!parts.includes(k)) return;
+    if (outage && k !== "ics") { result[k] = { error: "skipped: Microsoft is down", lastOk: okAt[k] ?? null }; return; }
+    try { result[k] = await f(); okAt[k] = nowIso(); }
+    catch (e) { if ((e as MsOutage).outage) outage = true; result[k] = { error: (e as Error).message, lastOk: okAt[k] ?? null }; }
+  };
   if (token) {
     await run("assignments", () => syncAssignments(store, token));
     await run("calendar", () => syncCalendar(store, token));
@@ -255,12 +291,17 @@ export async function syncMicrosoft(store: Store, parts: string[] = ["assignment
   } else if (!result.auth) result.auth = "not connected";
   const ics = (await store.get("settings", "main"))?.data?.arbor_ics_url;
   if (ics) await run("ics", () => syncIcs(store, String(ics)));
-  if (token || ics) await saveAuth(store, { last_sync: nowIso(), last_result: result });
+  const fails = outage ? (health.fails ?? 0) + 1 : 0;
+  result._health = outage
+    ? { outageSince: health.outageSince ?? nowIso(), fails, nextTry: new Date(Date.now() + Math.min(30, 5 * 2 ** (fails - 1)) * 60_000).toISOString(), okAt }
+    : { okAt };
+  if (prev || ics) await saveAuth(store, { ...(outage ? {} : { last_sync: nowIso() }), last_result: result });
   return result;
 }
 
 export async function msStatus(store: Store) {
   const a = await store.get("ms_auth", "main");
   const s = await store.get("settings", "main");
-  return { configured: !!msClientId(), connected: !!a?.refresh_token, account: a?.account ?? null, lastSync: a?.last_sync ?? null, lastResult: a?.last_result ?? null, arbor: !!s?.data?.arbor_ics_url };
+  const h = a?.last_result?._health ?? {};
+  return { configured: !!msClientId(), connected: !!a?.refresh_token, account: a?.account ?? null, lastSync: a?.last_sync ?? null, lastResult: a?.last_result ?? null, arbor: !!s?.data?.arbor_ics_url, outageSince: h.outageSince ?? null, nextTry: h.nextTry ?? null };
 }

@@ -12,6 +12,7 @@ export const ICONS = {
   mind: "M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z M12 8.5v7 M8.5 12h7",
   languages: "M4 5.5h9 M8.5 3.5v2 M5.5 5.5c.5 4 3 6.5 6.5 8 M11.5 5.5c-.5 3.5-3 6.5-7 8 M13 20l4-9l4 9 M14.5 17h5",
   library: "M5 4v16 M9 4v16 M13 5l5 14.5 M3 20h18",
+  uni: "M2 9l10-5 10 5-10 5z M6 11v5c2 2 10 2 12 0v-5 M22 9v6",
   stats: "M5 20V11 M10 20V4 M15 20v-7 M20 20V8",
   inbox: "M3 13l3-8h12l3 8v6H3z M3 13h5l1.5 3h5L16 13h5",
   chats: "M4 5h16v11H10l-5 4v-4H4z",
@@ -55,6 +56,7 @@ export const SPACES: Space[] = [
     { id: "recovery", name: "Recovery", blurb: "Soreness, energy and sleep" },
   ] },
   { id: "nutrition", name: "Nutrition and sleep", icon: "nutrition", blurb: "Meals, recipes, sleep, screen time", subs: [
+    { id: "mealplan", name: "Meal plan", blurb: "Plans built around you, recipes you can rate and save" },
     { id: "meals", name: "Meals", blurb: "One-tap logging" },
     { id: "recipes", name: "Recipes", blurb: "Saved recipes, never regenerated" },
     { id: "sleep", name: "Sleep", blurb: "Hours and quality" },
@@ -91,6 +93,10 @@ export const SPACES: Space[] = [
     { id: "journal", name: "Journal", blurb: "Private by default" },
     { id: "files", name: "Files", blurb: "Things made with Apollo or Claude" },
     { id: "reports", name: "Reports", blurb: "Weekly reports" },
+  ] },
+  { id: "uni", name: "University", icon: "uni", blurb: "Courses, universities, stats, offers vs your grades", subs: [
+    { id: "explore", name: "Explore", blurb: "Courses and universities with every stat, compare, map" },
+    { id: "opportunities", name: "Opportunities", blurb: "Open days, summer schools, taster days, schemes" },
   ] },
   { id: "stats", name: "Stats", icon: "stats", blurb: "Scores computed from your logs", subs: [
     { id: "scores", name: "Scores", blurb: "Weekly scores and history" },

@@ -5,7 +5,7 @@ import { syncMicrosoft } from "../../src/core/microsoft";
 export default async () => {
   const s = getStore();
   if (!s) return new Response("no store");
-  const r = await syncMicrosoft(s);
+  const r = await syncMicrosoft(s, undefined, { scheduled: true });
   return Response.json(r);
 };
 

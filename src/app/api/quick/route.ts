@@ -10,6 +10,13 @@ const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { weekday: "
 export async function POST(req: Request) {
   const s = storeOr503();
   if (s instanceof Response) return s;
+  const res = await answer(s, req);
+  const j = await res.clone().json().catch(() => null);
+  if (j?.answer) await s.insert("usage_log", { feature: "instant answer", model: "instant", tokens_in: 0, tokens_out: 0 }).catch(() => {});
+  return res;
+}
+
+async function answer(s: Exclude<ReturnType<typeof storeOr503>, Response>, req: Request) {
   const q = String((await req.json().catch(() => ({}))).text ?? "").toLowerCase().trim();
   if (q.length > 80 || /\b(why|how do|explain|help me|write|make|create|plan|should)\b/.test(q)) return Response.json({ answer: null });
 
