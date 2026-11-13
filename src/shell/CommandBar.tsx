@@ -61,7 +61,7 @@ export function CommandBar() {
         </button>
         <button type="button" className={s.kbd} onClick={() => setPaletteOpen(true)} aria-label="Open command palette">⌘K</button>
         <button type="button" className={s.mic} aria-pressed={orbState === "listening"} aria-label={orbState === "listening" ? "Stop listening" : "Talk (tap, or hold to talk)"}
-          title="Tap to talk, or hold. You can also hold Space."
+          title="Tap to talk, or hold. You can also hold Alt+P anywhere."
           onPointerDown={down} onPointerUp={up} onPointerLeave={() => { if (press.current?.held) up(); }}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); toggleMic(); } }}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

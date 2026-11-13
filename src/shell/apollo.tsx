@@ -106,7 +106,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const timers = useRef<number[]>([]);
   const runId = useRef(0);
   const [draft, setDraft] = useState("");
-  const [speakPref, setSpeakPref] = useState<SpeakPref>("voice");
+  const [speakPref, setSpeakPref] = useState<SpeakPref>("always");
   const [wake, setWakeState] = useState(false);
   const [stt, setStt] = useState(false);
   const listener = useRef<Listener | null>(null);
@@ -217,11 +217,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return () => w?.abort();
   }, [wake, orbState, startListening]);
 
-  // Hold Space to talk (when not typing)
+  // Push to talk: hold Alt+P (works anywhere, even while typing); release P or Alt to send
   useEffect(() => {
-    const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && (e.target.closest("input, textarea, select, [contenteditable]") !== null);
-    const down = (e: KeyboardEvent) => { if (e.code === "Space" && !e.repeat && !typing(e)) { e.preventDefault(); startListening(); } };
-    const up = (e: KeyboardEvent) => { if (e.code === "Space" && !typing(e)) stopListening(); };
+    let held = false;
+    const down = (e: KeyboardEvent) => { if (e.altKey && e.code === "KeyP") { e.preventDefault(); if (!e.repeat && !held) { held = true; startListening(); } } };
+    const up = (e: KeyboardEvent) => { if (held && (e.code === "KeyP" || e.key === "Alt")) { held = false; e.preventDefault(); stopListening(); } };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };

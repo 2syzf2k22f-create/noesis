@@ -56,6 +56,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     blocks: [
       { type: "schoolanalysis", title: "Path to A*", span: 12, bind: { table: "school_tests", limit: 1 } },
       { type: "nextrevise", title: "What to revise now", span: 6, bind: { table: "study_sessions", limit: 1 } },
+      { type: "schooltest", title: "Log a test you did at school", span: 6 },
+      tile("Tests", "/s/school/tests", { table: "school_tests", days: 90, agg: { fn: "avg", field: "pct" } }, "average %, 90 days", "%"),
       tile("Flashcards", "/s/school/flashcards", dueCards(SUBJ), "due now"),
       tile("Revise", "/s/school/revise", revision7, "minutes this week", "min"),
       tile("Homework", "/s/school/homework", hwOpen, "to do"),

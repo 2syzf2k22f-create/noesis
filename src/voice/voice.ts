@@ -61,14 +61,31 @@ export function wakeWord(word: string, onWake: (rest: string) => void): Listener
 /* ---------- TTS ---------- */
 
 let chosen: SpeechSynthesisVoice | null = null;
+export const VOICE_KEY = "noesis.voiceName";
+/** British male, natural-sounding voices first (Edge's "Ryan/Thomas Online (Natural)", Chrome's "Google UK English Male", Apple's "Daniel"). A voice chosen in the Apollo panel wins. */
 export function pickVoice(): SpeechSynthesisVoice | null {
   if (!ttsSupported()) return null;
   const vs = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(VOICE_KEY); } catch {}
+  const pick = saved ? vs.find((v) => v.name === saved) : undefined;
+  if (pick) return (chosen = pick);
   const score = (v: SpeechSynthesisVoice) =>
-    (/natural|neural|premium|enhanced/i.test(v.name) ? 8 : 0) + (/google uk english|daniel|serena|libby|sonia|ryan|aria|jenny/i.test(v.name) ? 4 : 0) +
-    (v.lang === "en-GB" ? 2 : 0) + (v.localService ? 0 : 1);
+    (v.lang === "en-GB" ? 6 : 0) +
+    (/\b(ryan|thomas|george|daniel|oliver|arthur|alfie|elliot|ethan|noah|uk english male|male)\b/i.test(v.name) ? 6 : 0) +
+    (/natural|neural|online|premium|enhanced/i.test(v.name) ? 5 : 0) -
+    (/\b(sonia|libby|serena|maisie|hazel|susan|kate|female|jenny|aria|martha|bella|stephanie)\b/i.test(v.name) ? 5 : 0) +
+    (v.localService ? 0 : 1);
   chosen = vs.sort((a, b) => score(b) - score(a))[0] ?? null;
   return chosen;
+}
+export function setVoice(name: string | null) {
+  try { if (name) localStorage.setItem(VOICE_KEY, name); else localStorage.removeItem(VOICE_KEY); } catch {}
+  chosen = null;
+  return pickVoice();
+}
+export function englishVoices() {
+  return ttsSupported() ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en")).sort((a, b) => (a.lang === "en-GB" ? -1 : 1) - (b.lang === "en-GB" ? -1 : 1) || a.name.localeCompare(b.name)) : [];
 }
 
 /**
@@ -83,7 +100,8 @@ export function createSpeaker(o: { onStart: () => void; onEnd: () => void; onWor
     if (!text.trim() || cancelled) return;
     const u = new SpeechSynthesisUtterance(text);
     u.voice = chosen ?? pickVoice();
-    u.rate = 1.04;
+    u.rate = 1.0;
+    u.pitch = 0.95;
     u.onstart = () => { o.onStart(); o.onWord(); };
     u.onboundary = () => o.onWord();
     u.onend = u.onerror = () => { pending--; if (pending <= 0 && !cancelled) o.onEnd(); };

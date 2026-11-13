@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createSpeaker, englishVoices, pickVoice, setVoice } from "@/voice/voice";
 import { useApollo } from "./apollo";
 import s from "./shell.module.css";
 
@@ -16,7 +17,15 @@ const until = (sec: number) => new Date(sec * 1000).toLocaleString("en-GB", { we
 
 /** Relay status, plan usage, and the action log with Undo/rollback. */
 export function ApolloPanel() {
-  const { status, refreshStatus, changes, undoApollo } = useApollo();
+  const { status, refreshStatus, changes, undoApollo, voice, setSpeak } = useApollo();
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceName, setVoiceName] = useState("");
+  useEffect(() => {
+    const load = () => { setVoices(englishVoices()); setVoiceName(pickVoice()?.name ?? ""); };
+    queueMicrotask(load);
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.addEventListener("voiceschanged", load);
+    return () => { if (typeof speechSynthesis !== "undefined") speechSynthesis.removeEventListener("voiceschanged", load); };
+  }, []);
   const [acts, setActs] = useState<Act[] | null>(null);
 
   useEffect(() => {
@@ -58,6 +67,24 @@ export function ApolloPanel() {
         <div className={s.kv}><span className="label">Tokens today</span><span>{fmt(status?.tokens?.today)}</span></div>
         <div className={s.kv}><span className="label">This week</span><span>{fmt(status?.tokens?.week)}</span></div>
         <div className={s.kv}><span className="label">Last message</span><span>{fmt(status?.tokens?.last)}</span></div>
+      </section>
+
+      <section>
+        <div className="label">Voice</div>
+        <div className={s.kv}>
+          <span>Read replies aloud</span>
+          <select value={voice.speak} onChange={(e) => setSpeak(e.target.value as typeof voice.speak)}>
+            <option value="always">always</option><option value="voice">only when I talk</option><option value="never">never</option>
+          </select>
+        </div>
+        <div className={s.kv}>
+          <select style={{ maxWidth: 230 }} value={voiceName} onChange={(e) => { setVoiceName(e.target.value); setVoice(e.target.value || null); }}>
+            <option value="">Automatic (British male)</option>
+            {voices.map((v) => <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>)}
+          </select>
+          <button className={s.linkBtn} onClick={() => createSpeaker({ onStart: () => {}, onEnd: () => {}, onWord: () => {} }).feed("Hello Reg. This is how I sound.", true)}>Test</button>
+        </div>
+        <p className={s.note}>The most natural British male voices are in Microsoft Edge (Ryan or Thomas &ldquo;Online (Natural)&rdquo;). Chrome has &ldquo;Google UK English Male&rdquo;. Push to talk: hold Alt+P.</p>
       </section>
 
       <section>

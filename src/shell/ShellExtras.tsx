@@ -139,7 +139,7 @@ export function ShellExtras() {
         <div className={s.helpScrim} onClick={() => setHelp(false)}>
           <div className={s.help} onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Keyboard shortcuts">
             <b>Keyboard shortcuts</b>
-            {[["Ctrl / ⌘ + K", "Command palette: search your data, go anywhere, ask Apollo"], ["/", "Type to Apollo (chatbox)"], ["Hold Space", "Talk to Apollo"], ["Esc", "Close panels and menus"], ["← →", "Step through chess moves (boards and reviews)"], ["?", "This list"], ["build: …", "In the chatbox: ask for a change to the site's code"]].map(([k, v]) => (
+            {[["Ctrl / ⌘ + K", "Command palette: search your data, go anywhere, ask Apollo"], ["/", "Type to Apollo (chatbox)"], ["Hold Alt + P", "Talk to Apollo (push to talk)"], ["Esc", "Close panels and menus"], ["← →", "Step through chess moves (boards and reviews)"], ["?", "This list"], ["build: …", "In the chatbox: ask for a change to the site's code"]].map(([k, v]) => (
               <div key={k} className={s.helpRow}><kbd>{k}</kbd><span>{v}</span></div>
             ))}
             <a className="pill" href="/api/export" download>Export all my data (JSON)</a>
