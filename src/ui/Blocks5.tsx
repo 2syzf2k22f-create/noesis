@@ -4,24 +4,11 @@
 import { useEffect, useState } from "react";
 import type { BlockCtx } from "./Blocks";
 import u from "./ui.module.css";
+import { pdfText } from "@/shell/files";
 
 const field: React.CSSProperties = { height: 34, padding: "0 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text)" };
 const SUBJ = ["", "Maths", "Further Maths", "Physics", "Economics", "Mandarin", "Spanish", "French", "Fitness", "Nutrition", "Chess", "Poker", "General"];
 type Src = { id: string; title: string; url: string | null; kind: string; subject: string | null; topic: string | null; chunks: number; at: string };
-const PDFJS = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
-
-async function pdfText(file: File) {
-  const pdfjs = await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ PDFJS);
-  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS.replace("pdf.min.mjs", "pdf.worker.min.mjs");
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  const pages: string[] = [];
-  for (let i = 1; i <= Math.min(doc.numPages, 300); i++) {
-    const c = await (await doc.getPage(i)).getTextContent();
-    pages.push(c.items.map((x: { str?: string; hasEOL?: boolean }) => (x.str ?? "") + (x.hasEOL ? "\n" : " ")).join(""));
-  }
-  return pages.join("\n\n");
-}
-
 export function KnowledgeBlock() {
   const [list, setList] = useState<Src[] | null>(null);
   const [url, setUrl] = useState("");

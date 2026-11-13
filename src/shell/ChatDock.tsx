@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useApollo } from "./apollo";
 import { Icon } from "./Icon";
 import { findTarget, uiStore, useUi, type Box } from "./uiStore";
-import { shrinkImage } from "./images";
+import { ACCEPT, readAttachment, type Attached } from "./files";
 import s from "./dock.module.css";
 
 type Msg = { id: string; role: string; content: string };
@@ -20,6 +20,9 @@ export function ChatDock() {
   const ui = useUi();
   const [text, setText] = useState("");
   const [imgs, setImgs] = useState<string[]>([]);
+  const [docs, setDocs] = useState<Attached[]>([]);
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const [reading, setReading] = useState(0);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const drag = useRef<{ mode: "move" | "size"; sx: number; sy: number; b: Box } | null>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -53,18 +56,30 @@ export function ChatDock() {
 
   const send = () => {
     const t = text.trim();
-    if (!t && !imgs.length) return;
+    if ((!t && !imgs.length && !docs.length) || reading) return;
     setText("");
     const pics = imgs;
     setImgs([]);
-    setMsgs((m) => [...m, { id: `local-${m.length}`, role: "user", content: `${t}${pics.length ? ` [${pics.length} image${pics.length > 1 ? "s" : ""}]` : ""}` }]);
+    const ds = docs; setDocs([]); setFileErr(null);
+    setMsgs((m) => [...m, { id: `local-${m.length}`, role: "user", content: `${t}${pics.length ? ` [${pics.length} image${pics.length > 1 ? "s" : ""}]` : ""}${ds.map((d) => ` [file: ${d.name}]`).join("")}` }]);
     uiStore.setChat({ open: true });
-    submit(t, pics.length ? { images: pics } : undefined);
+    submit(t || (ds.length ? "Have a look at this." : ""), pics.length || ds.length ? { images: pics, files: ds.map((d) => ({ name: d.name, kind: d.kind, text: d.text ?? "" })) } : undefined);
   };
   const addFiles = async (files: Iterable<File>) => {
-    const out: string[] = [];
-    for (const f of files) if (f.type.startsWith("image/")) out.push(await shrinkImage(f));
-    if (out.length) { setImgs((x) => [...x, ...out].slice(0, 4)); uiStore.setChat({ open: true }); }
+    const list = [...files];
+    if (!list.length) return;
+    uiStore.setChat({ open: true });
+    setReading((n) => n + list.length);
+    const errs: string[] = [];
+    for (const f of list) {
+      try {
+        const a = await readAttachment(f);
+        if (a.image) setImgs((x) => (x.length >= 4 ? (errs.push("Up to 4 pictures per message."), x) : [...x, a.image!]));
+        else setDocs((x) => (x.length >= 5 ? (errs.push("Up to 5 files per message."), x) : [...x, a]));
+      } catch (e) { errs.push(e instanceof Error ? e.message : `Couldn't read ${f.name}.`); }
+      setReading((n) => n - 1);
+    }
+    setFileErr(errs.length ? [...new Set(errs)].join(" ") : null);
   };
   const begin = (mode: "move" | "size", e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button,textarea")) return;
@@ -85,6 +100,18 @@ export function ChatDock() {
 
   const inputRow = (
     <div className={s.inputWrap} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void addFiles(e.dataTransfer.files); }}>
+    {(docs.length > 0 || reading > 0 || fileErr) && (
+      <div className={s.thumbs} style={{ flexWrap: "wrap" }}>
+        {docs.map((d, i) => (
+          <span key={i} className="pill" title={d.note ?? `${d.text?.length.toLocaleString()} characters`} style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+            📄 {d.name.length > 28 ? `${d.name.slice(0, 26)}…` : d.name} <small className="label">{d.kind.toUpperCase()} · {(d.size / 1024).toFixed(0)} KB{d.note ? " · trimmed" : ""}</small>
+            <button onClick={() => setDocs(docs.filter((_, j) => j !== i))} aria-label="Remove" style={{ background: "none", border: 0, color: "inherit", cursor: "pointer" }}>✕</button>
+          </span>
+        ))}
+        {reading > 0 && <small className="label">Reading {reading} file{reading > 1 ? "s" : ""}…</small>}
+        {fileErr && <small style={{ color: "var(--danger)" }}>{fileErr}</small>}
+      </div>
+    )}
     {imgs.length > 0 && (
       <div className={s.thumbs}>
         {imgs.map((src, i) => (
@@ -97,17 +124,17 @@ export function ChatDock() {
       </div>
     )}
     <div className={s.inputRow}>
-      <label className={s.mic} title="Attach a picture (or paste / drop one)" style={{ cursor: "pointer" }}>
+      <label className={s.mic} title="Attach a picture or file: PDF, Word, CSV, text (or paste / drop it)" style={{ cursor: "pointer" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-8 8" /></svg>
-        <input type="file" accept="image/*" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
+        <input type="file" accept={ACCEPT} multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ""; }} />
       </label>
-      <textarea ref={input} rows={1} value={draft || text} placeholder={orbState === "listening" ? "Listening… (Alt+P again to send)" : "Ask Apollo anything, or paste a screenshot  ( / )"}
-        onPaste={(e) => { const fs = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/")); if (fs.length) { e.preventDefault(); void addFiles(fs); } }}
+      <textarea ref={input} rows={1} value={draft || text} placeholder={orbState === "listening" ? "Listening… (Alt+P again to send)" : "Ask Apollo anything, or paste a screenshot / drop a file  ( / )"}
+        onPaste={(e) => { const fs = [...e.clipboardData.files]; if (fs.length) { e.preventDefault(); void addFiles(fs); } }}
         onChange={(e) => setText(e.target.value)} onFocus={() => uiStore.setChat({ open: true })}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } if (e.key === "Escape") { (e.target as HTMLElement).blur(); uiStore.setChat({ open: false }); } }} />
       {orbState === "speaking" && <button className={s.mic} onClick={stopSpeaking} title="Stop talking (Esc)" aria-label="Stop talking">■</button>}
       <button className={s.mic} data-on={orbState === "listening"} onClick={toggleMic} aria-label="Talk"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></button>
-      <button className={s.send} onClick={send} aria-label="Send" disabled={!text.trim() && !imgs.length}>↑</button>
+      <button className={s.send} onClick={send} aria-label="Send" disabled={(!text.trim() && !imgs.length && !docs.length) || reading > 0}>↑</button>
     </div>
     </div>
   );

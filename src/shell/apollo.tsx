@@ -50,7 +50,7 @@ type Ctx = {
   actions: Action[];
   runAction: (a: Action) => void;
   /** Site commands run instantly in the browser; anything else goes to Apollo via the relay. */
-  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[] }) => void;
+  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[]; files?: { name: string; kind: string; text: string }[] }) => void;
   toggleMic: () => void;
   /** Push-to-talk: start on press, stop (and send) on release. */
   startListening: () => void;
@@ -396,7 +396,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     settle({ text: a.done }, 4200);
   }, [clearTimers, micOn, settle, stopMic]);
 
-  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string, images: string[] = []) => {
+  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string, images: string[] = [], files: { name: string; kind: string; text: string }[] = []) => {
     const my = ++runId.current;
     clearTimers();
     if (micOn) stopMic();
@@ -427,7 +427,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!images.length && wantsScreenshot(text)) { const shot = await screenshot(); if (shot) images = [shot]; }
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot(), images }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot(), images, files }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
@@ -486,9 +486,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUi, clearTimers, micOn, openChat, refreshStatus, settle, stopMic]);
 
-  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[] }) => {
+  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[]; files?: { name: string; kind: string; text: string }[] }) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
-    if (!q && !opts?.images?.length) return;
+    if (!q && !opts?.images?.length && !opts?.files?.length) return;
     // Build mode starts only from Reg's own words: "build: <change>"
     const bm = /^\s*build\s*:\s*([\s\S]{5,})$/i.exec(text);
     if (bm) {
@@ -498,7 +498,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       router.push("/s/projects/build");
       return;
     }
-    if (!opts?.model && !opts?.mode && !opts?.thread && !opts?.images?.length) {
+    if (!opts?.model && !opts?.mode && !opts?.thread && !opts?.images?.length && !opts?.files?.length) {
       const bare = q.replace(VERBS, "").replace(/\s+(panel|space|page|style|theme|preset)$/, (m) => (m.trim() === "panel" ? m : ""));
       const find = (t: string) => actions.find((a) => a.label.toLowerCase() === t || a.keywords.includes(t));
       const hit = find(q) ?? find(bare);
@@ -507,7 +507,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setPaletteOpen(false);
     // language practice is always spoken (unless voice is set to never)
     const speak = speakPref === "always" || (speakPref === "voice" && (!!opts?.spoken || opts?.mode === "conversation"));
-    void ask(text.trim() || "What do you make of this?", opts?.model ?? model, speak, opts?.mode, opts?.thread, opts?.images ?? []);
+    void ask(text.trim() || "What do you make of this?", opts?.model ?? model, speak, opts?.mode, opts?.thread, opts?.images ?? [], opts?.files ?? []);
   }, [actions, ask, model, runAction, speakPref, router, settle]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 

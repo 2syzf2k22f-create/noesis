@@ -11,6 +11,12 @@ export async function POST(req: Request) {
   const text = String(body.text ?? "").trim().slice(0, 8000);
   // up to 4 images (pasted screenshots or a picture of the page), JPEG/PNG data URLs, ~2 MB each max
   const images: string[] = (Array.isArray(body.images) ? body.images : []).filter((x: unknown) => typeof x === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(x) && x.length < 2_800_000).slice(0, 4);
+  // up to 5 attached documents, already turned into text in the browser (PDF, DOCX, CSV, TXT…)
+  let budget = 120_000;
+  const files: { name: string; kind: string; text: string }[] = (Array.isArray(body.files) ? body.files : [])
+    .filter((f: { name?: unknown; text?: unknown }) => typeof f?.name === "string" && typeof f?.text === "string").slice(0, 5)
+    .map((f: { name: string; kind?: string; text: string }) => { const text = f.text.slice(0, Math.max(0, budget)); budget -= text.length; return { name: f.name.slice(0, 200), kind: String(f.kind ?? "text").slice(0, 10), text }; })
+    .filter((f: { text: string }) => f.text.length > 0);
   if (!text) return Response.json({ error: "empty" }, { status: 400 });
   const model: ModelPref = MODEL_PREFS.includes(body.model) ? body.model : "auto";
 
@@ -33,10 +39,12 @@ export async function POST(req: Request) {
   if (!convId) {
     convId = (await s.insert("conversations", { title: thread ? thread.replace(/^\w+:/, "").trim() + " · chat" : titleFrom(text), space: thread, pinned: false, deleted_at: null, updated_at: nowIso() })).id;
   }
-  const msg = await s.insert("messages", { conversation_id: convId, role: "user", content: `${thread?.startsWith("project:") ? `[Project: ${thread.slice(8)}] ` : ""}${text}${images.length ? ` [${images.length} image${images.length > 1 ? "s" : ""}]` : ""}` });
+  const msg = await s.insert("messages", { conversation_id: convId, role: "user", content: `${thread?.startsWith("project:") ? `[Project: ${thread.slice(8)}] ` : ""}${text}${images.length ? ` [${images.length} image${images.length > 1 ? "s" : ""}]` : ""}${files.map((f) => ` [file: ${f.name}]`).join("")}` });
+  // keep each file in Library › Files
+  for (const f of files) await s.insert("files", { name: f.name, mime: f.kind, size_bytes: f.text.length, content: f.text, source: "chat" }).catch(() => null);
   const job = await s.insert("jobs", {
     kind: "apollo", status: "queued", conversation_id: convId,
-    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", images, screen: typeof body.screen === "string" ? body.screen.slice(0, 10000) : null },
+    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", images, files, screen: typeof body.screen === "string" ? body.screen.slice(0, 10000) : null },
     ui_actions: [], output: null,
   });
   await s.update("conversations", convId, { updated_at: nowIso() });
