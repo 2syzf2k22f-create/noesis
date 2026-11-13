@@ -24,8 +24,7 @@ export function systemFor(mode: Mode, escalatable = false) {
 
 export const ESCALATE_RULE = `\n\nIf answering well needs careful reasoning, long writing, tutoring or multi-step planning, reply with exactly ${ESCALATE} and nothing else.`;
 
-const HISTORY = 6;
-const clip = (s: unknown, n: number) => { const t = String(s ?? ""); return t.length > n ? `${t.slice(0, n)}…` : t; };
+const HISTORY = 10;
 
 export async function buildUserPrompt(store: Store, conversationId: string, text: string, excludeMessageId?: string, screen?: string) {
   const [facts, summary, recent] = await Promise.all([
@@ -35,10 +34,10 @@ export async function buildUserPrompt(store: Store, conversationId: string, text
   ]);
   const history = recent.filter((m) => m.id !== excludeMessageId).slice(0, HISTORY).reverse();
   const parts: string[] = [];
-  if (facts.length) parts.push(`<facts>\n${facts.map((f) => `${f.key}: ${clip(f.value, 200)}`).join("\n")}\n</facts>`);
+  if (facts.length) parts.push(`<facts>\n${facts.map((f) => `${f.key}: ${f.value}`).join("\n")}\n</facts>`);
   if (summary?.summary) parts.push(`<earlier_in_this_chat>\n${summary.summary}\n</earlier_in_this_chat>`);
-  if (history.length) parts.push(`<recent>\n${history.map((m, i) => `${m.role === "user" ? "Reg" : "Apollo"}: ${clip(m.content, i >= history.length - 2 ? 1500 : 400)}`).join("\n")}\n</recent>`);
-  if (screen) parts.push(`<screen>\n${screen.slice(0, 3000)}\n</screen>`);
+  if (history.length) parts.push(`<recent>\n${history.map((m) => `${m.role === "user" ? "Reg" : "Apollo"}: ${m.content}`).join("\n")}\n</recent>`);
+  if (screen) parts.push(`<screen>\n${screen.slice(0, 5000)}\n</screen>`);
   parts.push(`<now>${new Date().toLocaleString("en-GB", { timeZone: "Europe/London" })}</now>`);
   parts.push(text);
   return parts.join("\n\n");

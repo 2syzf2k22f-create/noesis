@@ -11,7 +11,7 @@ import type { UiAction } from "@/core/tools";
 import { PANEL_KINDS, panelStore, panelTitle, type PanelKind } from "./panelStore";
 import { SPACES, type IconName } from "./spaces";
 import { boardAnnotations } from "@/chess/Board";
-import { aboutScreen, screenContext } from "./screen";
+import { screenContext } from "./screen";
 import { uiStore } from "./uiStore";
 
 export type Action = {
@@ -354,7 +354,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: aboutScreen(text) ? screenContext.snapshot() : undefined }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot() }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
