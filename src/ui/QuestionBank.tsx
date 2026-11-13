@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useApollo } from "@/shell/apollo";
+import { usePersist } from "@/ui/usePersist";
 import { useScreenContext } from "@/shell/screen";
 import type { BlockCtx } from "./Blocks";
 import s from "./qbank.module.css";
@@ -25,8 +26,8 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
   const { submit, changes } = useApollo();
   const [qs, setQs] = useState<Row[]>([]);
   const [atts, setAtts] = useState<Row[]>([]);
-  const [f, setF] = useState({ subject: "", topic: "", subtopic: "", source: "" });
-  const [run, setRun] = useState<Run | null>(null);
+  const [f, setF] = usePersist("qbank.filter", { subject: "", topic: "", subtopic: "", source: "" });
+  const [run, setRun] = usePersist<Run | null>("qbank.run", null);
   const [gen, setGen] = useState({ n: 5, style: "generated" });
   const [now, setNow] = useState(0);
   const [tick, setTick] = useState(0);

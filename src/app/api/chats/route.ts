@@ -6,7 +6,10 @@ export async function GET(req: NextRequest) {
   const s = storeOr503();
   if (s instanceof Response) return s;
   const q = (req.nextUrl.searchParams.get("q") ?? "").toLowerCase().trim();
-  let rows = await s.list("conversations", { isNull: ["deleted_at"], order: { col: "updated_at", asc: false }, limit: 200 });
+  // only direct chats with Apollo (and project chats); feature runs and language practice live on their own pages
+  const space = req.nextUrl.searchParams.get("space");
+  let rows = (await s.list("conversations", { isNull: ["deleted_at"], order: { col: "updated_at", asc: false }, limit: 300 }))
+    .filter((c) => (space ? String(c.space ?? "").startsWith(space) : !c.space || String(c.space).startsWith("project:")));
   if (q) {
     // Title match first; message search when a title doesn't match.
     const msgs = await s.list("messages", { order: { col: "created_at", asc: false }, limit: 2000 });
@@ -14,5 +17,5 @@ export async function GET(req: NextRequest) {
     rows = rows.filter((c) => c.title?.toLowerCase().includes(q) || hit.has(c.id));
   }
   rows.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
-  return Response.json(rows.map((c) => ({ id: c.id, title: c.title ?? "Untitled", pinned: !!c.pinned, updatedAt: c.updated_at ?? c.created_at })));
+  return Response.json(rows.map((c) => ({ id: c.id, title: c.title ?? "Untitled", pinned: !!c.pinned, updatedAt: c.updated_at ?? c.created_at, space: c.space ?? null })));
 }

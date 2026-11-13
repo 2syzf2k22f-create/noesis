@@ -151,10 +151,46 @@ export function ShoppingList({ ctx }: { ctx: BlockCtx }) {
 }
 
 /* ---------- plan share: what used your Pro plan ---------- */
+type Win = { utilization: number; resetsAt: number };
+const pctOf = (w?: Win) => (w ? Math.round(w.utilization * 1000) / 10 : null);
+const dur = (ms: number) => { const m = Math.max(0, Math.round(ms / 60000)); const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m % 60}m` : `${m}m`; };
+
 export function PlanShare({ ctx }: { ctx: BlockCtx }) {
   const rows = (ctx.data?.rows ?? []) as Row[];
+  const [plan, setPlan] = useState<{ five_hour?: Win; seven_day?: Win } | null>(null);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const load = () => fetch("/api/status").then((r) => (r.ok ? r.json() : null)).then((j) => setPlan(j?.plan ?? null)).catch(() => {});
+    load(); queueMicrotask(() => setNow(nowMs()));
+    const a = setInterval(load, 60_000), b = setInterval(() => setNow(nowMs()), 30_000);
+    return () => { clearInterval(a); clearInterval(b); };
+  }, []);
+  const week = plan?.seven_day, five = plan?.five_hour;
+  const weekStart = week ? week.resetsAt * 1000 - 7 * 864e5 : 0, fiveStart = five ? five.resetsAt * 1000 - 5 * 3600e3 : 0;
+  // NOESIS's own share: what each relay job moved the meters by, within the current windows
+  const noesisWeek = rows.filter((r) => Date.parse(r.created_at) >= weekStart).reduce((a, r) => a + Number(r.plan_7d_delta ?? 0), 0);
+  const noesisFive = rows.filter((r) => Date.parse(r.created_at) >= fiveStart).reduce((a, r) => a + Number(r.plan_5h_delta ?? 0), 0);
+  const wu = pctOf(week), fu = pctOf(five);
+  // pace: at the rate used so far this week, where does the week end?
+  let pace: { text: string; tone: string } | null = null;
+  if (week && wu != null && now) {
+    const elapsed = Math.max(1, now - weekStart), frac = elapsed / (7 * 864e5);
+    const projected = wu / frac;
+    if (wu >= 100) pace = { text: "Weekly limit reached", tone: "var(--danger)" };
+    else if (projected <= 100) pace = { text: `On track: at this rate you'd finish the week at about ${Math.round(projected)}%`, tone: "var(--good)" };
+    else { const runOut = weekStart + elapsed * (100 / Math.max(wu, 0.1)); pace = { text: `At this rate you'd run out around ${new Date(runOut).toLocaleString("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit" })} (${dur(week.resetsAt * 1000 - runOut)} before the reset)`, tone: "#f5a524" }; }
+  }
   const withPlan = rows.filter((r) => r.plan_7d_delta != null || r.plan_5h_delta != null);
-  if (!withPlan.length) return <div className="label">No plan readings yet. After a few Apollo jobs through the relay, this shows how much of your weekly and 5-hour Pro limits each kind of job used, and roughly how many tokens make 1%.</div>;
+  const meter = (label: string, total: number | null, mine: number, resets?: number) => (
+    <div style={{ display: "grid", gap: 4, padding: 10, borderRadius: 10, background: "var(--surface)" }}>
+      <div className={u.row}><b style={{ flex: 1 }}>{label}</b>{resets && now ? <span className="label">resets in {dur(resets * 1000 - now)}</span> : null}</div>
+      <div style={{ position: "relative", height: 10, borderRadius: 5, background: "var(--surface-2)", overflow: "hidden" }}>
+        <i style={{ position: "absolute", inset: 0, width: `${Math.min(100, total ?? 0)}%`, background: "color-mix(in srgb, var(--text) 25%, transparent)" }} />
+        <i style={{ position: "absolute", inset: 0, width: `${Math.min(100, mine)}%`, background: "var(--accent)" }} />
+      </div>
+      <small><b style={{ color: "var(--accent)" }}>NOESIS {mine.toFixed(1)}%</b> of your limit · everything else (claude.ai, other Claude Code) {total == null ? "?" : Math.max(0, total - mine).toFixed(1)}% · total {total ?? "?"}%</small>
+    </div>
+  );
   const by = new Map<string, { t: number; w: number; h: number; n: number }>();
   for (const r of withPlan) {
     const k = String(r.feature ?? "other").replace(/^apollo\./, "Apollo ");
@@ -163,16 +199,18 @@ export function PlanShare({ ctx }: { ctx: BlockCtx }) {
     by.set(k, v);
   }
   const all = [...by.values()].reduce((a, v) => ({ t: a.t + v.t, w: a.w + v.w, h: a.h + v.h }), { t: 0, w: 0, h: 0 });
-  const latest = rows.find((r) => r.plan_7d_pct != null);
   const per1 = all.w > 0 ? Math.round(all.t / all.w) : null;
   const list = [...by.entries()].sort((a, b) => b[1].w - a[1].w);
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div className={u.row}>
-        {latest && <span><b style={{ fontSize: 20 }}>{latest.plan_7d_pct}%</b> <span className="label">of your weekly limit used</span></span>}
-        {latest?.plan_5h_pct != null && <span><b style={{ fontSize: 20 }}>{latest.plan_5h_pct}%</b> <span className="label">of the current 5-hour session</span></span>}
-        {per1 && <span className="label">≈ {per1.toLocaleString("en-GB")} tokens = 1% of your weekly limit (from your own readings)</span>}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 8 }}>
+        {meter("5-hour session", fu, noesisFive, five?.resetsAt)}
+        {meter("This week", wu, noesisWeek, week?.resetsAt)}
       </div>
+      {pace && <div style={{ padding: "8px 12px", borderRadius: 8, borderLeft: `3px solid ${pace.tone}`, background: "var(--surface)" }}>{pace.text}{wu && noesisWeek ? ` · NOESIS is ${Math.round((noesisWeek / wu) * 100)}% of your use this week` : ""}</div>}
+      {!plan && <span className="label">Live plan readings appear once the relay has run a job.</span>}
+      {per1 && <span className="label">≈ {per1.toLocaleString("en-GB")} tokens = 1% of your weekly limit (from your own readings)</span>}
+      {!withPlan.length && <span className="label">Per-feature shares fill in as NOESIS jobs run.</span>}
       <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
         <thead><tr>{["What", "Jobs", "Tokens", "Weekly limit used", "Share of Apollo's use", "5-hour used"].map((h) => <th key={h} style={{ textAlign: "left", padding: "4px 6px", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
         <tbody>{list.map(([k, v]) => (

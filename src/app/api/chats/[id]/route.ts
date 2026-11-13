@@ -28,7 +28,7 @@ export async function PATCH(req: Request, { params }: P) {
   const b = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = {};
   if (typeof b.pinned === "boolean") patch.pinned = b.pinned;
-  if (typeof b.title === "string") patch.title = b.title.slice(0, 120);
+  if (typeof b.title === "string") { patch.title = b.title.slice(0, 120); patch.title_set_by = "user"; }
   if (b.deleted === true) {
     patch.deleted_at = nowIso();
     await s.insert("trash", { table_name: "conversations", row_id: id, data: before, deleted_at: nowIso() });

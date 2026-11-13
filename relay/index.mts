@@ -86,13 +86,17 @@ async function runApollo(s: Store, job: Row) {
   let pick = pickModel(model_pref as ModelPref, text);
   // tutoring and flashcard-making need a stronger model than Haiku by default
   if (pick.auto && pick.model === "haiku" && (mode === "tutor" || mode === "flashcards")) pick = { model: "sonnet", auto: true, reason: `${mode} mode` };
-  const prompt = await buildUserPrompt(s, convId, text, message_id, typeof job.input?.screen === "string" ? job.input.screen : undefined);
+  // name direct chats from their first messages (same reply, so almost no extra tokens); your own renames stick
+  const conv = await s.get("conversations", convId);
+  const needsTitle = !!conv && !conv.space && conv.title_set_by !== "user" && (await s.count("messages", { eq: { conversation_id: convId } })) <= 3;
+  const prompt = (await buildUserPrompt(s, convId, text, message_id, typeof job.input?.screen === "string" ? job.input.screen : undefined)) + (needsTitle ? "\n\n<needs_title/>" : "");
   const mcp = mcpConfigFor(job.id);
+  const stripTitle = (t: string) => t.replace(/\n*\s*TITLE:[^\n]*\s*$/i, "").replace(/\n+TITLE:?\s*$/i, "").trimEnd();
 
   const attempt = async (model: string, escalatable: boolean) => {
     const stream = throttle((t) => {
       if (escalatable && ESCALATE.startsWith(t.trim().slice(0, ESCALATE.length))) return; // don't flash "ESCALATE"
-      void s.update("jobs", job.id, { output: { text: t, model, streaming: true } });
+      void s.update("jobs", job.id, { output: { text: stripTitle(t), model, streaming: true } });
     }, 250);
     const r = await backend.run({ model, system: systemFor(mode, escalatable), prompt, mcpConfig: mcp, onText: stream.push });
     stream.done();
@@ -102,7 +106,7 @@ async function runApollo(s: Store, job: Row) {
   let r = await attempt(pick.model, pick.auto && pick.model === "haiku");
   let escalated = false;
   if (pick.auto && pick.model === "haiku" && r.text.trim() === ESCALATE) {
-    await logUsage(s, { job_id: job.id, feature: "apollo.route", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
+    await logUsage(s, { job_id: job.id, feature: "model routing", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
     pick = { model: "sonnet", auto: true, reason: "Haiku escalated" };
     escalated = true;
     r = await attempt("sonnet", false);
@@ -116,11 +120,14 @@ async function runApollo(s: Store, job: Row) {
     return;
   }
   if (r.isError) throw new Error(r.text || "Claude returned an error");
+  const title = /TITLE:\s*(.+)\s*$/i.exec(r.text)?.[1]?.replace(/["*]/g, "").trim();
+  r.text = stripTitle(r.text);
+  if (needsTitle && title) await s.update("conversations", convId, { title: title.slice(0, 80), title_set_by: "apollo" });
 
   const msg = await s.insert("messages", {
     conversation_id: convId, role: "assistant", content: r.text, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut,
   });
-  await logUsage(s, { job_id: job.id, feature: `apollo.${mode}`, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
+  await logUsage(s, { job_id: job.id, feature: ({ chat: "chat", conversation: "language practice", mealplan: "meal plan", flashcards: "flashcard maker", questions: "question writer", tutor: "tutor", report: "weekly report" } as Record<string, string>)[mode] ?? mode, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
   await s.update("conversations", convId, { updated_at: nowIso() });
   const actions = await s.count("action_log", { eq: { job_id: job.id } });
   await s.update("jobs", job.id, {
@@ -144,7 +151,7 @@ async function maybeSummarise(s: Store, convId: string) {
       prompt: `${prev?.summary ? `Earlier summary: ${prev.summary}\n\n` : ""}${older.map((m) => `${m.role}: ${m.content}`).join("\n")}`,
     });
     await s.insert("chat_summaries", { id: convId, summary: r.text, upto_message_id: older[older.length - 1].id, updated_at: nowIso() });
-    await logUsage(s, { feature: "apollo.summary", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
+    await logUsage(s, { feature: "chat memory", model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
     log(`summarised ${older.length} messages in ${convId.slice(0, 8)}`);
   } catch (e) {
     log("summary failed:", (e as Error).message);

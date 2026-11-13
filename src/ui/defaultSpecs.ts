@@ -613,11 +613,10 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   } satisfies PageSpec])),
   "languages--conversation": {
     title: "Conversation",
-    subtitle: "Type here, or use the mic on the home page and say which language. Apollo corrects you and teaches one new word each turn.",
+    subtitle: "Talk to Apollo in Spanish, French or Mandarin. It answers aloud, corrects you and teaches a word each turn. Sessions are kept here.",
     blocks: [
-      { type: "ask", title: "Practise", span: 8, props: { mode: "conversation", submit: "Send", rows: 4, thread: "lang:{lang}", template: "Language: {lang}. {text}",
-        fields: [{ name: "lang", label: "Language", type: "select", options: ["Spanish", "French", "Mandarin"] }, { name: "text", label: "Say something", type: "textarea" }] } },
-      { type: "text", span: 4, props: { text: "Each language keeps its own ongoing conversation (see Chats), so Apollo remembers where you got to.\n\nTip: turn on **Spoken replies: always** in Ctrl/Cmd+K to hear answers." } },
+      { type: "langconversation", span: 12 },
+      { type: "bar", title: "Practice turns per language, 30 days", span: 6, bind: { table: "usage_log", where: { feature: "language practice" }, days: 30, agg: { fn: "count", by: "day" } } },
     ],
   },
 

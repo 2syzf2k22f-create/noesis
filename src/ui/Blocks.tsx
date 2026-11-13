@@ -15,6 +15,7 @@ import { SchoolAnalysisBlock, SchoolTestForm, SpecRag } from "./SchoolBlocks";
 import { KnowledgeBlock, WaterBlock } from "./Blocks5";
 import { MonthCalendar, NextRevise, PlanShare, ShoppingList } from "./Blocks6";
 import { UniExplorer } from "./UniBlocks";
+import { LanguageConversation } from "./LanguageBlocks";
 import { BookRecs, MealPlanner, MealPlanView, RecipeBook } from "./MealBlocks";
 import { BookEta, ChessOpenings, GradePredictor, Habits, PersonalRecords, WordOfDay } from "./Blocks4";
 import { ScreenTimeBlock } from "./ScreenTimeBlock";
@@ -121,7 +122,10 @@ function Donut({ series }: { series: Series }) {
   );
 }
 
-function Heatmap({ series }: { series: Series }) {
+/** NOESIS started this week: calendars don't show empty time before it. */
+export const SITE_START = "2026-11-09";
+function Heatmap({ series: all }: { series: Series }) {
+  const series = all.filter((s) => !/^\d{4}-\d\d-\d\d/.test(s.label) || s.label.slice(0, 10) >= SITE_START);
   if (!series.length) return <NoData />;
   const max = Math.max(...series.map((s) => s.value), 1);
   return (
@@ -486,6 +490,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "recipebook": return <RecipeBook ctx={ctx} />;
     case "bookrecs": return <BookRecs ctx={ctx} />;
     case "planshare": return <PlanShare ctx={ctx} />;
+    case "langconversation": return <LanguageConversation />;
     case "screentime": return <ScreenTimeBlock ctx={ctx} />;
     case "deepstats": return <DeepStats p={p} />;
     case "benchmark": return <Benchmark ctx={ctx} p={p} />;

@@ -15,9 +15,10 @@ export type Listener = { stop: () => void; abort: () => void };
 export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: string) => void; onEnd: () => void; onError?: (e: string) => void }, opts: { untilStopped?: boolean } = {}): Listener | null {
   const C = Ctor();
   if (!C) return null;
-  let final = "", stopping = false, done = false;
+  let final = "", interimNow = "", stopping = false, done = false;
   let r: Rec;
-  const finish = () => { if (done) return; done = true; if (final.trim()) o.onFinal(final.trim()); o.onEnd(); };
+  // when you stop, use everything heard, including words the browser hadn't marked final yet
+  const finish = () => { if (done) return; done = true; const all = `${final} ${interimNow}`.trim(); if (all) o.onFinal(all); o.onEnd(); };
   const start = () => {
     r = new C();
     r.lang = "en-GB";
@@ -30,6 +31,7 @@ export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: str
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) final += (final && !final.endsWith(" ") ? " " : "") + t.trim(); else interim += t;
       }
+      interimNow = interim.trim();
       o.onInterim(`${final} ${interim}`.trim());
     };
     r.onerror = (e: any) => { if (e.error !== "no-speech" && e.error !== "aborted") o.onError?.(e.error ?? "error"); };
@@ -37,7 +39,11 @@ export function listenOnce(o: { onInterim: (t: string) => void; onFinal: (t: str
     r.start();
   };
   start();
-  return { stop: () => { stopping = true; r.stop(); }, abort: () => { stopping = true; final = ""; r.abort(); } };
+  return {
+    // some browsers never fire "end" after stop(): finish anyway after a moment
+    stop: () => { stopping = true; try { r.stop(); } catch {} setTimeout(finish, 1200); },
+    abort: () => { stopping = true; final = ""; interimNow = ""; done = true; try { r.abort(); } catch {} o.onEnd(); },
+  };
 }
 
 /** Wake word: listens continuously; calls onWake with whatever followed "Apollo" (may be empty). */
@@ -94,34 +100,71 @@ export function englishVoices() {
   return ttsSupported() ? speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en")).sort((a, b) => (a.lang === "en-GB" ? -1 : 1) - (b.lang === "en-GB" ? -1 : 1) || a.name.localeCompare(b.name)) : [];
 }
 
+/* ---------- Azure neural voices (when configured), else the browser's own ---------- */
+export const AZURE_VOICE_KEY = "noesis.azureVoice";
+let azure: { configured: boolean; voices: { id: string; name: string; note: string }[]; langVoices: Record<string, string> } | null = null;
+export async function azureInfo() {
+  if (azure) return azure;
+  try { azure = await fetch("/api/tts").then((r) => r.json()); } catch { azure = { configured: false, voices: [], langVoices: {} }; }
+  return azure!;
+}
+export function azureVoice() { try { return localStorage.getItem(AZURE_VOICE_KEY) || "en-GB-RyanNeural"; } catch { return "en-GB-RyanNeural"; } }
+export function setAzureVoice(id: string) { try { localStorage.setItem(AZURE_VOICE_KEY, id); } catch {} }
+if (typeof window !== "undefined") void azureInfo();
+
 /**
  * Speaks a reply as it streams: each finished sentence is queued once.
- * `pulse()` reports word boundaries so the orb can move with the voice.
+ * Azure voices are fetched a sentence ahead so there are no gaps; `onWord` pulses drive the orb.
+ * `lang` (e.g. "Spanish") picks a native voice for language practice.
  */
-export function createSpeaker(o: { onStart: () => void; onEnd: () => void; onWord: () => void }) {
+export function createSpeaker(o: { onStart: () => void; onEnd: () => void; onWord: () => void; lang?: string }) {
   let spoken = 0;
   let pending = 0;
   let cancelled = false;
-  const say = (text: string) => {
-    if (!text.trim() || cancelled) return;
+  let started = false;
+  const useAzure = !!azure?.configured;
+  const voiceId = (o.lang && azure?.langVoices?.[o.lang]) || azureVoice();
+  let chain: Promise<void> = Promise.resolve();
+  let current: HTMLAudioElement | null = null;
+  const done = () => { pending--; if (pending <= 0 && !cancelled) o.onEnd(); };
+  const sayAzure = (text: string) => {
+    pending++;
+    // fetch now (in parallel), play in order
+    const audio = fetch("/api/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, voice: voiceId }) })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("tts")))).then((b) => URL.createObjectURL(b));
+    chain = chain.then(() => audio.then((url) => new Promise<void>((res) => {
+      if (cancelled) { URL.revokeObjectURL(url); return res(); }
+      const a = new Audio(url);
+      current = a;
+      let tick: ReturnType<typeof setInterval> | null = null;
+      a.onplay = () => { if (!started) { started = true; o.onStart(); } o.onWord(); tick = setInterval(o.onWord, 180); };
+      a.onended = a.onerror = () => { if (tick) clearInterval(tick); URL.revokeObjectURL(url); res(); };
+      a.play().catch(() => res());
+    })).catch(() => { sayBrowser(text, true); })).then(done);
+  };
+  const sayBrowser = (text: string, already = false) => {
+    if (!text.trim() || cancelled || !ttsSupported()) { if (already) return; return; }
     const u = new SpeechSynthesisUtterance(text);
     u.voice = chosen ?? pickVoice();
     u.rate = 1.0;
     u.pitch = 0.95;
-    u.onstart = () => { o.onStart(); o.onWord(); };
+    u.onstart = () => { if (!started) { started = true; o.onStart(); } o.onWord(); };
     u.onboundary = () => o.onWord();
-    u.onend = u.onerror = () => { pending--; if (pending <= 0 && !cancelled) o.onEnd(); };
-    pending++;
+    if (!already) { pending++; u.onend = u.onerror = done; }
     speechSynthesis.speak(u);
+  };
+  const say = (text: string) => {
+    if (!text.trim() || cancelled) return;
+    if (useAzure) sayAzure(text); else sayBrowser(text);
   };
   return {
     /** Feed the reply-so-far; speaks complete sentences not yet spoken. */
-    feed(full: string, done = false) {
+    feed(full: string, isDone = false) {
       const rest = full.slice(spoken);
-      const m = done ? rest.length : (() => { const r = /[.!?](\s|$)(?![\s\S]*[.!?](\s|$))/.exec(rest); return r ? r.index + 1 : 0; })();
+      const m = isDone ? rest.length : (() => { const r = /[.!?。！？](\s|$)(?![\s\S]*[.!?。！？](\s|$))/.exec(rest); return r ? r.index + 1 : 0; })();
       if (m > 0) { say(rest.slice(0, m).replace(/[*#`_]/g, "")); spoken += m; }
-      if (done && pending === 0 && !cancelled) o.onEnd();
+      if (isDone && pending === 0 && !cancelled) o.onEnd();
     },
-    cancel() { cancelled = true; speechSynthesis.cancel(); },
+    cancel() { cancelled = true; current?.pause(); if (ttsSupported()) speechSynthesis.cancel(); },
   };
 }

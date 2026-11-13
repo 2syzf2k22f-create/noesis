@@ -1,3 +1,4 @@
 {
+  "regions": ["lhr1"],
   "crons": [{ "path": "/api/cron/ms-sync", "schedule": "0 6 * * *" }]
 }

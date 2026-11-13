@@ -55,8 +55,11 @@ export function Chats() {
         {open && (
           <article className={s.transcript}>
             <header>
-              <h2>{open.title}</h2>
+              <h2 contentEditable suppressContentEditableWarning title="Click to rename" style={{ outline: "none", cursor: "text" }}
+                onBlur={(e) => { const t = e.currentTarget.textContent?.trim(); if (t && t !== open.title) { patch(open.id, { title: t }); setOpen({ ...open, title: t }); } }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}>{open.title}</h2>
               <button className="pill" onClick={() => { openChat(open.id); router.push("/"); }}>Continue</button>
+              <small className="label">Click the title to rename</small>
             </header>
             {open.messages.map((m) => (
               <div key={m.id} className={s.msg} data-role={m.role}>

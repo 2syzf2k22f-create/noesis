@@ -110,3 +110,13 @@ button.pill:not([aria-pressed="true"]):hover {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* dropdown lists: always readable in every theme */
+select, option, optgroup {
+  background-color: var(--bg);
+  color: var(--text);
+}
+option:checked, option:hover {
+  background-color: var(--accent);
+  color: var(--on-accent);
+}

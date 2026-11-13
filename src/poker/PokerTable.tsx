@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApollo } from "@/shell/apollo";
+import { usePersist } from "@/ui/usePersist";
 import type { BlockCtx } from "@/ui/Blocks";
 import { botAction } from "./bot";
 import { act, newTable, PERSONAS, pot, startHand, toCall, type State } from "./game";
@@ -16,8 +17,8 @@ function CardV({ c, hidden, small }: { c?: string; hidden?: boolean; small?: boo
 
 export function PokerTable({ ctx }: { ctx: BlockCtx }) {
   const { submit } = useApollo();
-  const [cfg, setCfg] = useState({ opponents: 3, stack: 1000, bb: 10, auto: true });
-  const [s, setS] = useState<State | null>(null);
+  const [cfg, setCfg] = usePersist("poker.cfg", { opponents: 3, stack: 1000, bb: 10, auto: true });
+  const [s, setS] = usePersist<State | null>("poker.table", null);
   const [thinking, setThinking] = useState<number | null>(null);
   const [raise, setRaise] = useState(0);
   const handStart = useRef(0);

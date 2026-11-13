@@ -70,6 +70,8 @@ type Ctx = {
   activeConv: string | null;
   /** A short note like "New topic, so I started a new chat." */
   notice: string | null;
+  /** Where spoken input goes (e.g. a language practice session) while a page wants it; null = main chat. */
+  setVoiceTarget: (t: { mode?: string; thread?: string } | null) => void;
   status: Status | null;
   refreshStatus: () => void;
   /** Bumps when Apollo changed something, so undo UI can appear. */
@@ -116,6 +118,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const speaker = useRef<ReturnType<typeof createSpeaker> | null>(null);
   const lastWord = useRef(0);
   const submitRef = useRef<Ctx["submit"]>(() => {});
+  const voiceTarget = useRef<{ mode?: string; thread?: string } | null>(null);
+  const setVoiceTarget = useCallback((t: { mode?: string; thread?: string } | null) => { voiceTarget.current = t; }, []);
 
   useEffect(() => {
     const sp = ls.get(SPEAK_KEY) as SpeakPref | null;
@@ -192,7 +196,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setDraft("");
     const l = listenOnce({
       onInterim: setDraft,
-      onFinal: (t) => { setDraft(""); submitRef.current(t, { spoken: true }); },
+      onFinal: (t) => { setDraft(""); submitRef.current(t, { spoken: true, ...(voiceTarget.current ?? {}) }); },
       onEnd: () => {
         listener.current = null;
         setDraft("");
@@ -339,8 +343,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     clearTimers();
     if (micOn) stopMic();
     speaker.current?.cancel();
-    speaker.current = speak && ttsSupported()
+    const langMatch = mode === "conversation" ? /^Language: (\w+)\./.exec(text)?.[1] : undefined;
+    speaker.current = speak && (ttsSupported() || typeof Audio !== "undefined")
       ? createSpeaker({
+          lang: langMatch,
           onStart: () => setState("speaking"),
           onWord: () => { lastWord.current = performance.now(); },
           onEnd: () => { if (my === runId.current) { speaker.current = null; setState((s) => (s === "speaking" ? "idle" : s)); } },
@@ -371,7 +377,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     if (!thread) openChat(res.body.conversationId);
     if (res.body.switched) setNotice(res.body.switched === "new" ? "New topic, so I started a new chat." : `Back to your earlier chat${res.body.switchedTitle ? `: ${res.body.switchedTitle}` : ""}.`);
-    setActiveConv(res.body.conversationId);
+    // only direct chats become the chatbox's conversation; feature runs (meal plans, marking, chess…) don't
+    if (!thread) setActiveConv(res.body.conversationId);
     if (!res.body.relayOnline) {
       setReply({ text: "Your PC's relay is offline. I've queued this and will answer when it's back.", pending: true, ask: text, tone: "info" });
     }
@@ -438,17 +445,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (hit) return runAction(hit);
     }
     setPaletteOpen(false);
-    void ask(text.trim(), opts?.model ?? model, speakPref === "always" || (speakPref === "voice" && !!opts?.spoken), opts?.mode, opts?.thread);
+    // language practice is always spoken (unless voice is set to never)
+    const speak = speakPref === "always" || (speakPref === "voice" && (!!opts?.spoken || opts?.mode === "conversation"));
+    void ask(text.trim(), opts?.model ?? model, speak, opts?.mode, opts?.thread);
   }, [actions, ask, model, runAction, speakPref, router, settle]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 
   const value = useMemo(
     () => ({
       orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, setPaletteOpen,
-      model, setModel, chatId, openChat, activeConv, notice, status, refreshStatus, changes, undoApollo,
+      model, setModel, chatId, openChat, activeConv, notice, setVoiceTarget, status, refreshStatus, changes, undoApollo,
       startListening, stopListening, draft, voice: { speak: speakPref, wake, stt }, setSpeak, setWake,
     }),
-    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, notice, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
+    [orbState, setOrbState, getLevel, reply, micError, actions, runAction, submit, toggleMic, paletteOpen, model, setModel, chatId, openChat, activeConv, notice, setVoiceTarget, status, refreshStatus, changes, undoApollo, startListening, stopListening, draft, speakPref, wake, stt, setSpeak, setWake],
   );
   return <ApolloCtx.Provider value={value}>{children}</ApolloCtx.Provider>;
 }

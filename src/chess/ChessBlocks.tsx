@@ -4,6 +4,7 @@
 import { Chess } from "chess.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApollo } from "@/shell/apollo";
+import { usePersist } from "@/ui/usePersist";
 import { useScreenContext } from "@/shell/screen";
 import type { BlockCtx } from "@/ui/Blocks";
 import { Board, EvalBar, StylePicker, type Arrow, type Mark } from "./Board";
@@ -69,19 +70,19 @@ const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.fl
 export function AnalysisBoard({ ctx, p }: { ctx?: BlockCtx; p?: P }) {
   const engine = useEngine();
   const { submit } = useApollo();
-  const [start, setStart] = useState(new Chess().fen());
-  const [moves, setMoves] = useState<string[]>([]);
-  const [idx, setIdx] = useState(0);
-  const [flip, setFlip] = useState(false);
+  const [start, setStart] = usePersist("chess.start", () => new Chess().fen());
+  const [moves, setMoves] = usePersist<string[]>("chess.moves", []);
+  const [idx, setIdx] = usePersist("chess.idx", 0);
+  const [flip, setFlip] = usePersist("chess.flip", false);
   const [an, setAn] = useState<Analysis | null>(null);
   const [load, setLoad] = useState("");
-  const [play, setPlay] = useState<Play | null>(null);
-  const [setup, setSetup] = useState({ elo: 1200, color: "w" as "w" | "b" | "random", clock: 0 });
-  const [clocks, setClocks] = useState<{ w: number; b: number }>({ w: 0, b: 0 });
+  const [play, setPlay] = usePersist<Play | null>("chess.play", null);
+  const [setup, setSetup] = usePersist("chess.setup", { elo: 1200, color: "w" as "w" | "b" | "random", clock: 0 });
+  const [clocks, setClocks] = usePersist<{ w: number; b: number }>("chess.clocks", { w: 0, b: 0 });
   const [thinking, setThinking] = useState(false);
   const [popup, setPopup] = useState(false);
-  const [reviewing, setReviewing] = useState<{ sans: string[]; startFen: string; me: "w" | "b"; gameId: string | null; title: string } | null>(null);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  const [reviewing, setReviewing] = usePersist<{ sans: string[]; startFen: string; me: "w" | "b"; gameId: string | null; title: string } | null>("chess.reviewing", null);
+  const [savedId, setSavedId] = usePersist<string | null>("chess.savedId", null);
   const [lines, setLines] = useState(3);
   const saved = useRef(false);
   const pos = useMemo(() => {
@@ -415,10 +416,10 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
   const [source, setSource] = useState<"lichess" | "mine">("lichess");
   const [theme, setTheme] = useState("mix");
   const [diff, setDiff] = useState("normal");
-  const [pz, setPz] = useState<Puzzle | null>(null);
-  const [step, setStep] = useState(0);
-  const [fen, setFen] = useState<string | null>(null);
-  const [state, setState] = useState<"play" | "wrong" | "solved" | "shown">("play");
+  const [pz, setPz] = usePersist<Puzzle | null>("puzzle.pz", null);
+  const [step, setStep] = usePersist("puzzle.step", 0);
+  const [fen, setFen] = usePersist<string | null>("puzzle.fen", null);
+  const [state, setState] = usePersist<"play" | "wrong" | "solved" | "shown">("puzzle.state", "play");
   const [err, setErr] = useState<string | null>(null);
   const [rating, setRating] = useState(1500);
   const failed = useRef(false);
@@ -504,9 +505,11 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
   const [pgn, setPgn] = useState("");
   const [me, setMe] = useState<"w" | "b">(initial?.me ?? "w");
   const [prog, setProg] = useState<[number, number] | null>(null);
-  const [rev, setRev] = useState<Review | null>(null);
-  const [idx, setIdx] = useState(0);
-  const [game, setGame] = useState<Row | null>(null);
+  // an embedded review (straight after a game) is kept per game, so a new game never shows an old review
+  const rk = initial ? `.emb.${initial.gameId ?? `${initial.sans.length}.${initial.sans.slice(-3).join("")}`}` : "";
+  const [rev, setRev] = usePersist<Review | null>(`review.rev${rk}`, null);
+  const [idx, setIdx] = usePersist(`review.idx${rk}`, 0);
+  const [game, setGame] = usePersist<Row | null>(`review.game${rk}`, null);
   const [view, setView] = useState<View>({ kind: "game" });
   const [tab, setTab] = useState<"report" | "moves">("report");
   const [depth, setDepth] = useState<number>(p.depth ?? 13);
@@ -535,10 +538,10 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
 
   // opened straight from a finished game
   useEffect(() => {
-    if (!initial || !engine || started.current) return;
+    if (!initial || !engine || started.current || rev) return;
     started.current = true;
     queueMicrotask(() => { void run(initial.sans, initial.me, initial.startFen, initial.gameId ? { id: initial.gameId } : null); });
-  }, [initial, engine, run]);
+  }, [initial, engine, run, rev]);
 
   const openGame = (g: Row) => {
     const text = String(g.pgn ?? "");
