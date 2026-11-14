@@ -16,6 +16,7 @@ import { syncMicrosoft } from "../src/core/microsoft";
 import { syncChess, syncCodeforces } from "../src/core/sync";
 import { indexPending } from "./embed.mts";
 import { runStt } from "./stt.mts";
+import { runPcJob } from "./pc.mts";
 
 const VERSION = "0.5.0";
 const HEARTBEAT_MS = 15_000;
@@ -177,6 +178,7 @@ async function runJob(job: Row) {
     else if (job.kind === "report") await runReport(store!, job);
     else if (job.kind === "research") await runResearch(store!, job);
     else if (job.kind === "stt") await runStt(store!, job);
+    else if (job.kind === "pc") await runPcJob(store!, job);
     else if (job.kind === "build") await runBuild(store!, backend, job, log);
     else if (job.kind === "ship") await runShip(store!, job, log);
     else if (job.kind === "rollback") await runRollback(store!, job, log);

@@ -168,6 +168,7 @@ export function ChatDock() {
         {shown.map((m) => <div key={m.id} className={s.msg} data-role={m.role}>{m.content}</div>)}
         {notice && <div className="label" style={{ textAlign: "center" }}>{notice}</div>}
         <Proposals />
+        <PcApprovals />
         {live && <div className={s.msg} data-role="assistant" data-pending={live.pending} data-tone={live.tone}>{live.text || "…"}</div>}
       </div>
       {inputRow}
@@ -194,6 +195,31 @@ function Proposals() {
           <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
             <button className="pill" data-active="true" onClick={() => act(b.id, "approve")}>Build it</button>
             <button className="pill" onClick={() => act(b.id, "decline")}>No thanks</button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Risky PC commands Apollo wants to run: nothing runs until you press Allow. */
+function PcApprovals() {
+  const { changes, reply } = useApollo();
+  const [list, setList] = useState<{ id: string; status: string; command: string; why?: string; risk?: string }[]>([]);
+  const load = () => fetch("/api/pc").then((r) => (r.ok ? r.json() : null)).then((j) => setList((j?.items ?? []).filter((x: { status: string }) => x.status === "proposed"))).catch(() => {});
+  useEffect(() => { void load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [changes, reply?.pending]);
+  const act = async (id: string, action: string) => { setList((l) => l.filter((x) => x.id !== id)); await fetch(`/api/pc/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }); };
+  if (!list.length) return null;
+  return (
+    <>
+      {list.map((p) => (
+        <div key={p.id} className={s.msg} data-role="assistant" style={{ borderLeft: "3px solid var(--danger)" }}>
+          <b>Run this on your PC?</b> {p.why}
+          {p.risk && <div className="label" style={{ color: "var(--danger)" }}>Asking because it {p.risk}.</div>}
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 11.5, margin: "6px 0", padding: 8, borderRadius: 6, background: "var(--surface-2)", maxHeight: 160, overflow: "auto" }}>{p.command}</pre>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="pill" data-active="true" onClick={() => act(p.id, "allow")}>Allow</button>
+            <button className="pill" onClick={() => act(p.id, "deny")}>Deny</button>
           </div>
         </div>
       ))}
