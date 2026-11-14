@@ -27,6 +27,7 @@ function get() {
       const j = JSON.parse(localStorage.getItem(KEY) ?? "{}");
       const windows: string[] = Array.isArray(j.windows) ? j.windows.slice(0, 4) : [];
       const wins: Record<string, Win> = {};
+      if (windows.length && j.wins?.__main) wins.__main = { page: "__main", box: j.wins.__main.box ?? null, snap: j.wins.__main.snap ?? null, z: j.wins.__main.z ?? 0 };
       for (const w of windows) wins[w] = { page: j.wins?.[w]?.page ?? w, box: j.wins?.[w]?.box ?? null, snap: j.wins?.[w]?.snap ?? null, z: j.wins?.[w]?.z ?? 1 };
       ztop = Math.max(1, ...Object.values(wins).map((w) => w.z));
       st = { ...st, windows, wins, chat: { open: false, box: j.box ?? null } };
@@ -70,7 +71,7 @@ export const uiStore = {
     const have = cur.windows.find((x) => x === to || cur.wins[x]?.page === to);
     if (have) { uiStore.focusWindow(have); return; }
     const windows = [...cur.windows, to].slice(-4);
-    const wins: Record<string, Win> = {};
+    const wins: Record<string, Win> = cur.wins.__main ? { __main: cur.wins.__main } : {};
     for (const w of windows) wins[w] = cur.wins[w] ?? { page: w, box: null, snap: null, z: ++ztop };
     commit({ ...cur, windows, wins });
   },
@@ -78,12 +79,14 @@ export const uiStore = {
     const cur = get();
     if (!to) { commit({ ...cur, windows: [], wins: {} }); return; }
     const windows = cur.windows.filter((x) => x !== to && cur.wins[x]?.page !== to);
-    const wins = Object.fromEntries(windows.map((w) => [w, cur.wins[w]]));
+    // last window closed: the base page goes back to normal
+    const keep = windows.length && cur.wins.__main ? ["__main", ...windows] : windows;
+    const wins = Object.fromEntries(keep.map((w) => [w, cur.wins[w]]));
     commit({ ...cur, windows, wins });
   },
   /** Change one window only (its page, position, snap). */
   updateWindow(id: string, patch: Partial<Win>) {
-    const cur = get(), w = cur.wins[id];
+    const cur = get(), w = cur.wins[id] ?? (id === "__main" ? { page: "__main", box: null, snap: null, z: 0 } : null);
     if (!w) return;
     commit({ ...cur, wins: { ...cur.wins, [id]: { ...w, ...patch } } });
   },

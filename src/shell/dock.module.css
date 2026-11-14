@@ -270,8 +270,8 @@
 /* snap layouts (shown at the top while dragging) */
 .snapBar {
   position: fixed;
-  z-index: 39;
-  top: 10px;
+  z-index: 200; /* above the top icons and the chatbox while dragging */
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -305,7 +305,7 @@
 
 .snapGhost {
   position: fixed;
-  z-index: 38;
+  z-index: 199;
   pointer-events: none;
   border-radius: 10px;
   border: 2px solid var(--accent);
@@ -428,4 +428,20 @@
   background: var(--bg);
   border: 1px solid var(--border);
   font-size: 10px;
+}
+
+.mainGrip {
+  position: sticky;
+  top: 64px;
+  z-index: 6;
+  margin: 0 0 8px;
+  padding: 5px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
 }
