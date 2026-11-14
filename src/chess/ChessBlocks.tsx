@@ -11,8 +11,10 @@ import { Board, EvalBar, StylePicker, type Arrow, type Mark } from "./Board";
 import { Engine, fmtEval, winPct, type Analysis } from "./engine";
 import { OPENINGS, type Opening } from "./openings";
 import { THEORY } from "./theory";
+import { IDEAS } from "./ideas";
 import { BAD_CLS, CLS, CLS_ORDER, KEY_CLS, TC_EXPECT, classifyLoss, puzzlesFromReview, reviewGame, uciLineToSan, type Cls, type Phase, type Review } from "./review";
 import c from "./chess.module.css";
+import u2 from "@/ui/ui.module.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type P = Record<string, any>;
@@ -354,6 +356,52 @@ const walk = (root: TNode, path: string[]) => { let n: TNode | null = root; for 
 const leaves = (n: TNode): number => (n.kids.length ? n.kids.reduce((a, k) => a + leaves(k), 0) : 1);
 const sq = (fen: string, san: string) => { try { const m = new Chess(fen).move(san); return { from: m.from, to: m.to }; } catch { return null; } };
 
+/** A free analysis board beside the practice: starts at the practice position, try anything,
+ *  Stockfish's top 3 lines and the eval update as you go. It never changes the practice board. */
+function SideAnalysis({ fen: start, orientation }: { fen: string; orientation: "white" | "black" }) {
+  const engine = useEngine();
+  const [moves, setMoves] = useState<string[]>([]);
+  const [base, setBase] = useState(start);
+  const [follow, setFollow] = useState(true);
+  const [a, setA] = useState<{ fen: string; an: Analysis } | null>(null);
+  // follow the practice position until you start trying your own moves
+  if (follow && base !== start) { setBase(start); setMoves([]); }
+  const pos = useMemo(() => { const g = new Chess(base); for (const m of moves) { try { g.move(m); } catch { break; } } return g; }, [base, moves]);
+  const fen = pos.fen();
+  useEffect(() => {
+    if (!engine || pos.isGameOver()) return;
+    let live = true;
+    void engine.analyse(fen, { depth: 18, multipv: 3, onUpdate: (an) => { if (live) setA({ fen, an }); } }).then((an) => { if (live) setA({ fen, an }); }).catch(() => {});
+    return () => { live = false; };
+  }, [engine, fen, pos]);
+  const cur = a?.fen === fen ? a.an : null;
+  const top = cur?.lines[0];
+  const last = (() => { const h = pos.history({ verbose: true }); return h.length ? { from: h[h.length - 1].from, to: h[h.length - 1].to } : null; })();
+  const arrows: Arrow[] = (cur?.lines ?? []).slice(0, 3).map((l, i) => ({ from: l.pv[0].slice(0, 2), to: l.pv[0].slice(2, 4), color: i === 0 ? "#3fb950" : "#3fb95066" }));
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div className={u2.row}><b>Analysis board</b><small className="label">{follow ? "following the practice position" : "your own line"}</small></div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <EvalBar pct={winPct(top)} label={fmtEval(top)} flip={orientation === "black"} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Board fen={fen} orientation={orientation} lastMove={last} arrows={arrows} showAnnotations={false}
+            onMove={(from, to, promotion) => { try { const m = new Chess(fen).move({ from, to, promotion: promotion ?? "q" }); setFollow(false); setMoves([...moves, m.san]); return true; } catch { return false; } }} />
+        </div>
+      </div>
+      {moves.length > 0 && <div className={c.moves}>{moves.map((m, i) => <button key={i} onClick={() => setMoves(moves.slice(0, i + 1))}>{m}</button>)}</div>}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button className="pill" onClick={() => setMoves(moves.slice(0, -1))} disabled={!moves.length}>← Undo</button>
+        <button className="pill" data-active={follow} onClick={() => { setFollow(true); setBase(start); setMoves([]); }}>↺ Back to practice position</button>
+      </div>
+      <div style={{ display: "grid", gap: 3, fontSize: 12.5 }}>
+        {cur ? cur.lines.slice(0, 3).map((l, i) => (
+          <div key={i}><b style={{ display: "inline-block", minWidth: 44 }}>{fmtEval(l)}</b> {uciLineToSan(fen, l.pv, 8).join(" ")} <small className="label">d{l.depth}</small></div>
+        )) : <small className="label">{pos.isGameOver() ? "Game over." : "Stockfish is thinking…"}</small>}
+      </div>
+    </div>
+  );
+}
+
 export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
   const { submit } = useApollo();
   const engine = useEngine();
@@ -362,6 +410,8 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
   const op = OPENINGS.find((o) => o.id === opId) ?? OPENINGS[0];
   const tree = useMemo(() => buildTree(op), [op]);
   const [mode, setMode] = usePersist<"explore" | "drill">("openings.mode", "explore");
+  const [showAn, setShowAn] = usePersist("openings.analysis", true);
+  const [ideaTab, setIdeaTab] = usePersist<"attack" | "defence" | "strategy">("openings.ideas", "strategy");
   const mySide = op.side === "white" ? "w" : "b";
 
   // ---- explore ----
@@ -473,6 +523,15 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
           <small className="label" style={{ alignSelf: "center" }}>{(THEORY[op.id]?.length ?? 0) + 1} lines · {leaves(tree)} branches</small>
         </div>
         <div className={c.msg}><b>{op.name}</b> <span className="label">{op.eco} · you play {op.side}</span><br />{op.idea}</div>
+        {IDEAS[op.id] && (
+          <div className={c.msg}>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+              {(["attack", "defence", "strategy"] as const).map((k) => <button key={k} className="pill" data-active={ideaTab === k} onClick={() => setIdeaTab(k)}>{k === "attack" ? "⚔ Attacking ideas" : k === "defence" ? "🛡 Defensive ideas" : "♟ Strategy"}</button>)}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>{IDEAS[op.id][ideaTab].map((t) => <li key={t}>{t}</li>)}</ul>
+          </div>
+        )}
+        <button className="pill" data-active={showAn} onClick={() => setShowAn(!showAn)} style={{ justifySelf: "start" }}>{showAn ? "Hide" : "Show"} analysis board</button>
 
         {mode === "explore" ? (
           <>
@@ -523,6 +582,7 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
           </>
         )}
       </div>
+      {showAn && <div className={c.side}><SideAnalysis fen={mode === "explore" ? fen : dpos.fen()} orientation={op.side} /></div>}
     </div>
   );
 }

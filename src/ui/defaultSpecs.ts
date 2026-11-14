@@ -495,7 +495,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "mind--openings": {
     title: "Openings",
-    subtitle: "Play your side of the main line from memory; the trainer answers with the book reply.",
+    subtitle: "Explore every line of theory with the attacking, defensive and strategic ideas, drill each branch, and check anything on the analysis board beside it.",
     blocks: [
       { type: "openings", span: 9, bind: { table: "opening_drills", limit: 500 } },
       { type: "bar", title: "Drills per opening", span: 3, rows: 2, bind: { table: "opening_drills", agg: { fn: "count", by: { field: "name" } } } },

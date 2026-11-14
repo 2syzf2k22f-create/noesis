@@ -71,7 +71,7 @@ export const SPACES: Space[] = [
   { id: "mind", name: "Mind sports", icon: "mind", blurb: "Chess, poker, geography, brain tests, memory, programming", subs: [
     { id: "chess", name: "Chess", blurb: "chess.com sync, ratings and results" },
     { id: "analysis", name: "Play & analyse", blurb: "Play Stockfish at any Elo, from any position; analyse with the engine" },
-    { id: "openings", name: "Openings", blurb: "Drill opening theory move by move" },
+    { id: "openings", name: "Openings", blurb: "Theory trees, ideas and drills, with an analysis board" },
     { id: "puzzles", name: "Puzzles", blurb: "Tactics from Lichess and from your own games" },
     { id: "review", name: "Game review", blurb: "Brilliant to blunder, move by move" },
     { id: "poker", name: "Poker", blurb: "Practice table vs human-like bots, stats, home games" },
