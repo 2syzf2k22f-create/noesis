@@ -10,9 +10,6 @@
 //    category + one normalised target (e.g. "launch_app: opera.exe"), never a wildcard over raw commands.
 //  - Everything else runs at once. Every command is written to the action log.
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { z } from "zod";
 import { nowIso, type Row, type Store } from "../src/core/store";
 import { explain, library, nextTrack, pause, playTrack, searchTracks, spotifyStatus, type Track } from "../src/core/spotify";
@@ -113,11 +110,57 @@ const logRun = (s: Store, actor: string, tool: string, after: object) =>
   s.insert("action_log", { actor, tool, table_name: null, row_id: null, before: null, after }).catch(() => null);
 
 /* ======================= screen helpers (PowerShell snippets we build ourselves) ======================= */
-const DPI = `Add-Type -Name D -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();'; [U.D]::SetProcessDPIAware() | Out-Null`;
-const INPUT = `Add-Type -Name I -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y); [DllImport("user32.dll")] public static extern void mouse_event(uint f,int x,int y,int d,UIntPtr e); [DllImport("user32.dll")] public static extern void keybd_event(byte k,byte s,uint f,UIntPtr e);'`;
-let lastScale = 1; // screenshot pixels -> screen pixels (per Apollo job)
-let lastOrigin = { x: 0, y: 0 };
-const MEDIA: Record<string, number> = { play_pause: 0xb3, next: 0xb0, previous: 0xb1, stop: 0xb2, mute: 0xad, volume_up: 0xaf, volume_down: 0xae };
+// No compiled C# (Add-Type -MemberDefinition / DllImport): antivirus flags it. Everything below uses built-in
+// .NET UI Automation, WScript.Shell and a native screenshot module instead.
+const UIA_HEAD = `Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, WindowsBase
+$AE=[System.Windows.Automation.AutomationElement]; $CT=[System.Windows.Automation.ControlType]; $TS=[System.Windows.Automation.TreeScope]
+$any=[System.Windows.Automation.Condition]::TrueCondition
+function Act($e, $double) {
+  try { $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); if ($double) { Start-Sleep -Milliseconds 120; try { $e.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') } catch {} }; return 'pressed' } catch {}
+  try { $e.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle(); return 'toggled' } catch {}
+  try { $e.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select(); if ($double) { try { $e.SetFocus() } catch {}; [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }; return 'selected' } catch {}
+  try { $e.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand(); return 'expanded' } catch {}
+  try { $e.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait('{ENTER}'); return 'focused + Enter' } catch {}
+  return 'could not press it'
+}`;
+/** The last screenshot's geometry, to turn image pixels into screen points for pc_click. */
+let lastShot: { ox: number; oy: number; perPx: number } | null = null;
+const toLogical = (x: number, y: number) => ({ lx: Math.round(lastShot!.ox + x * lastShot!.perPx), ly: Math.round(lastShot!.oy + y * lastShot!.perPx) });
+/** Windows media keys through WScript.Shell (no compiled code). */
+const MEDIA_CHAR: Record<string, number> = { play_pause: 179, next: 176, previous: 177, stop: 178, mute: 173, volume_up: 175, volume_down: 174 };
+const mediaKey = (key: string, times = 1) => runCommand(`$s = New-Object -ComObject WScript.Shell; 1..${times} | ForEach-Object { $s.SendKeys([string][char]${MEDIA_CHAR[key]}) }; "${key} pressed"`, 15_000);
+
+/** Native screenshot (node-screenshots), scaled to <= 1600 px wide, JPEG. */
+async function screenshot(window?: string) {
+  if (!win) return { error: "screenshots only work on Windows" };
+  const { Monitor, Window } = await import("node-screenshots");
+  const jpeg = (await import("jpeg-js")).default;
+  let img, ox = 0, oy = 0, rw = 0, scale = 1, label = "main screen";
+  if (window) {
+    const q = window.toLowerCase();
+    const w = Window.all().filter((x) => !x.isMinimized() && x.width() > 50 && (x.title().toLowerCase().includes(q) || x.appName().toLowerCase().includes(q))).sort((p, r) => r.width() * r.height() - p.width() * p.height())[0];
+    if (!w) throw new Error(`no open window matching "${window}"`);
+    img = await w.captureImage(); ox = w.x(); oy = w.y(); rw = w.width(); scale = w.currentMonitor().scaleFactor(); label = w.title() || w.appName();
+  } else {
+    const m = Monitor.all().find((x) => x.isPrimary()) ?? Monitor.all()[0];
+    img = await m.captureImage(); ox = m.x(); oy = m.y(); rw = m.width(); scale = m.scaleFactor();
+  }
+  const raw = await img.toRaw();
+  const W = img.width, H = img.height, k = Math.max(1, W / 1600);
+  const nw = Math.round(W / k), nh = Math.round(H / k);
+  const out = Buffer.alloc(nw * nh * 4);
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+    const sx = Math.min(W - 1, Math.floor(x * k)), sy = Math.min(H - 1, Math.floor(y * k));
+    const si = (sy * W + sx) * 4, di = (y * nw + x) * 4;
+    out[di] = raw[si]; out[di + 1] = raw[si + 1]; out[di + 2] = raw[si + 2]; out[di + 3] = 255;
+  }
+  const jpg = jpeg.encode({ data: out, width: nw, height: nh }, 72).data;
+  // image px -> screen points as seen by (DPI-unaware) PowerShell UI Automation
+  const physical = Math.abs(rw - W) <= 2; // reported size is in physical pixels
+  const perPx = k * (rw / W) / (physical ? scale : 1);
+  lastShot = { ox: physical ? ox / scale : ox, oy: physical ? oy / scale : oy, perPx };
+  return { __image: { data: Buffer.from(jpg).toString("base64"), mimeType: "image/jpeg" }, note: `Screenshot of ${label} (${nw}x${nh}). pc_click takes x,y in this image's pixels.` };
+}
 /** SendKeys needs + ^ % ~ ( ) { } [ ] escaped when typing plain text. */
 const sendKeysText = (t: string) => t.replace(/[+^%~(){}[\]]/g, (m) => `{${m}}`).replace(/\n/g, "{ENTER}");
 
@@ -147,8 +190,7 @@ async function openTarget(t: string) {
 }
 
 /* ---------- Apple Music (Windows app, driven through UI Automation: Apple has no free playback API) ---------- */
-const AM_OPEN = `Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
-$AE=[System.Windows.Automation.AutomationElement]; $CT=[System.Windows.Automation.ControlType]; $TS=[System.Windows.Automation.TreeScope]
+const AM_OPEN = `${UIA_HEAD}
 function AmProc { Get-Process -Name AppleMusic -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1 }
 $p = AmProc
 if (-not $p) {
@@ -165,20 +207,12 @@ $root = $AE::FromHandle($p.MainWindowHandle)
 function All($c) { $root.FindAll($TS::Descendants, $c) }
 $any = [System.Windows.Automation.Condition]::TrueCondition
 function Names { $seen=@{}; foreach ($e in (All $any)) { try { $n=$e.Current.Name; if ($n -and $n.Trim().Length -gt 1 -and -not $seen.ContainsKey($n)) { $seen[$n]=1; $n.Trim() } } catch {} } }
-function Press($e) {
-  try { $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return 'invoked' } catch {}
-  try { $e.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch {}
-  $r = $e.Current.BoundingRectangle; if ($r.Width -le 0) { return 'no-rect' }
-  $x=[int]($r.X + $r.Width/2); $y=[int]($r.Y + $r.Height/2)
-  ${INPUT.replace(/`/g, "``")}
-  [U.I]::SetCursorPos($x,$y) | Out-Null; foreach ($k in 1..2) { [U.I]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [U.I]::mouse_event(4,0,0,0,[UIntPtr]::Zero); Start-Sleep -Milliseconds 90 }
-  return 'double-clicked'
+function Press($e) { Act $e $true }
 }`;
 
 /** Search the Apple Music app and play the best match for `query`. */
 function amPlayScript(query: string, title: string) {
-  return `${DPI}
-${AM_OPEN}
+  return `${AM_OPEN}
 $edit = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)
 $box = (All $edit) | Where-Object { $_.Current.Name -match 'search' } | Select-Object -First 1
 if (-not $box) { $box = $root.FindFirst($TS::Descendants, $edit) }
@@ -200,8 +234,7 @@ $how = if ($play) { Press $play } else { Press $hit }
 }
 /** Open Recently Added (or another section) and read what's listed. */
 function amSectionScript(section: string, play: boolean) {
-  return `${DPI}
-${AM_OPEN}
+  return `${AM_OPEN}
 $sec = (All $any) | Where-Object { $_.Current.Name -eq ${ps(section)} } | Select-Object -First 1
 if (-not $sec) { throw 'NO_SECTION' }
 Press $sec | Out-Null
@@ -273,7 +306,7 @@ export const PC_TOOLS: Tool[] = [
     input: { key: z.enum(["play_pause", "next", "previous", "stop", "mute", "volume_up", "volume_down"]), times: z.number().int().min(1).max(50).optional() },
     async run(_ctx, a: { key: string; times?: number }) {
       if (!win) return { error: "media keys only work on Windows" };
-      return runCommand(`${INPUT}; 1..${a.times ?? 1} | % { [U.I]::keybd_event(${MEDIA[a.key]},0,1,[UIntPtr]::Zero); [U.I]::keybd_event(${MEDIA[a.key]},0,3,[UIntPtr]::Zero) }`, 15_000);
+      return mediaKey(a.key, a.times ?? 1);
     },
   },
 
@@ -288,32 +321,37 @@ export const PC_TOOLS: Tool[] = [
   },
   {
     name: "pc_screenshot",
-    description: "Take a screenshot of Reg's PC screen (or of one window by title/process) and LOOK at it. Use it whenever he refers to something on his PC ('my Teams page', 'this error', 'what's on my screen'). Coordinates in the image can be passed straight to pc_click.",
-    input: { window: z.string().max(200).optional().describe("Part of a window title or process name; omit for the whole screen") },
+    description: "Take a screenshot of Reg's PC screen (or of one window by title/app name) and LOOK at it. Use it whenever he refers to something on his PC ('my Teams page', 'this error', 'what's on my screen'). Coordinates in the image can be passed straight to pc_click.",
+    input: { window: z.string().max(200).optional().describe("Part of a window title or app name; omit for the main screen") },
     async run(_ctx, a: { window?: string }) {
-      if (!win) return { error: "screenshots only work on Windows" };
-      const dir = mkdtempSync(join(tmpdir(), "noesis-shot-"));
-      const file = join(dir, "s.jpg");
-      const rect = a.window
-        ? `${FIND_WIN(a.window)}; Add-Type -Name W -Namespace U -MemberDefinition '[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); public struct RECT { public int L; public int T; public int R; public int B; }'; [U.W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 350; $r = New-Object U.W+RECT; [U.W]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null; $x=$r.L; $y=$r.T; $w=$r.R-$r.L; $h=$r.B-$r.T`
-        : `$b = [System.Windows.Forms.SystemInformation]::VirtualScreen; $x=$b.X; $y=$b.Y; $w=$b.Width; $h=$b.Height`;
-      const r = await runCommand(`${DPI}; Add-Type -AssemblyName System.Windows.Forms, System.Drawing; ${rect}; $bmp = New-Object System.Drawing.Bitmap $w, $h; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($x, $y, 0, 0, $bmp.Size); $s = [Math]::Min(1, 1600 / $w); $nw=[int]($w*$s); $nh=[int]($h*$s); $o = New-Object System.Drawing.Bitmap $nw, $nh; $g2=[System.Drawing.Graphics]::FromImage($o); $g2.InterpolationMode='HighQualityBicubic'; $g2.DrawImage($bmp,0,0,$nw,$nh); $enc=[System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | ? { $_.MimeType -eq 'image/jpeg' }; $ep=New-Object System.Drawing.Imaging.EncoderParameters 1; $ep.Param[0]=New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality), 72L; $o.Save(${ps(file)}, $enc, $ep); "$x $y $w $h $s"`, 30_000);
-      try {
-        if (!r.ok) return { error: r.out.slice(-400) };
-        const [x, y, , , s] = r.out.trim().split(/\s+/).map(Number);
-        lastScale = 1 / (s || 1); lastOrigin = { x, y };
-        return { __image: { data: readFileSync(file).toString("base64"), mimeType: "image/jpeg" }, note: `Screenshot${a.window ? ` of "${a.window}"` : ""}. pc_click takes x,y in this image's pixels.` };
-      } finally { rmSync(dir, { recursive: true, force: true }); }
+      try { return await screenshot(a.window); }
+      catch (e) { return { error: `Couldn't capture the screen: ${(e as Error).message}` }; }
     },
   },
   {
     name: "pc_read_window",
-    description: "Read the visible TEXT of a window on Reg's PC (Windows UI Automation): e.g. his Teams assignments page, an Outlook email, a browser page, an error dialog. Faster and more exact than a screenshot for reading. Pass part of the window title or the process name (e.g. 'Teams', 'ms-teams', 'Opera').",
+    description: "Read the TEXT of a window on Reg's PC (Windows UI Automation, like a screen reader): Teams pages (assignments, chats), Outlook, a browser page, an error dialog. More exact than a screenshot. Pass part of the window title or app name ('Teams', 'Outlook', 'Opera'). If it returns little, navigate first (pc_click_element) or use pc_screenshot.",
     input: { window: z.string().min(1).max(200), max_chars: z.number().int().min(500).max(40000).optional() },
     async run(_ctx, a: { window: string; max_chars?: number }) {
       if (!win) return { error: "only works on Windows" };
-      const r = await runCommand(`Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes; ${FIND_WIN(a.window)}; $root = [System.Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle); $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition); $seen=@{}; $lines = foreach ($e in $all) { try { $n = $e.Current.Name; if ($n -and $n.Trim().Length -gt 1 -and -not $seen.ContainsKey($n)) { $seen[$n]=1; $n.Trim() } } catch {} }; "WINDOW: " + $p.MainWindowTitle; $lines -join [Environment]::NewLine`, 60_000);
-      return { ok: r.ok, text: r.out.slice(0, a.max_chars ?? 15000), truncated: r.out.length > (a.max_chars ?? 15000) };
+      // Chromium/WebView2 apps (new Teams, Edge, Opera) only build their accessibility tree once a reader
+      // asks for it, so ask, wait, and ask again until the page's text shows up.
+      const r = await runCommand(`${UIA_HEAD}
+${FIND_WIN(a.window)}
+(New-Object -ComObject WScript.Shell).AppActivate($p.Id) | Out-Null
+$wins = @($AE::FromHandle($p.MainWindowHandle))
+$lines = @()
+for ($try = 0; $try -lt 4; $try++) {
+  $seen=@{}; $lines = foreach ($w in $wins) { foreach ($e in $w.FindAll($TS::Descendants, $any)) { try { $c = $e.Current; $n = $c.Name; if ($n -and $n.Trim().Length -gt 1 -and -not $seen.ContainsKey($n) -and $c.BoundingRectangle.Width -gt 0) { $seen[$n]=1; $n.Trim() } } catch {} } }
+  if (@($lines).Count -ge 25) { break }
+  Start-Sleep -Milliseconds 1200
+}
+"WINDOW: " + $p.MainWindowTitle
+"(" + @($lines).Count + " text items, top to bottom)"
+$lines -join [Environment]::NewLine`, 90_000);
+      const text = r.out.slice(0, a.max_chars ?? 15000);
+      const thin = (r.out.match(/\n/g) ?? []).length < 8;
+      return { ok: r.ok, text, truncated: r.out.length > (a.max_chars ?? 15000), ...(thin ? { hint: "Very little text came back: click into the right tab (pc_click_element, e.g. 'Assignments') and read again, or take a pc_screenshot." } : {}) };
     },
   },
 
@@ -327,14 +365,40 @@ export const PC_TOOLS: Tool[] = [
     },
   },
   {
+    name: "pc_click_element",
+    description: "Click a button, tab, link or list item BY ITS NAME in a window (e.g. window 'Teams', name 'Assignments'; window 'Apple Music', name 'Recently Added'). The most reliable way to click: prefer it over pc_click. exact=false matches part of the name; nth picks the nth match (1 = first, top-most). double=true to open/play items.",
+    input: { window: z.string().min(1).max(200), name: z.string().min(1).max(300), exact: z.boolean().optional(), nth: z.number().int().min(1).max(50).optional(), double: z.boolean().optional() },
+    async run(_ctx, a: { window: string; name: string; exact?: boolean; nth?: number; double?: boolean }) {
+      if (!win) return { error: "only works on Windows" };
+      return runCommand(`${UIA_HEAD}
+${FIND_WIN(a.window)}
+(New-Object -ComObject WScript.Shell).AppActivate($p.Id) | Out-Null
+$root = $AE::FromHandle($p.MainWindowHandle)
+$want = ${ps(a.name)}
+$hits = @()
+for ($try = 0; $try -lt 4 -and $hits.Count -eq 0; $try++) {
+  $hits = @($root.FindAll($TS::Descendants, $any) | Where-Object { $n = $_.Current.Name; $n -and $_.Current.BoundingRectangle.Width -gt 0 -and (${a.exact === false ? "$n.ToLower().Contains($want.ToLower())" : "$n.Trim() -eq $want -or $n.ToLower().StartsWith($want.ToLower())"}) } | Sort-Object { $_.Current.BoundingRectangle.Y }, { $_.Current.BoundingRectangle.X })
+  if ($hits.Count -eq 0) { Start-Sleep -Milliseconds 1000 }
+}
+if ($hits.Count -eq 0) { throw "Nothing called '$want' in that window. Read the window or take a screenshot to see what's there." }
+$e = $hits[[Math]::Min(${(a.nth ?? 1) - 1}, $hits.Count - 1)]
+$how = Act $e ${a.double ? "$true" : "$false"}
+"clicked '" + $e.Current.Name + "' (" + $e.Current.ControlType.ProgrammaticName.Replace('ControlType.','') + ", " + $how + "); " + $hits.Count + " match(es)"`, 45_000);
+    },
+  },
+  {
     name: "pc_click",
-    description: "Click at x,y on Reg's screen, in the pixels of your LAST pc_screenshot. Ask Reg in chat first before clicking anything that sends, submits, deletes, buys or can't be undone.",
-    input: { x: z.number(), y: z.number(), button: z.enum(["left", "right"]).optional(), double: z.boolean().optional() },
-    async run(_ctx, a: { x: number; y: number; button?: string; double?: boolean }) {
-      const X = Math.round(lastOrigin.x + a.x * lastScale), Y = Math.round(lastOrigin.y + a.y * lastScale);
-      const [d, u] = a.button === "right" ? [8, 16] : [2, 4];
-      const once = `[U.I]::mouse_event(${d},0,0,0,[UIntPtr]::Zero); [U.I]::mouse_event(${u},0,0,0,[UIntPtr]::Zero)`;
-      return runCommand(`${DPI}; ${INPUT}; [U.I]::SetCursorPos(${X},${Y}) | Out-Null; Start-Sleep -Milliseconds 60; ${once}${a.double ? `; Start-Sleep -Milliseconds 80; ${once}` : ""}; "clicked ${X},${Y}"`, 15_000);
+    description: "Click whatever is at x,y in your LAST pc_screenshot (it presses that control through Windows accessibility, like a screen reader would). Prefer pc_click_element when the thing has a name. Ask Reg in chat first before clicking anything that sends, submits, deletes, buys or can't be undone.",
+    input: { x: z.number(), y: z.number(), double: z.boolean().optional() },
+    async run(_ctx, a: { x: number; y: number; double?: boolean }) {
+      if (!win) return { error: "only works on Windows" };
+      if (!lastShot) return { error: "Take a pc_screenshot first: x,y are in its pixels." };
+      const { lx, ly } = toLogical(a.x, a.y);
+      return runCommand(`${UIA_HEAD}
+$e = $AE::FromPoint((New-Object System.Windows.Point(${lx}, ${ly})))
+if (-not $e) { throw "Nothing clickable at that point" }
+$how = Act $e ${a.double ? "$true" : "$false"}
+"clicked '" + $e.Current.Name + "' (" + $e.Current.ControlType.ProgrammaticName.Replace('ControlType.','') + ", " + $how + ")"`, 30_000);
     },
   },
   {
@@ -349,11 +413,24 @@ export const PC_TOOLS: Tool[] = [
   },
   {
     name: "pc_scroll",
-    description: "Scroll the window under the mouse (negative = down). One step is about 3 lines. Optionally move the mouse to x,y (screenshot pixels) first.",
-    input: { steps: z.number().int().min(-50).max(50), x: z.number().optional(), y: z.number().optional() },
-    async run(_ctx, a: { steps: number; x?: number; y?: number }) {
-      const move = a.x != null && a.y != null ? `[U.I]::SetCursorPos(${Math.round(lastOrigin.x + a.x * lastScale)},${Math.round(lastOrigin.y + a.y * lastScale)}) | Out-Null; ` : "";
-      return runCommand(`${DPI}; ${INPUT}; ${move}[U.I]::mouse_event(0x0800,0,0,${a.steps * 120},[UIntPtr]::Zero); "scrolled"`, 15_000);
+    description: "Scroll a window by pages (negative = down, positive = up). Give the window (title/app name), and optionally x,y from your last screenshot to scroll the panel under that point.",
+    input: { window: z.string().min(1).max(200), pages: z.number().int().min(-20).max(20), x: z.number().optional(), y: z.number().optional() },
+    async run(_ctx, a: { window: string; pages: number; x?: number; y?: number }) {
+      if (!win) return { error: "only works on Windows" };
+      const pt = a.x != null && a.y != null && lastShot ? toLogical(a.x, a.y) : null;
+      return runCommand(`${UIA_HEAD}
+${FIND_WIN(a.window)}
+$root = $AE::FromHandle($p.MainWindowHandle)
+$start = ${pt ? `$AE::FromPoint((New-Object System.Windows.Point(${pt.lx}, ${pt.ly})))` : "$null"}
+$sp = $null
+$walk = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+$e = $start
+while ($e -and -not $sp) { try { $sp = $e.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern) } catch {}; $e = $walk.GetParent($e) }
+if (-not $sp) { foreach ($c in $root.FindAll($TS::Descendants, $any)) { try { $x = $c.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern); if ($x.Current.VerticallyScrollable) { $sp = $x; break } } catch {} } }
+if (-not $sp) { throw "That window has no scrollable area I can reach" }
+$amt = if (${a.pages} -lt 0) { [System.Windows.Automation.ScrollAmount]::LargeIncrement } else { [System.Windows.Automation.ScrollAmount]::LargeDecrement }
+1..${Math.abs(a.pages) || 1} | ForEach-Object { $sp.Scroll([System.Windows.Automation.ScrollAmount]::NoAmount, $amt); Start-Sleep -Milliseconds 250 }
+"scrolled ${a.pages} page(s), now at " + [int]$sp.Current.VerticalScrollPercent + "%"`, 30_000);
     },
   },
 
@@ -426,9 +503,9 @@ export const PC_TOOLS: Tool[] = [
     description: "Pause Spotify playback (falls back to the media play/pause key if Spotify isn't connected).",
     input: {},
     async run(ctx) {
-      if ((await musicService(ctx.store)) === "apple_music") return runCommand(`${INPUT}; [U.I]::keybd_event(0xb3,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb3,0,3,[UIntPtr]::Zero); "play/pause pressed"`, 10_000);
+      if ((await musicService(ctx.store)) === "apple_music") return mediaKey("play_pause");
       try { await pause(ctx.store); return { paused: true }; }
-      catch (e) { if (win) await runCommand(`${INPUT}; [U.I]::keybd_event(0xb3,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb3,0,3,[UIntPtr]::Zero)`, 10_000); return { paused: "used the media key", why: explain(e) }; }
+      catch (e) { if (win) await mediaKey("play_pause"); return { paused: "used the media key", why: explain(e) }; }
     },
   },
   {
@@ -436,9 +513,9 @@ export const PC_TOOLS: Tool[] = [
     description: "Skip to the next track on Spotify (falls back to the media Next key).",
     input: {},
     async run(ctx) {
-      if ((await musicService(ctx.store)) === "apple_music") return runCommand(`${INPUT}; [U.I]::keybd_event(0xb0,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb0,0,3,[UIntPtr]::Zero); "next pressed"`, 10_000);
+      if ((await musicService(ctx.store)) === "apple_music") return mediaKey("next");
       try { await nextTrack(ctx.store); return { skipped: true }; }
-      catch (e) { if (win) await runCommand(`${INPUT}; [U.I]::keybd_event(0xb0,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb0,0,3,[UIntPtr]::Zero)`, 10_000); return { skipped: "used the media key", why: explain(e) }; }
+      catch (e) { if (win) await mediaKey("next"); return { skipped: "used the media key", why: explain(e) }; }
     },
   },
 ];
