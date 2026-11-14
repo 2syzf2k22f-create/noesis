@@ -72,9 +72,16 @@ export function classifyTarget(raw: string): { category: Category; target: strin
 }
 const patternOf = (c: { category: Category; target: string }) => `${CATEGORY_LABEL[c.category]}: ${c.target}`;
 
+/** Sensitive apps and sites: never covered by an always-allow rule, always a card. */
+const SENSITIVE = /(1password|bitwarden|lastpass|keepass|dashlane|nordpass|proton ?pass|authenticator|\bauthy\b|bank|paypal|revolut|monzo|starling|barclays|hsbc|lloyds|natwest|santander|nationwide|halifax|\btsb\b|coinbase|binance|kraken|crypto|wallet|metamask|ledger|trezor|klarna|\bstripe\b|regedit|gpedit|secpol|mmc|msconfig|services\.msc|compmgmt|diskmgmt|devmgmt|\bcmd\b|powershell|pwsh|\bwt\b|terminal|taskmgr|control|ms-settings|windowsdefender|accounts\.google|myaccount|appleid|account\.microsoft|login\.|signin|password|\.env|vercel\.com|supabase\.com|github\.com\/settings)/i;
+export const isSensitive = (c: { category: Category; target: string }) => SENSITIVE.test(c.target);
+/** A rule covers a whole TYPE of action ("launch app: any app") across all apps/sites, except sensitive ones. */
+const ANY = "any (except sensitive)";
+const wideOf = (cat: Category) => `${CATEGORY_LABEL[cat]}: ${ANY}`;
 async function findRule(s: Store, c: { category: Category; target: string }) {
-  const rows = await s.list("pc_allow_rules", { eq: { category: c.category, pattern: patternOf(c), enabled: true }, limit: 1 }).catch(() => []);
-  return rows[0] ?? null;
+  if (isSensitive(c)) return null;
+  const rows = await s.list("pc_allow_rules", { eq: { category: c.category, enabled: true }, limit: 50 }).catch(() => []);
+  return rows.find((r) => r.pattern === wideOf(c.category)) ?? rows.find((r) => r.pattern === patternOf(c)) ?? null;
 }
 async function countRuleUse(s: Store, rule: Row) {
   await s.update("pc_allow_rules", rule.id, { uses: Number(rule.uses ?? 0) + 1, last_used_at: nowIso() }).catch(() => null);
@@ -122,7 +129,7 @@ async function askFirst(ctx: Ctx, command: string, why: string, risk: string, ha
   const c = hard ? null : classify(command);
   const job = await ctx.store.insert("jobs", {
     kind: "pc", status: "proposed", ui_actions: [], output: { step: "Waiting for your OK" },
-    input: { command, why, risk, hard, allowable: c ? { category: c.category, pattern: patternOf(c), label: `${CATEGORY_LABEL[c.category]}: ${c.target}` } : null, conversation_id: parent?.input?.conversation_id ?? null, from_job: ctx.jobId, model_pref: parent?.input?.model_pref ?? "auto" },
+    input: { command, why, risk, hard, allowable: c && !isSensitive(c) ? { category: c.category, pattern: wideOf(c.category), label: `${CATEGORY_LABEL[c.category]}: ${ANY}` } : null, conversation_id: parent?.input?.conversation_id ?? null, from_job: ctx.jobId, model_pref: parent?.input?.model_pref ?? "auto" },
   });
   return { needs_approval: true, id: job.id, risk, note: `Not run yet: it ${risk}. Reg sees an Allow card in the chat. When he allows it, it runs, and you'll be woken with the output to finish the task, so end this reply now with one line saying what you're waiting on.` };
 }
@@ -137,6 +144,88 @@ async function openTarget(t: string) {
   const r = await runCommand(win ? `Start-Process ${ps(t)}` : `xdg-open ${JSON.stringify(t)}`, 20_000);
   if (r.ok || !win) return r;
   return runCommand(`$a = Get-StartApps | Where-Object { $_.Name -like ${ps(`*${t}*`)} } | Select-Object -First 1; if ($a) { Start-Process ("shell:AppsFolder\\" + $a.AppID); "opened " + $a.Name } else { throw "No app called ${t.replace(/["'`$]/g, "")}" }`, 20_000);
+}
+
+/* ---------- Apple Music (Windows app, driven through UI Automation: Apple has no free playback API) ---------- */
+const AM_OPEN = `Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
+$AE=[System.Windows.Automation.AutomationElement]; $CT=[System.Windows.Automation.ControlType]; $TS=[System.Windows.Automation.TreeScope]
+function AmProc { Get-Process -Name AppleMusic -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1 }
+$p = AmProc
+if (-not $p) {
+  $app = Get-StartApps | Where-Object { $_.Name -like 'Apple Music*' } | Select-Object -First 1
+  if (-not $app) { throw 'NOT_INSTALLED' }
+  Start-Process ('shell:AppsFolder\\' + $app.AppID)
+  for ($i = 0; $i -lt 30 -and -not $p; $i++) { Start-Sleep -Milliseconds 500; $p = AmProc }
+  if (-not $p) { throw 'DID_NOT_OPEN' }
+  Start-Sleep -Seconds 2
+}
+(New-Object -ComObject WScript.Shell).AppActivate($p.Id) | Out-Null
+Start-Sleep -Milliseconds 400
+$root = $AE::FromHandle($p.MainWindowHandle)
+function All($c) { $root.FindAll($TS::Descendants, $c) }
+$any = [System.Windows.Automation.Condition]::TrueCondition
+function Names { $seen=@{}; foreach ($e in (All $any)) { try { $n=$e.Current.Name; if ($n -and $n.Trim().Length -gt 1 -and -not $seen.ContainsKey($n)) { $seen[$n]=1; $n.Trim() } } catch {} } }
+function Press($e) {
+  try { $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return 'invoked' } catch {}
+  try { $e.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch {}
+  $r = $e.Current.BoundingRectangle; if ($r.Width -le 0) { return 'no-rect' }
+  $x=[int]($r.X + $r.Width/2); $y=[int]($r.Y + $r.Height/2)
+  ${INPUT.replace(/`/g, "``")}
+  [U.I]::SetCursorPos($x,$y) | Out-Null; foreach ($k in 1..2) { [U.I]::mouse_event(2,0,0,0,[UIntPtr]::Zero); [U.I]::mouse_event(4,0,0,0,[UIntPtr]::Zero); Start-Sleep -Milliseconds 90 }
+  return 'double-clicked'
+}`;
+
+/** Search the Apple Music app and play the best match for `query`. */
+function amPlayScript(query: string, title: string) {
+  return `${DPI}
+${AM_OPEN}
+$edit = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)
+$box = (All $edit) | Where-Object { $_.Current.Name -match 'search' } | Select-Object -First 1
+if (-not $box) { $box = $root.FindFirst($TS::Descendants, $edit) }
+if (-not $box) { [System.Windows.Forms.SendKeys]::SendWait('^f'); Start-Sleep -Milliseconds 500; $box = $root.FindFirst($TS::Descendants, $edit) }
+if (-not $box) { throw 'NO_SEARCH_BOX' }
+$box.SetFocus()
+try { $box.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue(${ps(query)}) } catch { [System.Windows.Forms.SendKeys]::SendWait('^a'); [System.Windows.Forms.SendKeys]::SendWait(${ps(sendKeysText(query))}) }
+[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+$t = ${ps(title.toLowerCase())}
+$hit = $null
+for ($i = 0; $i -lt 16 -and -not $hit; $i++) {
+  Start-Sleep -Milliseconds 500
+  $hit = (All $any) | Where-Object { $n = $_.Current.Name; $ct = $_.Current.ControlType; $n -and $n.ToLower().Contains($t) -and $ct -ne $CT::Edit -and $ct -ne $CT::Text -and $ct -ne $CT::Window } | Sort-Object { $_.Current.BoundingRectangle.Y } | Select-Object -First 1
+}
+if (-not $hit) { throw 'NO_RESULT' }
+$play = $hit.FindAll($TS::Descendants, $any) | Where-Object { $_.Current.ControlType -eq $CT::Button -and $_.Current.Name -match '^Play' } | Select-Object -First 1
+$how = if ($play) { Press $play } else { Press $hit }
+"PLAYED|" + $hit.Current.Name + "|" + $how`;
+}
+/** Open Recently Added (or another section) and read what's listed. */
+function amSectionScript(section: string, play: boolean) {
+  return `${DPI}
+${AM_OPEN}
+$sec = (All $any) | Where-Object { $_.Current.Name -eq ${ps(section)} } | Select-Object -First 1
+if (-not $sec) { throw 'NO_SECTION' }
+Press $sec | Out-Null
+Start-Sleep -Seconds 2
+$names = @(Names)
+$out = "SECTION|" + ($names -join [char]10)
+if (${play ? "$true" : "$false"}) {
+  $items = (All $any) | Where-Object { $ct = $_.Current.ControlType; ($ct -eq $CT::ListItem -or $ct -eq $CT::DataItem -or $ct -eq $CT::Custom -or $ct -eq $CT::Group) -and $_.Current.Name -and $_.Current.BoundingRectangle.Width -gt 0 } | Sort-Object { $_.Current.BoundingRectangle.Y }, { $_.Current.BoundingRectangle.X }
+  $first = $items | Where-Object { $_.Current.Name -ne ${ps(section)} } | Select-Object -First 1
+  if ($first) { $how = Press $first; $out = "PLAYED|" + $first.Current.Name + "|" + $how + [char]10 + $out }
+}
+$out`;
+}
+const AM_WHY: Record<string, string> = { NOT_INSTALLED: "the Apple Music app isn't installed on this PC (Microsoft Store: Apple Music)", DID_NOT_OPEN: "the Apple Music app didn't open", NO_SEARCH_BOX: "couldn't find Apple Music's search box", NO_RESULT: "no matching song showed up in Apple Music", NO_SECTION: "couldn't find that section in Apple Music's sidebar" };
+const amWhy = (out: string) => { const k = Object.keys(AM_WHY).find((x) => out.includes(x)); return k ? AM_WHY[k] : out.slice(-300); };
+async function musicService(s: Store): Promise<"apple_music" | "spotify"> {
+  const st = await s.get("settings", "main").catch(() => null);
+  return st?.data?.music_service === "spotify" ? "spotify" : "apple_music";
+}
+async function applePlay(query: string, title?: string) {
+  if (!win) return { played: false, why: "only works on Windows" };
+  const r = await runCommand(amPlayScript(query, (title ?? query).split(/\s+-\s+|\s+by\s+/i)[0].trim()), 45_000);
+  if (r.ok && r.out.includes("PLAYED|")) { const [, name] = r.out.slice(r.out.indexOf("PLAYED|")).split("|"); return { played: true, service: "Apple Music", track: name.trim(), note: "Name the track. If Reg says it's the wrong one, take a pc_screenshot of Apple Music and click the right song." }; }
+  return { played: false, service: "Apple Music", why: amWhy(r.out), next_step: "Apple Music is open with the search: take a pc_screenshot, find the song and pc_click its play button (double-click the row)." };
 }
 
 const fmtTrack = (t: Track) => `${t.name} by ${t.artists}${t.album ? ` (${t.album})` : ""}`;
@@ -274,6 +363,11 @@ export const PC_TOOLS: Tool[] = [
     description: "Search Spotify for tracks. Returns names, artists and track URIs (pass a URI to music_play).",
     input: { query: z.string().min(1).max(200), limit: z.number().int().min(1).max(20).optional() },
     async run(ctx, a: { query: string; limit?: number }) {
+      if ((await musicService(ctx.store)) === "apple_music") {
+        const r = await runCommand(amPlayScript(a.query, "\u0000never"), 30_000); // search only: no title will match a NUL
+        const names = await runCommand(`${AM_OPEN}\nNames`, 30_000);
+        return { service: "Apple Music", note: "Search results as listed in the Apple Music window (in order). Use music_play with the exact song title.", results: names.out.slice(0, 6000), searched: r.out.includes("NO_RESULT") || r.ok };
+      }
       try { return { tracks: (await searchTracks(ctx.store, a.query, a.limit ?? 5)).map((t) => ({ ...t, label: fmtTrack(t) })) }; }
       catch (e) { return { error: explain(e) }; }
     },
@@ -283,15 +377,31 @@ export const PC_TOOLS: Tool[] = [
     description: "Reg's Spotify library: sort 'recent' = Liked Songs newest first (use for 'the most recently added song'), 'top' = his most-played lately, 'played' = recently played.",
     input: { sort: z.enum(["recent", "top", "played"]), limit: z.number().int().min(1).max(50).optional() },
     async run(ctx, a: { sort: "recent" | "top" | "played"; limit?: number }) {
+      if ((await musicService(ctx.store)) === "apple_music") {
+        const r = await runCommand(amSectionScript(a.sort === "played" ? "Recently Played" : "Recently Added", false), 45_000);
+        return r.ok ? { service: "Apple Music", section: a.sort === "played" ? "Recently Played" : "Recently Added", note: a.sort === "top" ? "Apple Music's app has no 'most played' list; this is Recently Added." : "Items as listed (newest first).", items: r.out.replace(/^SECTION\|/, "").slice(0, 6000) } : { error: amWhy(r.out) };
+      }
       try { return { tracks: (await library(ctx.store, a.sort, a.limit ?? 10)).map((t) => ({ ...t, label: fmtTrack(t) })) }; }
       catch (e) { return { error: explain(e) }; }
     },
   },
   {
     name: "music_play",
-    description: "Play a specific song on Reg's Spotify. Give track_uri (from music_search/music_library), or query (searches and plays the best match), or latest_liked=true (newest track in Liked Songs). Opens the Spotify app if needed. Always name the track that's playing in your reply. If it can't play (not connected, not Premium), it opens a Spotify search instead and says why: tell Reg.",
+    description: "Play a specific song in Reg's music app (Apple Music by default, or Spotify if settings.data.music_service = \"spotify\"). For Apple Music pass query = \"song artist\" (it searches the app and presses play on the best match). latest_liked=true plays the newest item in Recently Added. On Spotify: Give track_uri (from music_search/music_library), or query (searches and plays the best match), or latest_liked=true (newest track in Liked Songs). Opens the Spotify app if needed. Always name the track that's playing in your reply. If it can't play (not connected, not Premium), it opens a Spotify search instead and says why: tell Reg.",
     input: { track_uri: z.string().regex(/^spotify:track:[A-Za-z0-9]+$/).optional(), query: z.string().max(200).optional(), latest_liked: z.boolean().optional() },
     async run(ctx, a: { track_uri?: string; query?: string; latest_liked?: boolean }) {
+      if ((await musicService(ctx.store)) === "apple_music") {
+        if (a.latest_liked) {
+          if (!win) return { played: false, why: "only works on Windows" };
+          const r = await runCommand(amSectionScript("Recently Added", true), 45_000);
+          if (r.out.includes("PLAYED|")) { const [, name] = r.out.slice(r.out.indexOf("PLAYED|")).split("|"); return { played: true, service: "Apple Music", track: name.trim(), note: "Recently Added can start with an album; if so the album's first track plays. Name what's playing." }; }
+          return { played: false, why: amWhy(r.out), next_step: "Take a pc_screenshot of Apple Music's Recently Added and double-click the newest item." };
+        }
+        if (!a.query) return { error: "give a query (song name and artist)" };
+        const r = await applePlay(a.query);
+        await logRun(ctx.store, "apollo", "music_play", { service: "apple_music", query: a.query, ok: r.played });
+        return r;
+      }
       const st = await spotifyStatus(ctx.store).catch(() => null);
       const q = a.query ?? "";
       if (!st?.connected) return q ? musicFallback(q, "Spotify isn't connected (Settings › Connect Spotify)") : { played: false, why: "Spotify isn't connected (Settings › Connect Spotify)" };
@@ -316,6 +426,7 @@ export const PC_TOOLS: Tool[] = [
     description: "Pause Spotify playback (falls back to the media play/pause key if Spotify isn't connected).",
     input: {},
     async run(ctx) {
+      if ((await musicService(ctx.store)) === "apple_music") return runCommand(`${INPUT}; [U.I]::keybd_event(0xb3,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb3,0,3,[UIntPtr]::Zero); "play/pause pressed"`, 10_000);
       try { await pause(ctx.store); return { paused: true }; }
       catch (e) { if (win) await runCommand(`${INPUT}; [U.I]::keybd_event(0xb3,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb3,0,3,[UIntPtr]::Zero)`, 10_000); return { paused: "used the media key", why: explain(e) }; }
     },
@@ -325,6 +436,7 @@ export const PC_TOOLS: Tool[] = [
     description: "Skip to the next track on Spotify (falls back to the media Next key).",
     input: {},
     async run(ctx) {
+      if ((await musicService(ctx.store)) === "apple_music") return runCommand(`${INPUT}; [U.I]::keybd_event(0xb0,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb0,0,3,[UIntPtr]::Zero); "next pressed"`, 10_000);
       try { await nextTrack(ctx.store); return { skipped: true }; }
       catch (e) { if (win) await runCommand(`${INPUT}; [U.I]::keybd_event(0xb0,0,1,[UIntPtr]::Zero); [U.I]::keybd_event(0xb0,0,3,[UIntPtr]::Zero)`, 10_000); return { skipped: "used the media key", why: explain(e) }; }
     },

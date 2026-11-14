@@ -222,7 +222,7 @@ function PcApprovals() {
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 11.5, margin: "6px 0", padding: 8, borderRadius: 6, background: "var(--surface-2)", maxHeight: 160, overflow: "auto" }}>{p.command}</pre>
           <div style={{ display: "flex", gap: 6 }}>
             <button className="pill" data-active="true" onClick={() => act(p.id, "allow")}>Allow</button>
-            {p.allowable && <button className="pill" onClick={() => act(p.id, "always")} title={`Saves a rule for "${p.allowable.label}" only. Manage it in Settings › PC permissions.`}>Always allow this type</button>}
+            {p.allowable && <button className="pill" onClick={() => act(p.id, "always")} title={`Saves a rule: ${p.allowable.label}. Sensitive apps and sites still ask. Manage it in Settings › PC permissions.`}>Always allow this type</button>}
             <button className="pill" onClick={() => act(p.id, "deny")}>Deny</button>
           </div>
         </div>
