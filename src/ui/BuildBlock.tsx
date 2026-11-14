@@ -63,18 +63,22 @@ function Item({ b, children, progress, now, open, onToggle }: { b: B; children?:
   );
 }
 
-function Section({ title, items, empty, children }: { title: string; items: B[]; empty?: string; children: (b: B) => React.ReactNode }) {
+function Section({ title, items, empty, children, collapsed, extra }: { title: string; items: B[]; empty?: string; children: (b: B) => React.ReactNode; collapsed?: { open: boolean; toggle: () => void }; extra?: React.ReactNode }) {
   if (!items.length && !empty) return null;
   return (
     <section style={{ display: "grid", gap: 6 }}>
-      <span className="label">{title} ({items.length})</span>
-      {items.length ? <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>{items.map(children)}</ul> : <small className="label">{empty}</small>}
+      <div className={u.row}>
+        {collapsed ? <button className="pill" onClick={collapsed.toggle}>{collapsed.open ? "▾" : "▸"} {title} ({items.length})</button> : <span className="label">{title} ({items.length})</span>}
+        {extra}
+      </div>
+      {collapsed && !collapsed.open ? null : items.length ? <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6 }}>{items.map(children)}</ul> : <small className="label">{empty}</small>}
     </section>
   );
 }
 
 export function BuildBlock() {
-  const [d, setD] = useState<{ autoShip: boolean; relayOnline: boolean; builds: B[] } | null>(null);
+  const [d, setD] = useState<{ onHold?: boolean; autoShip: boolean; relayOnline: boolean; builds: B[] } | null>(null);
+  const [showOld, setShowOld] = useState(false);
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
@@ -88,18 +92,21 @@ export function BuildBlock() {
     setErr(r?.error ?? null);
     void load();
   };
-  const all = useMemo(() => (d?.builds ?? []).filter((b) => !(b.status === "cancelled" && b.step === "Declined")) // declined proposals are gone
+  const all = useMemo(() => (d?.builds ?? [])
     .filter((b) => !q.trim() || `${b.title ?? ""} ${b.request} ${b.summary ?? ""}`.toLowerCase().includes(q.trim().toLowerCase())), [d, q]);
   if (!d) return <div className="label">Loading…</div>;
   const waiting = all.filter((b) => b.status === "proposed");
   const queue = all.filter((b) => b.status === "queued" || b.status === "running").reverse(); // oldest first = next up
   const ready = all.filter((b) => b.status === "done" && !b.shipped && !b.rolled_back);
-  const cancelled = all.filter((b) => b.status === "cancelled");
-  const history = all.filter((b) => b.shipped || b.rolled_back || b.status === "error");
+  const old = all.filter((b) => b.status === "cancelled" || b.status === "error");
+  const history = all.filter((b) => b.shipped || b.rolled_back);
+  const clear = async () => { const r = await fetch("/api/build", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "clear" }) }).then((x) => x.json()).catch(() => null); setErr(r?.deleted != null ? null : r?.error ?? "Couldn't clear."); void load(); };
+  const del = (b: B) => <button className="pill" onClick={() => act(b.id, "delete")} title="Moves it to the trash (restorable for 30 days)">🗑 Delete</button>;
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gap: 8 }}>
+      {d.onHold && <div className="panel" style={{ padding: 12, borderLeft: "3px solid var(--danger)" }}><b>Build mode is on hold.</b> <span className="label">No new builds start. You can still ship, discard or revert existing ones, and clear old ones out. For code changes, ask Claude Code directly.</span></div>}
+      {!d.onHold && <div style={{ display: "grid", gap: 8 }}>
         <textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe a change to NOESIS, e.g. Add a 'protein per meal' chart to the Nutrition overview" style={field} />
         <div className={u.row}>
           <button className="pill" data-active="true" disabled={text.trim().length < 5} onClick={async () => { await fetch("/api/build", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: text }) }); setText(""); void load(); }}>Build it</button>
@@ -109,11 +116,11 @@ export function BuildBlock() {
           </label>
           <span className="label" style={{ color: d.relayOnline ? "var(--good)" : "var(--danger)" }}>● Relay {d.relayOnline ? "online" : "offline: builds wait in the queue"}</span>
         </div>
-      </div>
+      </div>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search requests…" style={{ ...field, height: 38, padding: "0 12px" }} />
       {err && <div className="label" style={{ color: "var(--danger)" }}>{err}</div>}
 
-      <Section title="Waiting for your OK" items={waiting}>{(b) => (
+      <Section title="Waiting for your OK" items={d.onHold ? [] : waiting}>{(b) => (
         <Item key={b.id} now={now} open={open === b.id} onToggle={() => setOpen(open === b.id ? null : b.id)} b={b}><button className="pill" data-active="true" onClick={() => act(b.id, "approve")}>Build it</button><button className="pill" onClick={() => act(b.id, "decline")}>No thanks</button></Item>
       )}</Section>
 
@@ -128,18 +135,21 @@ export function BuildBlock() {
         </Item>
       )}</Section>
 
-      <Section title="Cancelled" items={cancelled}>{(b) => (
-        <Item key={b.id} now={now} open={open === b.id} onToggle={() => setOpen(open === b.id ? null : b.id)} b={b}>
-          <button className="pill" data-active="true" onClick={() => act(b.id, "requeue")}>↻ Requeue</button>
-          <button className="pill" onClick={() => act(b.id, "delete", "Delete this request for good?")}>🗑 Delete</button>
+      <Section title="History" items={history} empty="No builds shipped yet.">{(b) => (
+        <Item key={b.id} now={now} open={open === b.id} onToggle={() => setOpen(open === b.id ? null : b.id)} b={b} progress={!!b.shipped && !b.rolled_back}>
+          <span className="pill" data-active={!!b.shipped && !b.rolled_back}>{b.rolled_back ? (b.shipped ? "reverted" : "discarded") : "live"}</span>
+          {b.shipped && !b.rolled_back && <button className="pill" onClick={() => act(b.id, "rollback", "Revert this change on the live site?")}>↶ Revert</button>}
+          {del(b)}
         </Item>
       )}</Section>
 
-      <Section title="History" items={history} empty="No builds shipped yet.">{(b) => (
-        <Item key={b.id} now={now} open={open === b.id} onToggle={() => setOpen(open === b.id ? null : b.id)} b={b} progress={!!b.shipped && !b.rolled_back}>
-          <span className="pill" data-active={!!b.shipped && !b.rolled_back}>{b.rolled_back ? "reverted" : b.shipped ? "live" : "failed"}</span>
-          {b.shipped && !b.rolled_back && <button className="pill" onClick={() => act(b.id, "rollback", "Revert this change on the live site?")}>↶ Revert</button>}
-          {b.status === "error" && <button className="pill" data-active="true" onClick={() => act(b.id, "retry")}>↻ Retry</button>}
+      <Section title="Failed and cancelled" items={old} collapsed={{ open: showOld, toggle: () => setShowOld(!showOld) }}
+        extra={old.length > 0 && <button className="pill" onClick={clear} title="Moves them all to the trash (restorable for 30 days)">Clear failed and cancelled</button>}>{(b) => (
+        <Item key={b.id} now={now} open={open === b.id} onToggle={() => setOpen(open === b.id ? null : b.id)} b={b}>
+          <span className="pill">{b.status === "error" ? "failed" : "cancelled"}</span>
+          {!d.onHold && b.status === "cancelled" && b.step !== "Declined" && <button className="pill" data-active="true" onClick={() => act(b.id, "requeue")}>↻ Requeue</button>}
+          {!d.onHold && b.status === "error" && <button className="pill" data-active="true" onClick={() => act(b.id, "retry")}>↻ Retry</button>}
+          {del(b)}
         </Item>
       )}</Section>
       <small className="label">Only requests you type here, chat messages starting &ldquo;build:&rdquo;, or Apollo&apos;s proposals you approve can start a build. Declined proposals aren&apos;t shown.</small>

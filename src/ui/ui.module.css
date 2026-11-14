@@ -136,6 +136,9 @@
 }
 
 .block {
+  /* every block is a size container: big numbers scale with the block, not the screen,
+     so they fit in narrow side-by-side windows too (cqw = 1% of the block's width) */
+  container-type: inline-size;
   overflow: hidden;
   height: 100%;
   padding: 14px 16px 16px;
@@ -188,7 +191,8 @@
 }
 
 .stat :global(.display) {
-  font-size: clamp(30px, 3.2vw, 44px);
+  font-size: clamp(18px, 14cqw, 44px);
+  overflow-wrap: anywhere;
 }
 
 .stat small {
@@ -240,6 +244,7 @@
 }
 
 .ring {
+  container-type: inline-size;
   position: relative;
   width: min(140px, 100%);
   aspect-ratio: 1;
@@ -278,7 +283,7 @@
 
 .ring b {
   font-family: var(--font-display), sans-serif;
-  font-size: 24px;
+  font-size: clamp(12px, 17cqw, 24px);
   font-weight: 500;
 }
 
@@ -497,7 +502,7 @@
 }
 
 .timer :global(.display) {
-  font-size: 40px;
+  font-size: clamp(20px, 13cqw, 40px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -633,7 +638,7 @@
 }
 
 .scoresHead :global(.display) {
-  font-size: 48px;
+  font-size: clamp(22px, 12cqw, 48px);
 }
 
 .scoresHead small {
@@ -711,7 +716,7 @@
 }
 
 .game :global(.display) {
-  font-size: 40px;
+  font-size: clamp(20px, 12cqw, 40px);
   letter-spacing: 0.08em;
 }
 
@@ -965,7 +970,8 @@
 }
 
 .tile b {
-  font-size: clamp(24px, 2.4vw, 34px);
+  font-size: clamp(16px, 9cqw, 34px);
+  overflow-wrap: anywhere;
 }
 
 .tile small {
@@ -1252,7 +1258,7 @@
 }
 
 .countdown > div b {
-  font-size: clamp(44px, 5vw, 72px);
+  font-size: clamp(22px, 16cqw, 72px);
   line-height: 0.9;
 }
 
@@ -1298,7 +1304,8 @@
 
 .kpis b {
   font-family: var(--font-display), sans-serif;
-  font-size: 24px;
+  font-size: clamp(15px, 7cqw, 24px);
+  overflow-wrap: anywhere;
   font-weight: 500;
 }
 

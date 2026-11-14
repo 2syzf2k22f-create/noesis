@@ -166,6 +166,7 @@ async function maybeSummarise(s: Store, convId: string) {
   }
 }
 
+import { BUILD_ON_HOLD } from "../src/core/buildMode";
 const BUILD_KINDS = ["build", "ship", "rollback"];
 let buildBusy = false;
 
@@ -196,7 +197,7 @@ async function tick() {
   }
   if (!buildBusy) {
     try {
-      const job = await store!.claimNextJob({ kinds: BUILD_KINDS });
+      const job = await store!.claimNextJob({ kinds: BUILD_ON_HOLD ? ["ship", "rollback"] : BUILD_KINDS }); // builds on hold: only Ship/Discard/Revert run
       if (job) { buildBusy = true; void runJob(job).finally(() => { buildBusy = false; }); }
     } catch (e) { log("claim failed:", (e as Error).message); }
   }
@@ -209,7 +210,7 @@ async function recoverStale() {
     for (const j of stale) {
       if (BUILD_KINDS.includes(j.kind)) {
         // pick an interrupted build straight back up once; if it gets interrupted again, stop and let Reg retry
-        if (j.kind === "build" && !j.input?.resumed) await store!.update("jobs", j.id, { status: "queued", started_at: null, input: { ...j.input, resumed: true }, output: { ...(j.output ?? {}), step: "Queued: restarting after the relay restarted" } });
+        if (j.kind === "build" && !j.input?.resumed && !BUILD_ON_HOLD) await store!.update("jobs", j.id, { status: "queued", started_at: null, input: { ...j.input, resumed: true }, output: { ...(j.output ?? {}), step: "Queued: restarting after the relay restarted" } });
         else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay stopped while this was running. Press Retry.", finished_at: nowIso() });
       }
       else if (j.kind === "apollo" || j.kind === "stt") await store!.update("jobs", j.id, { status: "queued", started_at: null });

@@ -1,5 +1,6 @@
 "use client";
 
+import { BUILD_ON_HOLD, ON_HOLD_NOTE } from "@/core/buildMode";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ORB_STATES, type OrbState } from "@/orb/ApolloOrb";
@@ -492,6 +493,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // Build mode starts only from Reg's own words: "build: <change>"
     const bm = /^\s*build\s*:\s*([\s\S]{5,})$/i.exec(text);
     if (bm) {
+      if (BUILD_ON_HOLD) { settle({ text: ON_HOLD_NOTE, tone: "error" }, 6000); return; }
       void fetch("/api/build", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: bm[1].trim() }) })
         .then((r) => r.json()).then((j) => settle({ text: j.id ? "Build queued. Follow it on Projects › Build NOESIS." : j.error ?? "Couldn't queue the build.", tone: j.id ? undefined : "error" }, 6000))
         .catch(() => settle({ text: "Couldn't reach the server.", tone: "error" }));

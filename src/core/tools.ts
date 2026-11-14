@@ -165,9 +165,9 @@ export const TOOLS: ToolDef[] = [
       const t = await ctx.store.get("trash", a.trash_id);
       if (!t) return { error: "not in trash" };
       const before = await ctx.store.get(t.table_name, t.row_id);
-      const restored = before
-        ? await ctx.store.update(t.table_name, t.row_id, { ...t.data, deleted_at: null })
-        : await ctx.store.insert(t.table_name, { ...t.data, deleted_at: null });
+      // only tables with a deleted_at column get it cleared (e.g. jobs has none)
+      const data = { ...t.data, ...("deleted_at" in (t.data ?? {}) ? { deleted_at: null } : {}) };
+      const restored = before ? await ctx.store.update(t.table_name, t.row_id, data) : await ctx.store.insert(t.table_name, data);
       await ctx.store.remove("trash", t.id);
       await log(ctx, "restore_from_trash", t.table_name, t.row_id, before, restored);
       return restored;
@@ -299,6 +299,8 @@ export const TOOLS: ToolDef[] = [
     description: "When Reg asks for something that needs a change to the site's CODE (a new feature, behaviour or automation the tools and page layouts can't do), write a clear build request here. It shows him a card with a 'Build it' button; nothing runs until he clicks it. Then Build mode makes the change on a branch, checks it builds and ships on his say-so. Be specific: what to change, where, acceptance criteria. For simple settings (e.g. turning daily syncs on/off) use update_record on settings instead.",
     input: { request: z.string().min(20).max(3000), summary: z.string().max(140) },
     async run(ctx, a) {
+      const { BUILD_ON_HOLD } = await import("./buildMode");
+      if (BUILD_ON_HOLD) return { on_hold: true, note: "Build mode is ON HOLD (Reg's decision). Don't create a build. Give Reg the precise spec as text he can paste to Claude Code (what to change, where, acceptance criteria).", spec: a.request };
       const job = await ctx.store.insert("jobs", { kind: "build", status: "proposed", input: { request: a.request, summary: a.summary, proposed_by: "apollo", from_job: ctx.jobId ?? null }, ui_actions: [], output: { step: "Waiting for Reg to approve" } });
       await pushUi(ctx, { type: "reload" });
       return { proposed: job.id, note: "Reg sees a 'Build it' card; nothing changes until he approves." };

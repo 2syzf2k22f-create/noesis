@@ -10,6 +10,7 @@ import type { BlockCtx } from "@/ui/Blocks";
 import { Board, EvalBar, StylePicker, type Arrow, type Mark } from "./Board";
 import { Engine, fmtEval, winPct, type Analysis } from "./engine";
 import { OPENINGS, type Opening } from "./openings";
+import { THEORY } from "./theory";
 import { BAD_CLS, CLS, CLS_ORDER, KEY_CLS, TC_EXPECT, classifyLoss, puzzlesFromReview, reviewGame, uciLineToSan, type Cls, type Phase, type Review } from "./review";
 import c from "./chess.module.css";
 
@@ -331,62 +332,196 @@ export function AnalysisBoard({ ctx, p }: { ctx?: BlockCtx; p?: P }) {
 }
 
 /* ======================= opening trainer ======================= */
+// Explore: a tree of theory. At every position you see each reply the opponent can choose and the
+// book answer to it; play any move yourself (off-book moves get Stockfish's opinion).
+// Drill: each run follows a different branch, the opponent picking among the book replies.
+type TNode = { san: string; names: string[]; kids: TNode[] };
+function buildTree(op: Opening): TNode {
+  const root: TNode = { san: "", names: [], kids: [] };
+  const lines = [{ line: op.moves, name: "Main line" }, ...(THEORY[op.id] ?? [])];
+  for (const l of lines) {
+    let n = root;
+    for (const m of l.line.split(" ")) {
+      let k = n.kids.find((x) => x.san === m);
+      if (!k) { k = { san: m, names: [], kids: [] }; n.kids.push(k); }
+      if (!k.names.includes(l.name)) k.names.push(l.name);
+      n = k;
+    }
+  }
+  return root;
+}
+const walk = (root: TNode, path: string[]) => { let n: TNode | null = root; for (const m of path) { n = n?.kids.find((k) => k.san === m) ?? null; if (!n) break; } return n; };
+const leaves = (n: TNode): number => (n.kids.length ? n.kids.reduce((a, k) => a + leaves(k), 0) : 1);
+const sq = (fen: string, san: string) => { try { const m = new Chess(fen).move(san); return { from: m.from, to: m.to }; } catch { return null; } };
+
 export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
   const { submit } = useApollo();
+  const engine = useEngine();
   const drills = (ctx.data?.rows ?? []) as Row[];
-  const [op, setOp] = useState<Opening>(OPENINGS[0]);
-  const line = useMemo(() => op.moves.split(" "), [op]);
+  const [opId, setOpId] = usePersist("openings.op", OPENINGS[0].id);
+  const op = OPENINGS.find((o) => o.id === opId) ?? OPENINGS[0];
+  const tree = useMemo(() => buildTree(op), [op]);
+  const [mode, setMode] = usePersist<"explore" | "drill">("openings.mode", "explore");
+  const mySide = op.side === "white" ? "w" : "b";
+
+  // ---- explore ----
+  const [paths, setPaths] = usePersist<Record<string, string[]>>("openings.paths", {});
+  const path = useMemo(() => paths[op.id] ?? [], [paths, op.id]);
+  const setPath = (p: string[]) => setPaths({ ...paths, [op.id]: p });
+  const [fwd, setFwd] = useState<string[]>([]);
+  const [eng, setEng] = useState<{ fen: string; best: string; eval: string } | null>(null);
+  const pos = useMemo(() => { const g = new Chess(); for (const m of path) { try { g.move(m); } catch { break; } } return g; }, [path]);
+  const node = walk(tree, path);
+  const inBook = !!node;
+  const bookDepth = (() => { let n: TNode | null = tree, d = 0; for (const m of path) { n = n?.kids.find((k) => k.san === m) ?? null; if (!n) break; d++; } return d; })();
+  const kids = node?.kids ?? [];
+  const theirTurn = pos.turn() !== mySide;
+  // off book: ask Stockfish what's best here
+  useEffect(() => {
+    if (mode !== "explore" || inBook || !engine || pos.isGameOver()) return;
+    const fen = pos.fen();
+    let live = true;
+    engine.analyse(fen, { depth: 16, multipv: 1 }).then((a) => { if (live && a.best) setEng({ fen, best: uciLineToSan(fen, [a.best])[0] ?? a.best, eval: fmtEval(a.lines[0]) }); }).catch(() => {});
+    return () => { live = false; };
+  }, [mode, inBook, engine, pos]);
+  const go = (p: string[]) => { setPath(p); setFwd([]); };
+  const play = (san: string) => { setPath([...path, san]); setFwd(fwd[0] === san ? fwd.slice(1) : []); };
+  const back = () => { if (!path.length) return; setFwd([path[path.length - 1], ...fwd]); setPath(path.slice(0, -1)); };
+  const forward = () => { if (fwd.length) { setPath([...path, fwd[0]]); setFwd(fwd.slice(1)); } else if (kids.length) setPath([...path, kids[0].san]); };
+  const onExplore = (from: string, to: string, promotion?: string) => {
+    try { const m = new Chess(pos.fen()).move({ from, to, promotion: promotion ?? "q" }); play(m.san); return true; } catch { return false; }
+  };
+  useEffect(() => {
+    if (mode !== "explore") return;
+    const k = (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.closest?.("input,textarea,select")) return; if (e.key === "ArrowLeft") back(); if (e.key === "ArrowRight") forward(); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  });
+  const fen = pos.fen();
+  const arrows: Arrow[] = kids.map((k, i) => ({ ...sq(fen, k.san)!, color: theirTurn ? (i === 0 ? "#5b8def" : "#5b8def99") : i === 0 ? "#3fb950" : "#3fb95099" })).filter((a) => a.from);
+  if (!inBook && eng?.fen === fen) { const a = sq(fen, eng.best); if (a) arrows.push({ ...a, color: "#e3b341" }); }
+  const lastEx = (() => { const h = pos.history({ verbose: true }); return h.length ? { from: h[h.length - 1].from, to: h[h.length - 1].to } : null; })();
+  useScreenContext("opening explorer", mode === "explore" ? `${op.name}; moves: ${path.join(" ") || "(start)"}; ${inBook ? `book options here: ${kids.map((k) => k.san).join(", ") || "end of theory"}` : `out of book after ${bookDepth} moves`}` : null);
+
+  // ---- drill ----
+  const [line, setLine] = useState<string[]>(() => op.moves.split(" "));
+  const [lineName, setLineName] = useState("Main line");
   const [ply, setPly] = useState(0);
   const [mistakes, setMistakes] = useState(0);
   const [msg, setMsg] = useState<{ t: string; tone?: string } | null>(null);
   const [hint, setHint] = useState(false);
   const [running, setRunning] = useState(false);
-  const mySide = op.side === "white" ? "w" : "b";
-  const pos = useMemo(() => { const g = new Chess(); for (const m of line.slice(0, ply)) g.move(m); return g; }, [line, ply]);
+  const dpos = useMemo(() => { const g = new Chess(); for (const m of line.slice(0, ply)) g.move(m); return g; }, [line, ply]);
   const done = ply >= line.length;
   const stats = (id: string) => {
     const ds = drills.filter((d) => d.opening === id);
     return ds.length ? `${ds.filter((d) => d.mistakes === 0).length}/${ds.length} clean` : "new";
   };
-  // auto-play the other side's book move
+  /** Pick a branch: the opponent chooses among book replies, weighted toward less-drilled lines. */
+  const startDrill = () => {
+    const seen = drills.filter((d) => d.opening === op.id).map((d) => String(d.line ?? ""));
+    const all = [{ line: op.moves, name: "Main line" }, ...(THEORY[op.id] ?? [])];
+    const fresh = all.filter((l) => !seen.includes(l.name));
+    const pick = (fresh.length ? fresh : all)[Math.floor(Math.random() * (fresh.length || all.length))];
+    setLine(pick.line.split(" ")); setLineName(pick.name);
+    setPly(0); setMistakes(0); setMsg(null); setHint(false); setRunning(true);
+  };
   useEffect(() => {
-    if (!running || done || pos.turn() === mySide) return;
+    if (!running || done || dpos.turn() === mySide) return;
     const t = setTimeout(() => setPly((p) => p + 1), 380);
     return () => clearTimeout(t);
-  }, [running, done, pos, mySide]);
+  }, [running, done, dpos, mySide]);
   useEffect(() => {
     if (running && done) {
-      queueMicrotask(() => setMsg({ t: mistakes ? `Line complete with ${mistakes} slip${mistakes > 1 ? "s" : ""}. Go again to make it clean.` : "Perfect: line complete with no mistakes.", tone: mistakes ? undefined : "good" }));
-      void ctx.write("create", "opening_drills", { opening: op.id, name: op.name, side: op.side, mistakes, moves: line.length });
+      queueMicrotask(() => setMsg({ t: mistakes ? `${lineName} complete with ${mistakes} slip${mistakes > 1 ? "s" : ""}. Go again to make it clean.` : `Perfect: ${lineName} with no mistakes.`, tone: mistakes ? undefined : "good" }));
+      void ctx.write("create", "opening_drills", { opening: op.id, name: op.name, side: op.side, mistakes, moves: line.length, line: lineName });
       queueMicrotask(() => setRunning(false));
     }
   }, [running, done]); // eslint-disable-line react-hooks/exhaustive-deps
-  const onMove = (from: string, to: string, promotion?: string) => {
-    if (!running || done || pos.turn() !== mySide) return;
-    const g = new Chess(pos.fen());
+  const onDrill = (from: string, to: string, promotion?: string) => {
+    if (!running || done || dpos.turn() !== mySide) return;
     let san = "";
-    try { san = g.move({ from, to, promotion: promotion ?? "q" }).san; } catch { return; }
+    try { san = new Chess(dpos.fen()).move({ from, to, promotion: promotion ?? "q" }).san; } catch { return; }
     if (san === line[ply]) { setMsg({ t: `${san} ✓`, tone: "good" }); setHint(false); setPly(ply + 1); }
-    else { setMistakes((m) => m + 1); setMsg({ t: `${san} isn't the book move here. Try again${mistakes >= 1 ? ` (it's ${line[ply]})` : ""}.`, tone: "bad" }); }
+    else {
+      // another book move from a different branch still counts as theory, just not this line's
+      const alt = walk(tree, line.slice(0, ply))?.kids.some((k) => k.san === san);
+      setMistakes((m) => m + 1);
+      setMsg({ t: alt ? `${san} is also theory, but this drill is the ${lineName}: play ${line[ply]}.` : `${san} isn't the book move here. Try again${mistakes >= 1 ? ` (it's ${line[ply]})` : ""}.`, tone: "bad" });
+    }
   };
-  const expected = !done && running && pos.turn() === mySide ? (() => { const g = new Chess(pos.fen()); try { const m = g.move(line[ply]); return { from: m.from, to: m.to }; } catch { return null; } })() : null;
-  const last = (() => { const h = pos.history({ verbose: true }); return h.length ? { from: h[h.length - 1].from, to: h[h.length - 1].to } : null; })();
+  const expected = !done && running && dpos.turn() === mySide ? sq(dpos.fen(), line[ply]) : null;
+  const lastDr = (() => { const h = dpos.history({ verbose: true }); return h.length ? { from: h[h.length - 1].from, to: h[h.length - 1].to } : null; })();
+  const opDrills = drills.filter((d) => d.opening === op.id);
+
+  const moveNo = (i: number) => (i % 2 === 0 ? `${i / 2 + 1}.` : `${Math.floor(i / 2) + 1}…`);
   return (
     <div className={c.wrap}>
-      <div className={c.boardCol}><Board fen={pos.fen()} orientation={op.side} onMove={onMove} lastMove={last} hint={hint ? expected : null} interactive={running} /></div>
+      <div className={c.boardCol}>
+        {mode === "explore"
+          ? <Board fen={fen} orientation={op.side} onMove={onExplore} lastMove={lastEx} arrows={arrows} interactive />
+          : <Board fen={dpos.fen()} orientation={op.side} onMove={onDrill} lastMove={lastDr} hint={hint ? expected : null} interactive={running} />}
+      </div>
       <div className={c.side}>
-        <select className={c.sel} value={op.id} onChange={(e) => { setOp(OPENINGS.find((o) => o.id === e.target.value)!); setPly(0); setRunning(false); setMsg(null); }}>
+        <select className={c.sel} value={op.id} onChange={(e) => { setOpId(e.target.value); setFwd([]); setRunning(false); setMsg(null); }}>
           <optgroup label="As White">{OPENINGS.filter((o) => o.side === "white").map((o) => <option key={o.id} value={o.id}>{o.name} · {stats(o.id)}</option>)}</optgroup>
           <optgroup label="As Black">{OPENINGS.filter((o) => o.side === "black").map((o) => <option key={o.id} value={o.id}>{o.name} · {stats(o.id)}</option>)}</optgroup>
         </select>
-        <div className={c.msg}><b>{op.name}</b> <span className="label">{op.eco} · you play {op.side}</span><br />{op.idea}</div>
-        {msg && <div className={c.msg} data-tone={msg.tone}>{msg.t}</div>}
-        <div className={c.moves}>{line.slice(0, ply).map((m, i) => <button key={i}>{i % 2 === 0 && <em>{i / 2 + 1}.</em>}{m}</button>)}{!done && running && <button data-on="true">…</button>}</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button className="pill" data-active="true" onClick={() => { setPly(0); setMistakes(0); setMsg(null); setHint(false); setRunning(true); }}>{running ? "Restart" : "Start drill"}</button>
-          {running && !done && <button className="pill" onClick={() => setHint(true)}>Hint</button>}
-          <button className="pill" onClick={() => submit(`Explain the ideas, typical plans and common traps of the ${op.name} after ${line.join(" ")}. Keep it practical for a club player.`, { thread: "chess:openings" })}>Explain with Apollo</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="pill" data-active={mode === "explore"} onClick={() => setMode("explore")}>Explore lines</button>
+          <button className="pill" data-active={mode === "drill"} onClick={() => setMode("drill")}>Drill</button>
+          <small className="label" style={{ alignSelf: "center" }}>{(THEORY[op.id]?.length ?? 0) + 1} lines · {leaves(tree)} branches</small>
         </div>
+        <div className={c.msg}><b>{op.name}</b> <span className="label">{op.eco} · you play {op.side}</span><br />{op.idea}</div>
+
+        {mode === "explore" ? (
+          <>
+            <div className={c.moves}>
+              <button onClick={() => go([])} data-on={path.length === 0}>Start</button>
+              {path.map((m, i) => <button key={i} onClick={() => go(path.slice(0, i + 1))} data-on={i === path.length - 1} style={i >= bookDepth ? { opacity: 0.6, fontStyle: "italic" } : undefined}><em>{i % 2 === 0 || i === 0 ? moveNo(i) : ""}</em>{m}</button>)}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="pill" onClick={back} disabled={!path.length}>← Back</button>
+              <button className="pill" onClick={forward} disabled={!fwd.length && !kids.length}>Forward →</button>
+              <button className="pill" onClick={() => go([])}>Reset</button>
+            </div>
+            {inBook ? (
+              kids.length ? (
+                <div className={c.msg}>
+                  <span className="label">{theirTurn ? "Their options here, and your book answer to each" : "Your book move" + (kids.length > 1 ? "s" : "")}</span>
+                  <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
+                    {kids.map((k) => (
+                      <div key={k.san} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                        <button className="pill" onClick={() => play(k.san)} title="Play this move" style={{ minWidth: 64 }}>{moveNo(path.length)} {k.san}</button>
+                        {theirTurn && k.kids[0] && <span>→ <button className="pill" data-active="true" onClick={() => setPath([...path, k.san, k.kids[0].san])} title="Play both moves">{k.kids[0].san}</button>{k.kids.length > 1 && <small className="label"> (or {k.kids.slice(1).map((x) => x.san).join(", ")})</small>}</span>}
+                        <small className="label" style={{ flex: "1 1 100%" }}>{k.names.slice(0, 3).join(" · ")}{k.names.length > 3 ? ` +${k.names.length - 3}` : ""} · {leaves(k)} line{leaves(k) > 1 ? "s" : ""}</small>
+                      </div>
+                    ))}
+                  </div>
+                  <small className="label" style={{ display: "block", marginTop: 6 }}>Arrows: {theirTurn ? "blue = their book replies" : "green = your book move"}. Or play any move on the board.</small>
+                </div>
+              ) : <div className={c.msg} data-tone="good">End of theory for this line: {node?.names.join(" · ")}. You know it from here; the plan is the opening&apos;s idea above.</div>
+            ) : (
+              <div className={c.msg} data-tone="bad">
+                Out of book after {bookDepth} move{bookDepth === 1 ? "" : "s"} ({path[bookDepth]} isn&apos;t in the theory here).{" "}
+                {eng?.fen === fen ? <>Stockfish: best is <b>{eng.best}</b> ({eng.eval}), shown in yellow.</> : "Asking Stockfish…"}
+                <div style={{ marginTop: 6 }}><button className="pill" onClick={() => go(path.slice(0, bookDepth))}>Back to the last book position</button></div>
+              </div>
+            )}
+            <button className="pill" onClick={() => submit(`In the ${op.name}, after ${path.join(" ") || "the start"}: ${inBook ? `the book options are ${kids.map((k) => k.san).join(", ") || "none (end of theory)"}` : `this is out of book (theory ended after ${path.slice(0, bookDepth).join(" ")})`}. Explain the ideas behind each option and which to play as ${op.side}, practical for a club player. Use walkthrough to show it on the board.`, { thread: "chess:openings" })}>Explain this position with Apollo</button>
+          </>
+        ) : (
+          <>
+            {msg && <div className={c.msg} data-tone={msg.tone}>{msg.t}</div>}
+            {running && <small className="label">Line: {lineName}</small>}
+            <div className={c.moves}>{line.slice(0, ply).map((m, i) => <button key={i}>{i % 2 === 0 && <em>{i / 2 + 1}.</em>}{m}</button>)}{!done && running && <button data-on="true">…</button>}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button className="pill" data-active="true" onClick={startDrill}>{running ? "New line" : "Start drill"}</button>
+              {running && !done && <button className="pill" onClick={() => setHint(true)}>Hint</button>}
+            </div>
+            <small className="label">Each drill picks a different branch (ones you haven&apos;t drilled first). Drilled: {new Set(opDrills.map((d) => d.line).filter(Boolean)).size}/{(THEORY[op.id]?.length ?? 0) + 1} lines · {opDrills.filter((d) => d.mistakes === 0).length}/{opDrills.length} clean runs.</small>
+          </>
+        )}
       </div>
     </div>
   );

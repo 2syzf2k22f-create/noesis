@@ -6,10 +6,15 @@ import { useSyncExternalStore } from "react";
 
 export type Box = { x: number; y: number; w: number; h: number };
 export type Highlight = { id: number; target: string; label?: string; until: number };
-type State = { chat: { open: boolean; box: Box | null }; highlights: Highlight[]; windows: string[] };
+/** A snap zone as fractions of the screen (so snapped windows line up exactly at any size). */
+export type Frac = { x: number; y: number; w: number; h: number };
+/** One floating side-by-side window: the page it shows now (it navigates on its own), where it is, and its stacking. */
+export type Win = { page: string; box: Box | null; snap: Frac | null; z: number };
+type State = { chat: { open: boolean; box: Box | null }; highlights: Highlight[]; windows: string[]; wins: Record<string, Win> };
 
 const KEY = "noesis.ui";
-let st: State = { chat: { open: false, box: null }, highlights: [], windows: [] };
+let st: State = { chat: { open: false, box: null }, highlights: [], windows: [], wins: {} };
+let ztop = 1;
 let loaded = false;
 const subs = new Set<() => void>();
 const SERVER: State = st;
@@ -20,14 +25,18 @@ function get() {
     loaded = true;
     try {
       const j = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-      st = { ...st, windows: Array.isArray(j.windows) ? j.windows.slice(0, 3) : [], chat: { open: false, box: j.box ?? null } };
+      const windows: string[] = Array.isArray(j.windows) ? j.windows.slice(0, 4) : [];
+      const wins: Record<string, Win> = {};
+      for (const w of windows) wins[w] = { page: j.wins?.[w]?.page ?? w, box: j.wins?.[w]?.box ?? null, snap: j.wins?.[w]?.snap ?? null, z: j.wins?.[w]?.z ?? 1 };
+      ztop = Math.max(1, ...Object.values(wins).map((w) => w.z));
+      st = { ...st, windows, wins, chat: { open: false, box: j.box ?? null } };
     } catch {}
   }
   return st;
 }
 function commit(next: State) {
   st = next;
-  try { localStorage.setItem(KEY, JSON.stringify({ windows: st.windows, box: st.chat.box })); } catch {}
+  try { localStorage.setItem(KEY, JSON.stringify({ windows: st.windows, wins: st.wins, box: st.chat.box })); } catch {}
   subs.forEach((f) => f());
 }
 
@@ -56,10 +65,32 @@ export const uiStore = {
   },
   unhighlight(id: number) { commit({ ...get(), highlights: get().highlights.filter((h) => h.id !== id) }); },
   openWindow(to: string) {
-    const w = get().windows.filter((x) => x !== to);
-    commit({ ...get(), windows: [...w, to].slice(-3) });
+    const cur = get();
+    // already open (by id or by the page it's showing): just bring it to the front
+    const have = cur.windows.find((x) => x === to || cur.wins[x]?.page === to);
+    if (have) { uiStore.focusWindow(have); return; }
+    const windows = [...cur.windows, to].slice(-4);
+    const wins: Record<string, Win> = {};
+    for (const w of windows) wins[w] = cur.wins[w] ?? { page: w, box: null, snap: null, z: ++ztop };
+    commit({ ...cur, windows, wins });
   },
-  closeWindow(to?: string) { commit({ ...get(), windows: to ? get().windows.filter((x) => x !== to) : [] }); },
+  closeWindow(to?: string) {
+    const cur = get();
+    if (!to) { commit({ ...cur, windows: [], wins: {} }); return; }
+    const windows = cur.windows.filter((x) => x !== to && cur.wins[x]?.page !== to);
+    const wins = Object.fromEntries(windows.map((w) => [w, cur.wins[w]]));
+    commit({ ...cur, windows, wins });
+  },
+  /** Change one window only (its page, position, snap). */
+  updateWindow(id: string, patch: Partial<Win>) {
+    const cur = get(), w = cur.wins[id];
+    if (!w) return;
+    commit({ ...cur, wins: { ...cur.wins, [id]: { ...w, ...patch } } });
+  },
+  focusWindow(id: string) {
+    const w = get().wins[id];
+    if (w && w.z !== ztop) uiStore.updateWindow(id, { z: ++ztop });
+  },
   /** Put the chatbox next to an element (right of it if there's room, else left, else below). */
   placeNear(target: string, size?: { w?: number; h?: number }) {
     const el = findTarget(target);

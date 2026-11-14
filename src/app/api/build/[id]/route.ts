@@ -1,4 +1,6 @@
 import { storeOr503 } from "@/core/api";
+import { nowIso } from "@/core/store";
+import { BUILD_ON_HOLD, ON_HOLD_NOTE } from "@/core/buildMode";
 
 /** POST {action: "ship" | "rollback"} for a finished build. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +11,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const build = await s.get("jobs", id);
   if (!build || build.kind !== "build") return Response.json({ error: "not found" }, { status: 404 });
   // approving Apollo's proposal: only Reg's click (this route, behind the site lock) can start it
+  if (BUILD_ON_HOLD && ["approve", "requeue", "retry"].includes(b.action)) return Response.json({ error: ON_HOLD_NOTE }, { status: 409 });
   if (b.action === "approve" || b.action === "decline") {
     if (build.status !== "proposed") return Response.json({ error: "not a proposal" }, { status: 409 });
     if (b.action === "decline") { await s.update("jobs", id, { status: "cancelled", output: { step: "Declined" } }); return Response.json({ ok: true }); }
@@ -29,7 +32,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return Response.json({ ok: true });
   }
   if (b.action === "delete") {
-    if (build.status !== "cancelled") return Response.json({ error: "only cancelled builds can be deleted" }, { status: 409 });
+    // anything finished can be deleted; never one that's queued, running or waiting to be shipped
+    const awaitingShip = build.status === "done" && !build.output?.shipped && !build.output?.rolled_back;
+    if (["queued", "running", "proposed"].includes(build.status) || awaitingShip) return Response.json({ error: "queued, running or ready-to-ship builds can't be deleted" }, { status: 409 });
+    await s.insert("trash", { table_name: "jobs", row_id: id, data: build, deleted_at: nowIso() });
     await s.remove("jobs", id);
     return Response.json({ ok: true });
   }

@@ -3,12 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getSpace, pageHref } from "./spaces";
+import { useWindowNav } from "./winNav";
 import s from "./shell.module.css";
 
 /** Tabs inside a space: its dashboard, then each subpage. Styled per skin via [data-ui]. */
 export function SubNav({ space }: { space: string }) {
   const sp = getSpace(space);
-  const pathname = usePathname();
+  const routePath = usePathname();
+  const win = useWindowNav();
+  // inside a side window, the window's own page is "current" (each window navigates on its own)
+  const pathname = win?.href ?? routePath;
   if (!sp?.subs?.length) return null;
   const items = [{ href: pageHref(space), name: "Overview" }, ...sp.subs.map((x) => ({ href: pageHref(space, x.id), name: x.name }))];
   return (
