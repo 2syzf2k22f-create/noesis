@@ -207,7 +207,11 @@ async function recoverStale() {
   try {
     const stale = await store!.list("jobs", { eq: { status: "running" }, limit: 100 });
     for (const j of stale) {
-      if (BUILD_KINDS.includes(j.kind)) await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay stopped while this was running. Press Retry.", finished_at: nowIso() });
+      if (BUILD_KINDS.includes(j.kind)) {
+        // pick an interrupted build straight back up once; if it gets interrupted again, stop and let Reg retry
+        if (j.kind === "build" && !j.input?.resumed) await store!.update("jobs", j.id, { status: "queued", started_at: null, input: { ...j.input, resumed: true }, output: { ...(j.output ?? {}), step: "Queued: restarting after the relay restarted" } });
+        else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay stopped while this was running. Press Retry.", finished_at: nowIso() });
+      }
       else if (j.kind === "apollo" || j.kind === "stt") await store!.update("jobs", j.id, { status: "queued", started_at: null });
       else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay restarted.", finished_at: nowIso() });
     }

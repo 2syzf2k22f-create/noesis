@@ -25,10 +25,22 @@ function sh(cmd: string, args: string[], opts: { allowFail?: boolean; timeout?: 
     let out = "";
     const add = (d: Buffer) => { out += d.toString(); if (out.length > 4_000_000) out = out.slice(-2_000_000); };
     child.stdout.on("data", add); child.stderr.on("data", add);
-    const t = setTimeout(() => { out += "\n(timed out)"; child.kill(); }, opts.timeout ?? 10 * 60_000);
-    child.on("error", (e) => { clearTimeout(t); if (opts.allowFail) resolve({ ok: false, out: String(e) }); else reject(e); });
+    let done = false;
+    // On Windows, child.kill() only kills the cmd.exe wrapper and the real process (node/next) keeps running,
+    // so 'close' never fires and the build hangs forever. Kill the whole tree and give up on it ourselves.
+    const t = setTimeout(() => {
+      if (done) return;
+      done = true;
+      if (win && child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }).on("error", () => {});
+      else child.kill("SIGKILL");
+      const r = { ok: false, out: `${out.trim()}\n(timed out after ${Math.round((opts.timeout ?? 10 * 60_000) / 60_000)} min and was stopped)` };
+      if (opts.allowFail) resolve(r); else reject(new Error(`${cmd} ${args.join(" ")} timed out`));
+    }, opts.timeout ?? 10 * 60_000);
+    child.on("error", (e) => { clearTimeout(t); if (done) return; done = true; if (opts.allowFail) resolve({ ok: false, out: String(e) }); else reject(e); });
     child.on("close", (code) => {
       clearTimeout(t);
+      if (done) return;
+      done = true;
       const r = { ok: code === 0, out: out.trim() };
       if (!r.ok && !opts.allowFail) reject(new Error(`${cmd} ${args.join(" ")} failed:\n${r.out.slice(-1500)}`));
       else resolve(r);
@@ -86,7 +98,7 @@ async function checks() {
   const steps: [string, string[]][] = [["npx", ["tsc", "--noEmit", "--incremental", "--tsBuildInfoFile", "node_modules/.noesis-tsbuildinfo"]]];
   if (changed.length) steps.push(["npx", ["eslint", ...changed]]);
   for (const [c, a] of steps) {
-    const r = await sh(win ? `${c}.cmd` : c, a, { allowFail: true, timeout: 15 * 60_000 });
+    const r = await sh(win ? `${c}.cmd` : c, a, { allowFail: true, timeout: 6 * 60_000 });
     if (!r.ok) return { ok: false, step: `${c} ${a.join(" ")}`, out: r.out.slice(-3000) };
   }
   return { ok: true as const, step: "", out: "" };
@@ -106,7 +118,7 @@ export async function runBuild(s: Store, backend: Backend, job: Row, log: (...a:
     let r = await backend.run({ model: "sonnet", system: BUILD_SYSTEM, prompt: `Reg's request:\n${request}`, cwd: WT, builtins: ALLOWED, permissionMode: "acceptEdits", timeoutMs: 30 * 60_000 });
     if (r.rateLimited) throw new Error("Plan usage limit reached; try the build again after it resets.");
     let summary = r.text;
-    await progress("Checking: typecheck, lint, build", { branch, summary });
+    await progress("Checking (fast): typecheck + lint of changed files", { branch, summary });
     let c = await checks();
     if (!c.ok) {
       await progress("Fixing a failed check", { branch, summary });
