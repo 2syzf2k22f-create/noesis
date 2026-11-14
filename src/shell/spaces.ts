@@ -16,6 +16,7 @@ export const ICONS = {
   stats: "M5 20V11 M10 20V4 M15 20v-7 M20 20V8",
   inbox: "M3 13l3-8h12l3 8v6H3z M3 13h5l1.5 3h5L16 13h5",
   chats: "M4 5h16v11H10l-5 4v-4H4z",
+  settings: "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z M19 12l2-1-1-3-2 .3-1.3-1.3.3-2-3-1-1 2h-2l-1-2-3 1 .3 2L6 7.3 4 7l-1 3 2 1v2l-2 1 1 3 2-.3 1.3 1.3-.3 2 3 1 1-2h2l1 2 3-1-.3-2 1.3-1.3 2 .3 1-3-2-1z",
   style: "M12 3a9 9 0 1 0 0 18z M12 3a9 9 0 0 1 0 18 M12 7.5a4.5 4.5 0 0 1 0 9",
   panel: "M4 5h16v14H4z M4 9h16",
   orb: "M12 4a8 8 0 1 0 0 16a8 8 0 0 0 0-16z M5 12c2.5-4 4.5-4 7 0s4.5 4 7 0",
@@ -105,6 +106,7 @@ export const SPACES: Space[] = [
   ] },
   { id: "inbox", name: "Inbox", icon: "inbox", blurb: "Teams, OneNote, deadlines, reports" },
   { id: "chats", name: "Chats", icon: "chats", blurb: "Saved conversations with Apollo" },
+  { id: "settings", name: "Settings", icon: "settings", blurb: "Connections (Spotify, Microsoft) and PC permissions" },
 ];
 
 /** Stored-page slug for a space or subpage: "school" or "school--flashcards". */

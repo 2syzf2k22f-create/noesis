@@ -9,6 +9,7 @@ import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./
 import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
 import { QuestionBank } from "./QuestionBank";
 import { MicrosoftBlock } from "./MicrosoftBlock";
+import { PcRulesBlock, SpotifyBlock } from "./SettingsBlocks";
 import { BuildBlock } from "./BuildBlock";
 import { WorkoutPlanner } from "./WorkoutPlanner";
 import { SchoolAnalysisBlock, SchoolTestForm, SpecRag } from "./SchoolBlocks";
@@ -487,6 +488,8 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "gamereview": return <GameReview ctx={ctx} p={p} />;
     case "questionbank": return <QuestionBank ctx={ctx} />;
     case "microsoft": return <MicrosoftBlock ctx={ctx} />;
+    case "spotify": return <SpotifyBlock />;
+    case "pc_rules": return <PcRulesBlock />;
     case "build": return <BuildBlock />;
     case "gradepredictor": return <GradePredictor ctx={ctx} />;
     case "prs": return <PersonalRecords ctx={ctx} />;

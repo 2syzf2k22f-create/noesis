@@ -42,6 +42,7 @@ export type UiAction =
   | { type: "open_panel"; kind: string; widget?: string }
   | { type: "set_theme"; id: string }
   | { type: "reload" }
+  | { type: "back" }
   | { type: "highlight"; target: string; label?: string; ms?: number }
   | { type: "chatbox"; x?: number; y?: number; w?: number; h?: number; near?: string; open?: boolean }
   | { type: "open_window"; to: string }
@@ -190,9 +191,10 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "navigate",
-    description: `Open a page for the user: "home", a built-in page (${ALL_PAGE_IDS.join(", ")}), or the slug of a generated page.`,
+    description: `Open a page for the user: "home", "back" (the previous page), a built-in page (${ALL_PAGE_IDS.join(", ")}), or the slug of a generated page.`,
     input: { to: z.string() },
     async run(ctx, a) {
+      if (/^(back|previous|go back)$/i.test(String(a.to).trim())) { await pushUi(ctx, { type: "back" }); return { navigated: "back" }; }
       const to = normPage(String(a.to));
       const page = to !== "home" && !SPACE_IDS.includes(to) ? (await ctx.store.list("pages", { eq: { slug: to }, isNull: ["deleted_at"], limit: 1 }))[0] : null;
       if (to !== "home" && !SPACE_IDS.includes(to) && !page) return { error: `unknown page ${a.to}` };

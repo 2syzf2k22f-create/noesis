@@ -24,6 +24,7 @@ export function ChatDock() {
   const [fileErr, setFileErr] = useState<string | null>(null);
   const [reading, setReading] = useState(0);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [tick, setTick] = useState(0);
   const drag = useRef<{ mode: "move" | "size"; sx: number; sy: number; b: Box } | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -37,7 +38,9 @@ export function ChatDock() {
     let live = true;
     fetch(`/api/chats/${conv}`).then((r) => (r.ok ? r.json() : null)).then((j) => { if (live && j?.messages) setMsgs(j.messages.slice(-40)); }).catch(() => {});
     return () => { live = false; };
-  }, [open, conv, changes, reply?.pending]);
+  }, [open, conv, changes, reply?.pending, tick]);
+  // pick up replies that arrive on their own (e.g. Apollo finishing a task after you allowed a PC command)
+  useEffect(() => { if (!open) return; const t = setInterval(() => setTick((n) => n + 1), 6000); return () => clearInterval(t); }, [open]);
 
   // a new answer opens the box
   useEffect(() => { if (reply?.pending && pathname !== "/") uiStore.setChat({ open: true }); }, [reply?.pending, pathname]);
@@ -205,7 +208,7 @@ function Proposals() {
 /** Risky PC commands Apollo wants to run: nothing runs until you press Allow. */
 function PcApprovals() {
   const { changes, reply } = useApollo();
-  const [list, setList] = useState<{ id: string; status: string; command: string; why?: string; risk?: string }[]>([]);
+  const [list, setList] = useState<{ id: string; status: string; command: string; why?: string; risk?: string; allowable?: { label: string } | null }[]>([]);
   const load = () => fetch("/api/pc").then((r) => (r.ok ? r.json() : null)).then((j) => setList((j?.items ?? []).filter((x: { status: string }) => x.status === "proposed"))).catch(() => {});
   useEffect(() => { void load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [changes, reply?.pending]);
   const act = async (id: string, action: string) => { setList((l) => l.filter((x) => x.id !== id)); await fetch(`/api/pc/${id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }); };
@@ -219,6 +222,7 @@ function PcApprovals() {
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 11.5, margin: "6px 0", padding: 8, borderRadius: 6, background: "var(--surface-2)", maxHeight: 160, overflow: "auto" }}>{p.command}</pre>
           <div style={{ display: "flex", gap: 6 }}>
             <button className="pill" data-active="true" onClick={() => act(p.id, "allow")}>Allow</button>
+            {p.allowable && <button className="pill" onClick={() => act(p.id, "always")} title={`Saves a rule for "${p.allowable.label}" only. Manage it in Settings › PC permissions.`}>Always allow this type</button>}
             <button className="pill" onClick={() => act(p.id, "deny")}>Deny</button>
           </div>
         </div>

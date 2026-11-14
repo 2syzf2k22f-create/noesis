@@ -798,6 +798,15 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
 
   /* ======================= inbox ======================= */
+  settings: {
+    title: "Settings",
+    subtitle: "Connections and what Apollo may do on your PC.",
+    blocks: [
+      { type: "spotify", title: "Spotify", span: 6 },
+      { type: "pc_rules", title: "PC permissions", span: 6 },
+      { type: "microsoft", title: "Microsoft 365 & Arbor", span: 12 },
+    ],
+  },
   inbox: {
     title: "Inbox",
     blocks: [

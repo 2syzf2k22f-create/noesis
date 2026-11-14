@@ -300,6 +300,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const [space, sub] = ui.to.split("--");
       router.push(ui.to === "home" ? "/" : SPACES.some((s) => s.id === space) ? (sub ? `/s/${space}/${sub}` : `/s/${space}`) : `/p/${ui.to}`);
     }
+    else if (ui.type === "back") { try { sessionStorage.setItem("noesis.navBack", "1"); } catch {} router.back(); }
     else if (ui.type === "open_panel" && ui.kind === "widget" && ui.widget) panelStore.open("widget", ui.widget);
     else if (ui.type === "open_panel" && (PANEL_KINDS as string[]).includes(ui.kind)) panelStore.open(ui.kind as PanelKind);
     else if (ui.type === "set_theme") setTheme(ui.id);
@@ -320,6 +321,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [reloadThemes, router, setTheme]);
 
   const actions = useMemo<Action[]>(() => [
+    { id: "go:back", group: "Go to", label: "Back to the previous page", icon: "home" as IconName, keywords: ["go back", "back", "previous page", "last page"], done: "Back.", run: () => { try { sessionStorage.setItem("noesis.navBack", "1"); } catch {} router.back(); } },
     { id: "go:home", group: "Go to", label: "Home", icon: "home", keywords: ["home", "apollo", "orb"], done: "Home.", run: () => router.push("/") },
     ...SPACES.map((s) => ({
       id: `go:${s.id}`, group: "Go to", label: s.name, hint: s.blurb, icon: s.icon,

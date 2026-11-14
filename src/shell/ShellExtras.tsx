@@ -3,7 +3,7 @@
 // study time, browser reminders (homework due, next lesson), and a "?" shortcuts overlay.
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import s from "./dock.module.css";
 
@@ -144,6 +144,7 @@ export function ShellExtras() {
   return (
     <>
       <div className={s.extras}>
+        <BackButton />
         <RecentPages />
         {lessonText && <Link className={s.chip} href="/s/school/timetable" title="Today's timetable">{lessonText}</Link>}
         <button className={s.chip} data-on={!!focus} onClick={() => setMenu(!menu)} title="Focus timer">
@@ -185,4 +186,25 @@ export function ShellExtras() {
       )}
     </>
   );
+}
+
+/** ← Back to the previous page in NOESIS (also Alt+←, or say "go back"). Hidden when there's nowhere to go back to. */
+function BackButton() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [can, setCan] = useState(false);
+  useEffect(() => {
+    // count in-site steps this tab has taken so Back never leaves the site
+    let n = 0;
+    try { n = Number(sessionStorage.getItem("noesis.navDepth") ?? 0); } catch {}
+    const prev = (() => { try { return sessionStorage.getItem("noesis.navLast"); } catch { return null; } })();
+    if (prev !== pathname) {
+      const back = (() => { try { return sessionStorage.getItem("noesis.navBack") === "1"; } catch { return false; } })();
+      n = back ? Math.max(0, n - 1) : prev ? n + 1 : 0;
+      try { sessionStorage.setItem("noesis.navDepth", String(n)); sessionStorage.setItem("noesis.navLast", pathname); sessionStorage.removeItem("noesis.navBack"); } catch {}
+    }
+    queueMicrotask(() => setCan(n > 0));
+  }, [pathname]);
+  if (!can) return null;
+  return <button className={s.chip} onClick={() => { try { sessionStorage.setItem("noesis.navBack", "1"); } catch {} router.back(); }} title="Back to the previous page (Alt+←)">← Back</button>;
 }

@@ -35,7 +35,14 @@ if (process.env.NOESIS_PC !== "0") for (const t of PC_TOOLS) {
   server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args: unknown) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const out = await t.run(ctx as any, (args ?? {}) as any);
+      const out = (await t.run(ctx as any, (args ?? {}) as any)) as Record<string, unknown> | null;
+      // screenshots come back as a real image so Apollo can look at them
+      const img = out?.__image as { data: string; mimeType: string } | undefined;
+      if (img) {
+        const { __image: _drop, ...rest } = out!;
+        void _drop;
+        return { content: [{ type: "image" as const, data: img.data, mimeType: img.mimeType }, { type: "text" as const, text: JSON.stringify(rest) }] };
+      }
       return { content: [{ type: "text" as const, text: JSON.stringify(out) }] };
     } catch (e) {
       return { isError: true, content: [{ type: "text" as const, text: String((e as Error).message ?? e) }] };
