@@ -31,7 +31,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       tile("Calories, 24 h", "/s/nutrition/meals", { table: "meals", days: 1, agg: { fn: "sum", field: "kcal" } }, "kcal"),
       tile("Sets this week", "/s/fitness/log", { table: "sets", days: 7, agg: { fn: "count" } }, "logged"),
       tile("Unread", "/s/inbox", { table: "inbox_items", where: { read_at: null }, agg: { fn: "count" } }, "inbox items"),
-      { type: "countdown", title: "Exams", span: 3, props: { kind: "exam" }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 10 } },
+      { type: "upcomingtests", title: "Tests coming up", span: 3, props: { compact: true, limit: 5 } },
       { type: "list", title: "Today's plan", span: 5, bind: { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, limit: 10 },
         props: { primary: "topic", secondary: ["subject", "minutes"], action: { label: "Done", op: "update", data: { done: true } } } },
       { type: "form", title: "Check-in", span: 4, props: { table: "checkins", submit: "Check in", fields: [
@@ -69,7 +69,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "timetable", title: "Today", span: 4, bind: { table: "timetable", limit: 200 } },
       { type: "agenda", title: "Due soon", span: 4, props: { days: 14, limit: 6 } },
       { type: "donut", title: "Revision by subject, 28 days", span: 4, bind: { table: "study_sessions", days: 28, agg: { fn: "sum", field: "minutes", by: { field: "subject" } } } },
-      { type: "countdown", title: "Exams", span: 4, props: { kind: "exam" }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 10 } },
+      { type: "upcomingtests", title: "Tests coming up", span: 4, props: { compact: true, limit: 5 } },
       tile("Planner", "/s/school/planner", { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, agg: { fn: "count" } }, "sessions left today", undefined, 4),
       tile("Past papers", "/s/school/papers", { table: "past_papers", days: 90, agg: { fn: "avg", field: "pct" } }, "average %, 90 days", "%", 4),
       tile("Tutor", "/s/school/tutor", undefined, "step-by-step help", undefined, 3),
@@ -121,7 +121,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Planner",
     subtitle: "Apollo turns your exams, weak topics and free time into a plan; you tick sessions off.",
     blocks: [
-      { type: "countdown", title: "Exam countdown", span: 4, props: { kind: "exam", limit: 6 }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 20 } },
+      { type: "upcomingtests", title: "Tests coming up", span: 4, props: { compact: true, limit: 5 } },
       { type: "planvsdone", title: "This week: planned (grey) vs done", span: 8 },
       { type: "readiness", title: "Readiness and exam runway", span: 12 },
       { type: "list", title: "Today", span: 4, bind: { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, limit: 20 },
@@ -138,9 +138,10 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     ],
   },
   "school--tests": {
-    title: "School tests",
-    subtitle: "Log every test with marks per topic. It feeds your predicted grades, weakest topics and the weekly report.",
+    title: "Tests",
+    subtitle: "Upcoming tests (topics, readiness, revision, reminders) and every test you've done, with marks per topic.",
     blocks: [
+      { type: "upcomingtests", title: "Upcoming tests", span: 12 },
       { type: "schooltest", title: "Add a test", span: 7 },
       { type: "gradeboundaries", title: "Grade boundaries & mark converter", span: 5 },
       { type: "gradetrend", title: "Grades over time vs A*", span: 7 },
@@ -240,6 +241,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     blocks: [
       { type: "microsoft", title: "Sync lessons from Outlook or Arbor", span: 12 },
       { type: "timetable", title: "This week", span: 12, props: { view: "week" }, bind: { table: "timetable", limit: 300 } },
+      { type: "upcomingtests", title: "Tests coming up", span: 12, props: { compact: true, limit: 8 } },
       { type: "form", title: "Add a lesson", span: 6, props: { table: "timetable", submit: "Add lesson", fields: [
         { name: "day", type: "select", options: DAYS }, { name: "start", type: "time", required: true }, { name: "end", type: "time", required: true },
         { name: "subject", type: "select", options: [...SUBJ, "Free", "Tutor", "Other"] }, { name: "room" },

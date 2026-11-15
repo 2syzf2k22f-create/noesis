@@ -22,7 +22,9 @@ export async function GET() {
   const targets: Record<string, number> = { Maths: 240, "Further Maths": 240, Physics: 240, Economics: 240, ...(data.subject_targets ?? {}) };
   const now = Date.now();
   const live = spec.filter((r) => r.level === 4 && !(r.optional && !r.chosen));
-  const exams = events.filter((e) => e.kind === "exam" && !e.deleted_at && Date.parse(e.at) > now).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  // exams = upcoming tests (with their date + time) plus any exam events not yet converted
+  const ut = (await s.list("upcoming_tests", { limit: 300 }).catch(() => [] as Row[])).filter((t) => !t.deleted_at && t.status === "upcoming").map((t) => ({ title: t.title, subject: t.subject, at: `${String(t.date).slice(0, 10)}T${t.start_time ?? "09:00"}:00Z` }));
+  const exams = [...ut, ...events.filter((e) => e.kind === "exam" && !e.deleted_at)].filter((e) => Date.parse(e.at) > now).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
   const subjects = SPEC_SUBJECTS.map((subject) => {
     const st = live.filter((r) => r.subject === subject);

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { usePersist } from "./usePersist";
 import u from "./ui.module.css";
+import { useTests } from "./UpcomingTests";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type P = { id: string; subject: string; code: string; title: string | null; text: string | null; notes: string | null; examples: string | null; level: number; parent_code: string | null; sort_order: number | null; paper: string | null; optional: boolean; chosen: boolean; source_url: string | null; source_version: string | null; source_page: number | null; verified: boolean; verified_at: string | null; previous_text: string | null; confidence: number | null; last_reviewed_at: string | null; evidence: { cards: number; questions: number; attempts: number; attempt_pct: number | null; tests: number; mistakes: number; minutes: number; notes: number; resources: number } };
@@ -26,6 +27,14 @@ export function SpecBlock() {
   const [showOptional, setShowOptional] = useState(true);
   const [chosenOnly, setChosenOnly] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [tests] = useTests();
+  // links from a test page: /s/school/spec?subject=Maths&code=1.02d
+  useEffect(() => {
+    const q = new URLSearchParams(location.search), sub = q.get("subject"), code = q.get("code");
+    if (sub) queueMicrotask(() => { setSubject(sub); if (code) setSel(code); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const onTests = (code: string) => (tests?.upcoming ?? []).filter((t: any) => t.subject === subject && (t.codes ?? []).some((c: string) => code === c || code.startsWith(c)));
   const load = () => fetch(`/api/spec?subject=${encodeURIComponent(subject)}`).then((r) => (r.ok ? r.json() : null)).then((j) => setRows(j?.rows ?? [])).catch(() => setRows([]));
   useEffect(() => { void load(); }, [subject]); // eslint-disable-line react-hooks/exhaustive-deps
   const post = async (b: object) => { await fetch("/api/spec", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }); void load(); };
@@ -104,7 +113,7 @@ export function SpecBlock() {
               </div>
             )}
             {!sel && !filtering && <span className="label">Pick a topic on the left, or search.</span>}
-            {shown.filter((r) => r.level === 4 || r.text).map((r) => <Statement key={r.id} r={r} onSet={(c) => post({ id: r.id, confidence: c })} onReviewed={() => post({ id: r.id, reviewed: true })}
+            {shown.filter((r) => r.level === 4 || r.text).map((r) => <Statement key={r.id} r={r} tests={onTests(r.code)} onSet={(c) => post({ id: r.id, confidence: c })} onReviewed={() => post({ id: r.id, reviewed: true })}
               onAsk={(what) => submit(`${what} ${r.subject} spec ${r.code}${r.verified ? "" : " (unverified)"}: "${r.text ?? r.title}". Use get_spec for the exact wording and set spec_code ${r.code} on anything you create.`, { thread: `spec:${r.subject}` })} />)}
           </div>
         </div>
@@ -113,12 +122,14 @@ export function SpecBlock() {
   );
 }
 
-function Statement({ r, onSet, onReviewed, onAsk }: { r: P; onSet: (c: number | null) => void; onReviewed: () => void; onAsk: (what: string) => void }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function Statement({ r, tests, onSet, onReviewed, onAsk }: { r: P; tests: any[]; onSet: (c: number | null) => void; onReviewed: () => void; onAsk: (what: string) => void }) {
   const e = r.evidence;
   return (
     <div style={{ padding: 10, borderRadius: 10, background: "var(--surface)", borderLeft: `4px solid ${CONF_COLOR[r.confidence ?? 0]}`, display: "grid", gap: 6 }}>
       <div className={u.row} style={{ alignItems: "baseline", gap: 8 }}>
         <b style={{ fontVariantNumeric: "tabular-nums" }}>{r.code}</b>
+        {tests.map((t) => <a key={t.id} href={`/s/school/tests/${t.id}`} className="pill" style={{ height: 20, fontSize: 10.5, background: "var(--danger)", color: "#fff", whiteSpace: "nowrap" }}>on test: {t.subject} {new Date(`${t.date}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</a>)}
         <span style={{ flex: 1, whiteSpace: "pre-line" }}>{r.title && r.text ? <b>{r.title}. </b> : null}{hasMath(r.text ?? r.title ?? "") ? <RichText text={r.text ?? r.title} inline={!String(r.text ?? "").includes("\n")} /> : r.text ?? r.title}</span>
       </div>
       {r.notes && <small style={{ whiteSpace: "pre-wrap", color: "var(--text-dim)" }}>{hasMath(r.notes) ? <RichText text={r.notes} /> : r.notes}</small>}

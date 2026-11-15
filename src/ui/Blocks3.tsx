@@ -9,6 +9,7 @@ import type { BlockCtx } from "./Blocks";
 import { usePersist } from "./usePersist";
 import { useSchoolWeek } from "./useSchoolWeek";
 import { inWeek, type Wk } from "@/core/schoolWeek";
+import { useTests } from "./UpcomingTests";
 import u from "./ui.module.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,6 +31,20 @@ export function Timetable({ p, ctx }: { p: P; ctx: BlockCtx }) {
   // the week grid follows the toggle; today / now-next always use the real current week
   const rows = all.filter((r) => inWeek(r, p.view === "week" ? shown : wk?.current ?? null));
   const [now, setNow] = useState<Date | null>(null);
+  const [tests] = useTests();
+  // the calendar date of weekday d in the displayed week (this week, or next week when the other letter is shown)
+  const dateOf = (d: number) => {
+    if (!now) return "";
+    const mon = new Date(now); mon.setHours(12, 0, 0, 0); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7) + (shown && wk && shown !== wk.current && p.view === "week" ? 7 : 0));
+    const x = new Date(mon); x.setDate(mon.getDate() + d - 1); return x.toLocaleDateString("en-CA");
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const testsOn = (d: number): any[] => (tests?.upcoming ?? []).filter((t: { date: string }) => t.date === dateOf(d));
+  const testFor = (r: Row, d: number) => testsOn(d).find((t) => String(t.subject).toLowerCase() === String(r.subject).toLowerCase() && (!t.start_time || (t.start_time >= r.start && t.start_time < r.end)));
+  const Badge = ({ t }: { t: { id: string; title: string; topics: number; days: number } }) => (
+    <Link href={`/s/school/tests/${t.id}`} title={`${t.title}: ${t.topics} topics, ${t.days === 0 ? "today" : `in ${t.days} days`}`} onClick={(e) => e.stopPropagation()}
+      style={{ display: "inline-block", marginLeft: 6, padding: "0 6px", borderRadius: 6, fontSize: 10, fontWeight: 800, letterSpacing: ".04em", background: "var(--danger)", color: "#fff", lineHeight: "16px" }}>{t.days === 0 ? "TEST TODAY" : "TEST"}</Link>
+  );
   useEffect(() => { const f = () => setNow(new Date()); f(); const id = setInterval(f, 30_000); return () => clearInterval(id); }, []);
   if (ctx.data?.error) return <NoData>{ctx.data.error}</NoData>;
   if (!all.length) return <NoData>No timetable yet. Add lessons on School → Timetable, or ask Apollo to enter it from a photo or list.</NoData>;
@@ -53,9 +68,14 @@ export function Timetable({ p, ctx }: { p: P; ctx: BlockCtx }) {
           <div key={d} data-today={d === dow}>
             <div className="label">{DAYS[d - 1]}</div>
             {sorted.filter((r) => Number(r.day) === d).map((r) => (
-              <div key={r.id} className={u.ttLesson} data-now={d === dow && mins >= hm(r.start) && mins < hm(r.end)}>
-                <b>{r.subject}</b><small>{r.start}–{r.end}{r.room ? ` · ${r.room}` : ""}</small>
+              <div key={r.id} className={u.ttLesson} data-now={d === dow && mins >= hm(r.start) && mins < hm(r.end)} style={testFor(r, d) ? { outline: "1px solid var(--danger)" } : undefined}>
+                <b>{r.subject}{testFor(r, d) && <Badge t={testFor(r, d)} />}</b><small>{r.start}–{r.end}{r.room ? ` · ${r.room}` : ""}</small>
               </div>
+            ))}
+            {testsOn(d).filter((t) => !sorted.some((r) => Number(r.day) === d && testFor(r, d)?.id === t.id)).map((t) => (
+              <Link key={t.id} href={`/s/school/tests/${t.id}`} className={u.ttLesson} style={{ outline: "1px solid var(--danger)", display: "block" }}>
+                <b>{t.title}<Badge t={t} /></b><small>{t.start_time ?? "time tbc"}{t.room ? ` · ${t.room}` : ""}</small>
+              </Link>
             ))}
           </div>
         ))}
@@ -79,7 +99,7 @@ export function Timetable({ p, ctx }: { p: P; ctx: BlockCtx }) {
       <ol className={u.ttList}>
         {today.map((r) => (
           <li key={r.id} data-state={r === cur ? "now" : hm(r.end) <= mins ? "past" : undefined}>
-            <span>{r.start}</span><b>{r.subject}</b><small>{r.room ?? ""}</small>
+            <span>{r.start}</span><b>{r.subject}{testFor(r, dow) && <Badge t={testFor(r, dow)} />}</b><small>{r.room ?? ""}</small>
           </li>
         ))}
       </ol>

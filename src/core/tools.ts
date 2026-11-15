@@ -24,7 +24,7 @@ export const WRITABLE = [
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
-  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items", "blurts",
+  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items", "blurts", "upcoming_tests", "upcoming_test_topics", "chapter_maps", "test_sessions",
 ] as const;
 // Apollo can read everything except your private journal and stored sign-in tokens
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions", "jobs", "usage_log", "relay_status", "messages", "chat_summaries", "reviews", "note_chunks", "spec_topics", "subjects", "spec_points"] as const;
@@ -327,7 +327,65 @@ export const TOOLS: ToolDef[] = [
       const r = await schoolAnalysis(ctx.store);
       const { specCoverage } = await import("./spec");
       const spec_coverage = await specCoverage(ctx.store).catch(() => null);
-      return { ...(a.full ? r : compactAnalysis(r)), spec_coverage };
+      const T = await import("./tests");
+      const upcoming = [];
+      for (const t of (await ctx.store.list("upcoming_tests", { limit: 100 })).filter((x) => !x.deleted_at && x.status === "upcoming")) { const d = await T.testDetail(ctx.store, t.id); if (d && d.days >= 0) upcoming.push({ id: d.id, title: d.title, subject: d.subject, date: d.date, days: d.days, readiness: d.readiness, weakest: d.weakest }); }
+      return { ...(a.full ? r : compactAnalysis(r)), spec_coverage, upcoming_tests: upcoming };
+    },
+  },
+  {
+    name: "get_upcoming_tests",
+    description: "Reg's upcoming tests (date, time, room, countdown, topics with chapters, spec codes, scope notes, exclusions, unverified codes, confidence, evidence and readiness, all computed). Pass id for one test in full. Use it whenever school, revision, planning or a test comes up.",
+    input: { id: z.string().optional() },
+    async run(ctx, a) {
+      const T = await import("./tests");
+      if (a.id) return (await T.testDetail(ctx.store, a.id)) ?? { error: "not found" };
+      const tests = (await ctx.store.list("upcoming_tests", { limit: 200 })).filter((t) => !t.deleted_at && t.status === "upcoming");
+      const out = [];
+      for (const t of tests) { const d = await T.testDetail(ctx.store, t.id); if (d && d.days >= 0) out.push({ id: d.id, title: d.title, subject: d.subject, date: d.date, start_time: d.start_time, room: d.room, days: d.days, readiness: d.readiness, topics: d.topics.map((x) => ({ id: x.id, label: x.label, chapter: x.chapter, codes: x.codes, scope_note: x.scope_note, excluded: x.excluded, unverified: x.unverified, readiness: x.readiness })) }); }
+      return { tests: out.sort((x, y) => x.date.localeCompare(y.date)) };
+    },
+  },
+  {
+    name: "add_upcoming_test",
+    description: "Add an upcoming test. Give subject + date (YYYY-MM-DD) and chapters (e.g. ['Ch 1','Ch 13']) and/or topics [{label, chapter, spec_codes (from get_spec ONLY), scope_note, excluded}]. Time and room come from his timetable lesson automatically (Week A/B aware); reminders are created automatically. Keep the title short (e.g. 'Maths assessment'): never put topics in the title. If chapters aren't mapped yet it returns missing_chapters: ask Reg what's in them, save with save_chapter_map, then add_test_topics.",
+    input: { subject: z.enum(["Maths", "Further Maths", "Physics", "Economics", "Other"]), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().max(80).optional(), chapters: z.array(z.string()).optional(), topics: z.array(z.object({ label: z.string(), chapter: z.string().optional(), spec_codes: z.array(z.string()).optional(), scope_note: z.string().optional(), excluded: z.string().optional() })).optional(), start_time: z.string().optional(), total_marks: z.number().optional(), notes: z.string().optional() },
+    async run(ctx, a) {
+      const r = await (await import("./tests")).createTest(ctx.store, a);
+      await log(ctx, "add_upcoming_test", "upcoming_tests", r.id, null, r);
+      await pushUi(ctx, { type: "reload" });
+      return { ...r, url: `/s/school/tests/${r.id}` };
+    },
+  },
+  {
+    name: "save_chapter_map",
+    description: "Remember what a teacher's chapter covers for a subject (e.g. Maths 'Ch 13' = Differentiation, spec codes 1.07a-d, 1.07g, 1.07i, no applications) so future tests reuse it. Spec codes must come from get_spec.",
+    input: { subject: z.string(), chapter: z.string(), label: z.string(), spec_codes: z.array(z.string()), scope_note: z.string().optional() },
+    async run(ctx, a) {
+      const ex = (await ctx.store.list("chapter_maps", { eq: { subject: a.subject, chapter: a.chapter }, limit: 1 }))[0];
+      const data = { subject: a.subject, chapter: a.chapter, label: a.label, spec_codes: a.spec_codes, scope_note: a.scope_note ?? null, updated_at: nowIso() };
+      const row = ex ? await ctx.store.update("chapter_maps", ex.id, data) : await ctx.store.insert("chapter_maps", data);
+      await log(ctx, "save_chapter_map", "chapter_maps", row!.id, ex ?? null, row);
+      return { saved: `${a.subject} ${a.chapter}` };
+    },
+  },
+  {
+    name: "revision_session",
+    description: "Track an in-page 'Revise for this test' session: action 'get' (state: covered topics, scores), 'progress' (topic_id now current and/or a topic finished with marks/out_of, minutes spent), 'end' (summary). Call progress after each topic so the progress bar and resume work.",
+    input: { session_id: z.string(), action: z.enum(["get", "progress", "end"]), topic_id: z.string().optional(), finished: z.boolean().optional(), marks: z.number().optional(), out_of: z.number().optional(), minutes: z.number().optional(), summary: z.string().max(4000).optional() },
+    async run(ctx, a) {
+      const sess = await ctx.store.get("test_sessions", a.session_id);
+      if (!sess) return { error: "no such session" };
+      if (a.action === "get") return sess;
+      const patch: Record<string, unknown> = { updated_at: nowIso() };
+      if (a.topic_id) patch.current_topic_id = a.topic_id;
+      if (a.topic_id && a.finished) patch.covered = [...new Set([...(sess.covered ?? []), a.topic_id])];
+      if (a.topic_id && a.marks != null) { const sc = { ...(sess.scores ?? {}) }; const prev = sc[a.topic_id] ?? { marks: 0, out_of: 0 }; sc[a.topic_id] = { marks: prev.marks + a.marks, out_of: prev.out_of + (a.out_of ?? 0) }; patch.scores = sc; }
+      if (a.minutes) patch.minutes = Number(sess.minutes ?? 0) + a.minutes;
+      if (a.action === "end") { patch.status = "done"; patch.summary = a.summary ?? null; }
+      const after = await ctx.store.update("test_sessions", sess.id, patch);
+      await pushUi(ctx, { type: "reload" });
+      return after;
     },
   },
   {

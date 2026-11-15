@@ -1,5 +1,6 @@
 "use client";
 
+import { UpcomingTests } from "./UpcomingTests";
 import { RoutinesPage } from "./RoutinesPage";
 import { MathArea } from "./MathTools";
 import { hasMath, RichText } from "./RichText";
@@ -491,6 +492,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "usagejobs": return <UsageJobs ctx={ctx} />;
     case "filemanager": return <FilesBlock />;
     case "routinespage": return <RoutinesPage />;
+    case "upcomingtests": return <UpcomingTests p={p} />;
     case "spec": return <SpecBlock />;
     case "weakspec": return <WeakSpec p={p} />;
     case "specreview": return <SpecReview />;
