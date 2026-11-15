@@ -48,6 +48,7 @@ export const SPACES: Space[] = [
     { id: "resources", name: "Resources", blurb: "Links and videos per topic" },
     { id: "opportunities", name: "Opportunities", blurb: "Weekly extracurricular search" },
     { id: "subjects", name: "Subjects", blurb: "Boards, options and spec topics" },
+    { id: "spec", name: "Spec", blurb: "Every statement in your official specs, with your confidence" },
   ] },
   { id: "fitness", name: "Fitness", icon: "fitness", blurb: "Training, progress, recovery", subs: [
     { id: "plan", name: "Workout plan", blurb: "A plan built around you" },

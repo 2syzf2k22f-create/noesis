@@ -77,7 +77,7 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
   };
   const saveAttempt = async (q: Row, marks: number | null, by = "self") => {
     if (!run) return null;
-    const row = await rec("create", "question_attempts", { question_id: q.id, test_id: run.testId, subject: q.subject, topic: q.topic, subtopic: q.subtopic, answer: run.answers[q.id] ?? "", marks, total: Number(q.marks), marked_by: by, seconds: Math.round((nowMs() - run.started) / 1000) });
+    const row = await rec("create", "question_attempts", { question_id: q.id, test_id: run.testId, subject: q.subject, topic: q.topic, subtopic: q.subtopic, spec_code: q.spec_code ?? null, answer: run.answers[q.id] ?? "", marks, total: Number(q.marks), marked_by: by, seconds: Math.round((nowMs() - run.started) / 1000) });
     if (row?.id) setRun((r) => (r ? { ...r, attemptIds: { ...r.attemptIds, [q.id]: row.id } } : r));
     return row;
   };
@@ -111,7 +111,7 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
           <button className="pill" onClick={() => { setRun(null); setTick((x) => x + 1); }}>Exit</button>
         </div>
         <div className={s.q}>
-          <div className={s.meta}>{cur.subject} · {cur.topic ?? "general"}{cur.subtopic ? ` › ${cur.subtopic}` : ""} · <b>[{cur.marks} mark{cur.marks > 1 ? "s" : ""}]</b> · <i data-src={cur.source}>{cur.source === "past paper" ? `${cur.board ?? ""} ${cur.paper ?? "past paper"} ${cur.year ?? ""} Q${cur.number ?? ""}` : cur.source}</i></div>
+          <div className={s.meta}>{cur.subject}{cur.spec_code ? ` · spec ${cur.spec_code}` : ""} · {cur.topic ?? "general"}{cur.subtopic ? ` › ${cur.subtopic}` : ""} · <b>[{cur.marks} mark{cur.marks > 1 ? "s" : ""}]</b> · <i data-src={cur.source}>{cur.source === "past paper" ? `${cur.board ?? ""} ${cur.paper ?? "past paper"} ${cur.year ?? ""} Q${cur.number ?? ""}` : cur.source}</i></div>
           <p className={s.text}>{cur.question}</p>
           <textarea className={s.answer} rows={6} placeholder="Your answer (working, steps, final answer)…" value={run.answers[cur.id] ?? ""} disabled={reviewing}
             onChange={(e) => setRun({ ...run, answers: { ...run.answers, [cur.id]: e.target.value } })} />
@@ -175,8 +175,10 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
           <option value="past paper">real past-paper questions (paste or link the paper in chat)</option>
           <option value="flashcards">as flashcards instead</option>
         </select>
+        <input id="qb-spec" placeholder="Spec code (optional), e.g. 1.02a" style={{ width: 170 }} />
         <button className="pill" disabled={!f.subject} title={f.subject ? "" : "Pick a subject first"} onClick={() => {
-          const what = `${f.subject}${f.topic ? `, topic ${f.topic}` : ""}${f.subtopic ? `, subtopic ${f.subtopic}` : ""}`;
+          const code = (document.getElementById("qb-spec") as HTMLInputElement | null)?.value.trim();
+          const what = `${f.subject}${code ? `, spec statement ${code} (use get_spec for its exact wording and stay inside it)` : ""}${f.topic ? `, topic ${f.topic}` : ""}${f.subtopic ? `, subtopic ${f.subtopic}` : ""}. Set spec_code on every item you save (get_spec to find codes)`;
           if (gen.style === "flashcards") submit(`Make ${gen.n * 3} flashcards for ${what}, to the mark scheme.`, { mode: "flashcards" });
           else if (gen.style === "past paper") submit(`Add ${gen.n} real past-paper questions for ${what} with their official mark schemes. Only use papers you can actually read (my notes/uploads or the board's published PDF via ingest_url); tell me which paper and year. If you can't get real ones, say so.`, { mode: "questions" });
           else submit(`Write ${gen.n} exam questions for ${what}, exactly in the style of my board's papers, with full mark schemes.`, { mode: "questions" });

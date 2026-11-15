@@ -24,10 +24,10 @@ export const WRITABLE = [
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
-  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items",
+  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items", "blurts",
 ] as const;
 // Apollo can read everything except your private journal and stored sign-in tokens
-const READABLE = [...WRITABLE, "action_log", "trash", "page_versions", "jobs", "usage_log", "relay_status", "messages", "chat_summaries", "reviews", "note_chunks", "spec_topics", "subjects"] as const;
+const READABLE = [...WRITABLE, "action_log", "trash", "page_versions", "jobs", "usage_log", "relay_status", "messages", "chat_summaries", "reviews", "note_chunks", "spec_topics", "subjects", "spec_points"] as const;
 const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
 /** What the user's own forms may write (the journal is private: Apollo can't write or read it). */
 export const USER_WRITABLE = new Set<string>([...WRITABLE, "journal_entries", "geo_attempts", "memory_sessions"]);
@@ -325,7 +325,41 @@ export const TOOLS: ToolDef[] = [
     input: { full: z.boolean().optional() },
     async run(ctx, a) {
       const r = await schoolAnalysis(ctx.store);
-      return a.full ? r : compactAnalysis(r);
+      const { specCoverage } = await import("./spec");
+      const spec_coverage = await specCoverage(ctx.store).catch(() => null);
+      return { ...(a.full ? r : compactAnalysis(r)), spec_coverage };
+    },
+  },
+  {
+    name: "get_spec",
+    description: "The OFFICIAL specification statements (exact wording, code, notes, source document/version/page, verified flag) with Reg's confidence and the evidence linked to each (flashcards, questions, attempts, tests, mistakes, minutes). ALWAYS call this before tutoring, writing questions or flashcards, or planning revision, and stay inside the statements' wording. Filter by code (a statement or a whole topic, e.g. '1.02' or '3.4.1') and/or words. If a statement is missing or unverified, say 'not in the spec as I have it' instead of guessing.",
+    input: { subject: z.enum(["Maths", "Further Maths", "Physics", "Economics"]), code: z.string().max(30).optional(), query: z.string().max(200).optional(), weakest: z.boolean().optional().describe("Return the highest-priority statements to revise"), limit: z.number().int().min(1).max(300).optional() },
+    async run(ctx, a) {
+      const { specWithEvidence, priority } = await import("./spec");
+      let rows = await specWithEvidence(ctx.store, a.subject);
+      if (a.code) rows = rows.filter((r) => r.code === a.code || r.code.startsWith(a.code!) );
+      if (a.query) { const q = a.query.toLowerCase(); rows = rows.filter((r) => `${r.code} ${r.title ?? ""} ${r.text ?? ""} ${r.notes ?? ""}`.toLowerCase().includes(q)); }
+      rows = rows.filter((r) => !(r.optional && !r.chosen));
+      if (a.weakest) rows = rows.filter((r) => r.level === 4).sort((x, y) => priority(y) - priority(x));
+      else rows.sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0) || x.code.localeCompare(y.code, undefined, { numeric: true }));
+      const out = rows.slice(0, a.limit ?? 120).map((r) => ({ code: r.code, level: r.level, title: r.title, text: r.text, notes: r.notes, examples: r.examples, paper: r.paper, optional: r.optional, verified: r.verified, source: r.source_version ? `${r.source_version} p.${r.source_page ?? "?"}` : null, confidence: r.confidence, evidence: r.evidence }));
+      return { subject: a.subject, count: rows.length, statements: out, note: rows.some((r) => !r.verified) ? "Some rows are UNVERIFIED (not yet checked against the official PDF): say so if you rely on them." : undefined };
+    },
+  },
+  {
+    name: "set_spec_confidence",
+    description: "Set Reg's confidence (1 = no idea … 5 = exam-ready) for a spec statement or topic, and/or mark it reviewed now. Use when he tells you how he feels about something, or after a quiz/blurt shows it.",
+    input: { subject: z.enum(["Maths", "Further Maths", "Physics", "Economics"]), code: z.string().max(30), confidence: z.number().int().min(1).max(5).optional(), reviewed: z.boolean().optional() },
+    async run(ctx, a) {
+      const p = (await ctx.store.list("spec_points", { eq: { subject: a.subject, code: a.code }, limit: 1 }))[0];
+      if (!p) return { error: `${a.subject} ${a.code} isn't in the spec as I have it.` };
+      const patch: Record<string, unknown> = {};
+      if (a.confidence != null) patch.confidence = a.confidence;
+      if (a.reviewed || a.confidence != null) patch.last_reviewed_at = nowIso();
+      const after = await ctx.store.update("spec_points", p.id, patch);
+      await log(ctx, "set_spec_confidence", "spec_points", p.id, p, after);
+      await pushUi(ctx, { type: "reload" });
+      return { code: a.code, confidence: after?.confidence ?? p.confidence };
     },
   },
   {

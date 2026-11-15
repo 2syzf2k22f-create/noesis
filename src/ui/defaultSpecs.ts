@@ -55,7 +55,11 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "Maths (OCR) · Further Maths (OCR) · Physics (AQA) · Economics (Edexcel)",
     blocks: [
       { type: "schoolanalysis", title: "Path to A*", span: 12, bind: { table: "school_tests", limit: 1 } },
+      { type: "readiness", title: "Exam readiness by subject", span: 12 },
+      { type: "weakspec", title: "Weakest spec statements", span: 6, props: { limit: 6 } },
+      { type: "studyactions", title: "Study with Apollo", span: 6 },
       { type: "nextrevise", title: "What to revise now", span: 6, bind: { table: "study_sessions", limit: 1 } },
+      { type: "studystreak", title: "Study streak", span: 6 },
       { type: "schooltest", title: "Log a test you did at school", span: 6 },
       tile("Tests", "/s/school/tests", { table: "school_tests", days: 90, agg: { fn: "avg", field: "pct" } }, "average %, 90 days", "%"),
       tile("Flashcards", "/s/school/flashcards", dueCards(SUBJ), "due now"),
@@ -80,7 +84,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "review", title: "Review", span: 8, props: { decks: SUBJ } },
       { type: "stat", title: "Due now", span: 4, bind: dueCards(SUBJ) },
       { type: "form", title: "Add a card", span: 6, props: { table: "flashcards", submit: "Add card", fields: [
-        { name: "deck", label: "Subject", type: "select", options: SUBJ }, { name: "topic" },
+        { name: "deck", label: "Subject", type: "select", options: SUBJ }, { name: "topic" }, { name: "spec_code", label: "Spec code (optional, e.g. 1.02a)" },
         { name: "front", label: "Question", type: "textarea", required: true }, { name: "back", label: "Answer", type: "textarea", required: true },
       ] } },
       { type: "ask", title: "Notes → flashcards", span: 6, props: { mode: "flashcards", submit: "Make cards", rows: 6, template: "Deck: {subject}. Topic: {topic}. Notes:\n{text}",
@@ -95,6 +99,10 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Revise",
     blocks: [
       { type: "timer", title: "Revision timer", span: 5, props: { minutes: 25, choices: [15, 25, 45, 60, 90], options: SUBJ, logTo: "study_sessions", label: "revision" } },
+      { type: "spectimer", title: "Timer for one spec statement", span: 4 },
+      { type: "weakspec", title: "Weakest spec statements", span: 8, props: { limit: 8 } },
+      { type: "subjectbalance", title: "This week vs your targets", span: 6 },
+      { type: "specreview", title: "Spec due for a confidence check", span: 6 },
       { type: "stat", title: "This week", span: 4, props: { unit: "min" }, bind: revision7 },
       { type: "ring", title: "Weekly target", span: 3, props: { goal: 600, unit: "min" }, bind: { table: "study_sessions", days: 7, agg: { fn: "sum", field: "minutes" } } },
       { type: "heatmap", title: "Activity, 28 days", span: 6, bind: { table: "study_sessions", days: 28, agg: { fn: "sum", field: "minutes", by: "day" } } },
@@ -114,6 +122,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "Apollo turns your exams, weak topics and free time into a plan; you tick sessions off.",
     blocks: [
       { type: "countdown", title: "Exam countdown", span: 4, props: { kind: "exam", limit: 6 }, bind: { table: "events", upcoming: { field: "at", days: 365 }, limit: 20 } },
+      { type: "planvsdone", title: "This week: planned (grey) vs done", span: 8 },
+      { type: "readiness", title: "Readiness and exam runway", span: 12 },
       { type: "list", title: "Today", span: 4, bind: { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, limit: 20 },
         props: { primary: "topic", secondary: ["subject", "minutes", "kind"], action: { label: "Done", op: "update", data: { done: true } } } },
       { type: "ring", title: "Plan done this week", span: 4, props: { goal: 100, label: "sessions done" }, bind: { table: "plan_items", where: { done: true }, days: 7, dateField: "date", agg: { fn: "count" } } },
@@ -132,14 +142,18 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "Log every test with marks per topic. It feeds your predicted grades, weakest topics and the weekly report.",
     blocks: [
       { type: "schooltest", title: "Add a test", span: 7 },
+      { type: "gradeboundaries", title: "Grade boundaries & mark converter", span: 5 },
+      { type: "gradetrend", title: "Grades over time vs A*", span: 7 },
+      { type: "calibration", title: "Confidence vs results", span: 5 },
       { type: "bar", title: "Average % by subject", span: 5, bind: { table: "school_tests", agg: { fn: "avg", field: "pct", by: { field: "subject" } } } },
       { type: "line", title: "Test % over time", span: 6, bind: { table: "school_tests", days: 365, dateField: "date", agg: { fn: "avg", field: "pct", by: "week" } } },
       { type: "stat", title: "Tests logged", span: 3, bind: { table: "school_tests", agg: { fn: "count" } } },
       { type: "stat", title: "Average %", span: 3, props: { unit: "%" }, bind: { table: "school_tests", agg: { fn: "avg", field: "pct" } } },
       { type: "table", title: "All tests", span: 12, bind: { table: "school_tests", limit: 100, order: { col: "date", asc: false } }, props: { columns: ["date", "subject", "title", "score", "total", "pct", "grade"] } },
       { type: "deepstats", title: "Test scores in depth", span: 12, props: { table: "school_tests", field: "pct", unit: "%", groupBy: "subject" } },
-      { type: "form", title: "Mistake log: write down what went wrong", span: 5, props: { table: "mistakes", submit: "Log it", defaults: { resolved: false }, fields: [{ name: "subject", type: "select", options: ["Maths", "Further Maths", "Physics", "Economics"] }, { name: "topic" }, { name: "source", label: "Where (test, paper, homework)" }, { name: "what", label: "The mistake", type: "textarea", required: true }, { name: "why", label: "Why it happened", type: "select", options: ["didn't know it", "misread the question", "careless slip", "ran out of time", "method error", "units / sig figs", "exam technique"] }, { name: "fix", label: "What to do next time", type: "textarea" }] } },
+      { type: "form", title: "Mistake log: write down what went wrong", span: 5, props: { table: "mistakes", submit: "Log it", defaults: { resolved: false }, fields: [{ name: "subject", type: "select", options: ["Maths", "Further Maths", "Physics", "Economics"] }, { name: "topic" }, { name: "spec_code", label: "Spec code (optional)" }, { name: "source", label: "Where (test, paper, homework)" }, { name: "what", label: "The mistake", type: "textarea", required: true }, { name: "why", label: "Why it happened", type: "select", options: ["didn't know it", "misread the question", "careless slip", "ran out of time", "method error", "units / sig figs", "exam technique"] }, { name: "fix", label: "What to do next time", type: "textarea" }] } },
       { type: "list", title: "Unresolved mistakes (redo, then tick)", span: 7, bind: { table: "mistakes", where: { resolved: false }, limit: 40 }, props: { primary: "what", secondary: ["subject", "topic", "why"], action: { label: "Fixed", op: "update", data: { resolved: true } } } },
+      { type: "mistakepatterns", title: "Mistake patterns", span: 6 },
       { type: "donut", title: "Why marks are lost", span: 6, bind: { table: "mistakes", agg: { fn: "count", by: { field: "why" } } } },
       { type: "bar", title: "Mistakes by topic", span: 6, bind: { table: "mistakes", agg: { fn: "count", by: { field: "topic" } } } },
     ],
@@ -161,6 +175,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "school--papers": {
     title: "Past papers",
     blocks: [
+      { type: "papergrid", title: "Past papers done (by paper and year)", span: 12 },
       { type: "form", title: "Log a past paper", span: 6, props: { table: "past_papers", submit: "Log paper", fields: [
         { name: "subject", type: "select", options: SUBJ }, { name: "paper", label: "Paper (e.g. Pure 1)", required: true }, { name: "year" },
         { name: "marks", type: "number", required: true }, { name: "total", type: "number", required: true }, { name: "notes", type: "textarea" },
@@ -181,6 +196,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Tutor",
     subtitle: "Goes step by step, prompts you to work things out, cites your notes, aims at full marks.",
     blocks: [
+      { type: "commandwords", title: "Command words: what each one wants", span: 6 },
+      { type: "blurt", title: "Blurt practice", span: 6 },
       { type: "ask", title: "Ask the tutor", span: 8, props: { mode: "tutor", submit: "Teach me", rows: 5, thread: "tutor:{subject}", template: "{subject}: {text}",
         fields: [{ name: "subject", type: "select", options: SUBJ }, { name: "text", label: "Topic, question, or paste an exam question", type: "textarea" }] } },
       { type: "text", span: 4, props: { text: "**How it works**\n\n- Each subject keeps its own ongoing tutor chat (see Chats).\n- Say \"I'm stuck\" for a full explanation, or \"just the answer\".\n- It checks your notes and saved sites first and cites them.\n- Add notes on the Notes page to make it better." } },
@@ -194,7 +211,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Notes",
     blocks: [
       { type: "form", title: "New note", span: 7, props: { table: "notes", submit: "Save note", defaults: { kind: "lesson" }, fields: [
-        { name: "subject", type: "select", options: SUBJ }, { name: "kind", type: "select", options: ["lesson", "topic"] }, { name: "topic" },
+        { name: "subject", type: "select", options: SUBJ }, { name: "kind", type: "select", options: ["lesson", "topic"] }, { name: "topic" }, { name: "spec_code", label: "Spec code (optional)" },
         { name: "title", required: true }, { name: "body", label: "Notes", type: "textarea", required: true },
       ] } },
       { type: "ask", title: "Turn notes into flashcards", span: 5, props: { mode: "flashcards", submit: "Make cards", rows: 6, template: "Deck: {subject}. Topic: {topic}. Notes:\n{text}",
@@ -258,6 +275,15 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "bookrecs", title: "Book recommendations", span: 12, bind: { table: "opportunities", where: { kind: "book" }, limit: 30 } },
     ],
   },
+  "school--spec": {
+    title: "Specification",
+    subtitle: "Every content statement in your official specs, word for word, with your confidence (1-5) and the flashcards, questions, tests and mistakes linked to each. Apollo uses these as the source of truth.",
+    blocks: [
+      { type: "spec", title: "Spec", span: 12 },
+      { type: "specreview", title: "Due for a confidence check", span: 6 },
+      { type: "blurt", title: "Blurt it: write what you remember", span: 6 },
+    ],
+  },
   "school--subjects": {
     title: "Subjects",
     subtitle: "Further Maths options and the Physics optional topic are still to decide; record them here when you know.",
@@ -269,7 +295,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
         { name: "subject", type: "select", options: SUBJ }, { name: "code", label: "Spec code" }, { name: "title", required: true },
       ] } },
       { type: "list", title: "Spec topics", span: 6, bind: { table: "spec_topics", limit: 100, order: { col: "subject", asc: true } }, props: { primary: "title", secondary: ["subject", "code"] } },
-      { type: "specrag", title: "Spec checklist: how confident are you?", span: 12, bind: { table: "spec_topics", limit: 500, order: { col: "subject", asc: true } } },
+      tile("Spec: every statement, with your confidence", "/s/school/spec", { table: "spec_points", agg: { fn: "count" } }, "spec points imported", undefined, 12),
     ],
   },
 
