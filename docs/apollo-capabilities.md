@@ -91,7 +91,7 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 72. ✅ Undo its own changes; action log of everything
 73. ✅ Attachments in chat: PDF, Word, CSV, text, images
 74. 🟡 Change the site's own code: Build mode is on hold, so it writes a spec for Claude Code instead
-75. ⬜ Full file manager on Library › Files (spec received)
+75. ✅ Full file manager on Library › Files (upload, edit, organise, search, preview, trash); Apollo can list, read, update and delete files there
 
 ## 8. School
 76. ✅ Timetable with Week A / Week B
