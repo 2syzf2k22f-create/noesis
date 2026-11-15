@@ -1,5 +1,6 @@
 "use client";
 
+import { SrBadge, SrDue, SrQueue, SrSettingsBlock } from "./SrBlocks";
 import { UpcomingTests } from "./UpcomingTests";
 import { RoutinesPage } from "./RoutinesPage";
 import { MathArea } from "./MathTools";
@@ -490,6 +491,10 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "spotify": return <SpotifyBlock />;
     case "pc_rules": return <PcRulesBlock />;
     case "recurringreminders": return <RecurringRemindersBlock />;
+    case "srqueue": return <SrQueue />;
+    case "srdue": return <SrDue />;
+    case "srbadge": return <SrBadge p={p} />;
+    case "srsettings": return <SrSettingsBlock />;
     case "usagejobs": return <UsageJobs ctx={ctx} />;
     case "filemanager": return <FilesBlock />;
     case "routinespage": return <RoutinesPage />;

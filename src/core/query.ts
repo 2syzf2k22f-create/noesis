@@ -14,7 +14,7 @@ export const BINDABLE = new Set([
   "books", "reading_logs", "journal_entries", "weekly_reports",
   "chess_games", "chess_ratings", "poker_sessions", "brain_test_results", "memory_sessions", "coding_stats",
   "vocab_items", "vocab_reviews",
-  "subjects", "spec_topics", "spec_points", "blurts", "upcoming_tests", "upcoming_test_topics", "chapter_maps", "test_sessions", "resource_links", "sources", "geo_attempts", "chess_evals",
+  "subjects", "spec_topics", "spec_points", "blurts", "upcoming_tests", "upcoming_test_topics", "chapter_maps", "test_sessions", "sr_items", "sr_reviews", "sr_sessions", "recurring_reminders", "resource_links", "sources", "geo_attempts", "chess_evals",
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",

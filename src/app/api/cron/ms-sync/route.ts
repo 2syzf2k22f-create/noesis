@@ -12,6 +12,7 @@ export async function GET(req: Request) {
   // daily: keep 28 days of recurring reminders ahead (works even when the PC is off)
   const { ensureRecurring } = await import("@/core/recurring");
   const reminders = await ensureRecurring(s).catch((e) => `failed: ${(e as Error).message}`);
+  const sr = await (await import("@/core/srStore")).srNudge(s).catch((e) => `failed: ${(e as Error).message}`);
   const ms = await syncMicrosoft(s, undefined, { scheduled: true }).catch((e) => ({ error: (e as Error).message }));
-  return Response.json({ reminders, ms });
+  return Response.json({ reminders, sr, ms });
 }

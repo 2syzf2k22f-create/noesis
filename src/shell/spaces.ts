@@ -16,6 +16,7 @@ export const ICONS = {
   stats: "M5 20V11 M10 20V4 M15 20v-7 M20 20V8",
   inbox: "M3 13l3-8h12l3 8v6H3z M3 13h5l1.5 3h5L16 13h5",
   chats: "M4 5h16v11H10l-5 4v-4H4z",
+  review: "M4 12a8 8 0 1 0 2.3-5.6 M4 4v4h4 M12 8v4l3 2",
   settings: "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6z M19 12l2-1-1-3-2 .3-1.3-1.3.3-2-3-1-1 2h-2l-1-2-3 1 .3 2L6 7.3 4 7l-1 3 2 1v2l-2 1 1 3 2-.3 1.3 1.3-.3 2 3 1 1-2h2l1 2 3-1-.3-2 1.3-1.3 2 .3 1-3-2-1z",
   style: "M12 3a9 9 0 1 0 0 18z M12 3a9 9 0 0 1 0 18 M12 7.5a4.5 4.5 0 0 1 0 9",
   panel: "M4 5h16v14H4z M4 9h16",
@@ -34,6 +35,7 @@ export type IconName = keyof typeof ICONS;
 
 export const SPACES: Space[] = [
   { id: "dashboard", name: "Dashboard", icon: "grid", blurb: "Today: timetable, inbox, what's due, your numbers" },
+  { id: "review", name: "Review", icon: "review", blurb: "Everything due for spaced repetition: School, Mind, Languages" },
   { id: "school", name: "School", icon: "school", blurb: "Revision hub, tutor, notes, homework, timetable", subs: [
     { id: "flashcards", name: "Flashcards", blurb: "Spaced repetition by subject" },
     { id: "revise", name: "Revise", blurb: "Timer and revision stats" },

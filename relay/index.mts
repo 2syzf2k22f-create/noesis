@@ -307,6 +307,7 @@ async function schedule() {
       const { ensureRecurring } = await import("../src/core/recurring");
       const n = await ensureRecurring(store!).catch(() => 0);
       if (n) log(`recurring reminders: +${n}`);
+      await (await import("../src/core/srStore")).srNudge(store!).catch(() => 0);
       await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), last_recurring: today } });
     }
     // usage previews are kept 90 days, then cleared (tokens and counts stay)

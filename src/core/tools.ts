@@ -43,6 +43,8 @@ export type UiAction =
   | { type: "set_theme"; id: string }
   | { type: "reload" }
   | { type: "back" }
+  | { type: "start_session"; area?: string; kind?: string; deck?: string }
+  | { type: "end_session" }
   | { type: "highlight"; target: string; label?: string; ms?: number }
   | { type: "chatbox"; x?: number; y?: number; w?: number; h?: number; near?: string; open?: boolean }
   | { type: "open_window"; to: string }
@@ -332,6 +334,24 @@ export const TOOLS: ToolDef[] = [
       for (const t of (await ctx.store.list("upcoming_tests", { limit: 100 })).filter((x) => !x.deleted_at && x.status === "upcoming")) { const d = await T.testDetail(ctx.store, t.id); if (d && d.days >= 0) upcoming.push({ id: d.id, title: d.title, subject: d.subject, date: d.date, days: d.days, readiness: d.readiness, weakest: d.weakest }); }
       return { ...(a.full ? r : compactAnalysis(r)), spec_coverage, upcoming_tests: upcoming };
     },
+  },
+  {
+    name: "get_sr_status",
+    description: "Spaced repetition status: items due today per area (school, mind, languages) and kind (flashcards, mistakes, questions, spec points, geography, puzzles, openings), new available, 7-day forecast, streak, 30-day retention, leeches. Use for 'what's due', 'how are my reviews'.",
+    input: {},
+    async run(ctx) { const s = await (await import("./srStore")).srStatus(ctx.store); return { counts: s.counts, forecast: s.forecast, streak: s.streak, reviews_today: s.reviews_today, retention_30d: s.retention_30d, leeches: s.leeches, totals: s.totals }; },
+  },
+  {
+    name: "start_sr_session",
+    description: "Open a review session for Reg on screen: area school|mind|languages|all, optional kind (flashcard, mistake, question, spec, geo, puzzle, opening) and deck (e.g. a subject or continent). E.g. 'quiz me on my weak countries' -> area mind, kind geo.",
+    input: { area: z.enum(["school", "mind", "languages", "all"]).optional(), kind: z.string().optional(), deck: z.string().optional() },
+    async run(ctx, a) { await pushUi(ctx, { type: "start_session", area: a.area ?? "all", kind: a.kind, deck: a.deck }); return { started: true }; },
+  },
+  {
+    name: "end_sr_session",
+    description: "End the review/quiz session Reg has open right now (answers so far are kept; unanswered items stay due).",
+    input: {},
+    async run(ctx) { await pushUi(ctx, { type: "end_session" }); return { ended: true }; },
   },
   {
     name: "get_upcoming_tests",

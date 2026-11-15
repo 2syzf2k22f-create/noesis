@@ -20,6 +20,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Dashboard",
     subtitle: "Today at a glance",
     blocks: [
+      { type: "srdue", title: "Due today (spaced repetition)", span: 4 },
       { type: "timetable", title: "Today", span: 5, bind: { table: "timetable", limit: 200 } },
       { type: "agenda", title: "Coming up", span: 4, props: { days: 14, limit: 8 } },
       { type: "inbox", title: "Inbox", span: 3, bind: { table: "inbox_items", where: { read_at: null }, limit: 6 } },
@@ -81,6 +82,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "school--flashcards": {
     title: "Flashcards",
     blocks: [
+      { type: "srbadge", title: "Flashcards due", span: 12, props: { area: "school", kind: "flashcard", title: "Flashcards" } },
       { type: "review", title: "Review", span: 8, props: { decks: SUBJ } },
       { type: "stat", title: "Due now", span: 4, bind: dueCards(SUBJ) },
       { type: "form", title: "Add a card", span: 6, props: { table: "flashcards", submit: "Add card", fields: [
@@ -141,6 +143,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Tests",
     subtitle: "Upcoming tests (topics, readiness, revision, reminders) and every test you've done, with marks per topic.",
     blocks: [
+      { type: "srbadge", title: "Mistakes to redo", span: 12, props: { area: "school", kind: "mistake", title: "Mistakes" } },
       { type: "upcomingtests", title: "Upcoming tests", span: 12 },
       { type: "schooltest", title: "Add a test", span: 7 },
       { type: "gradeboundaries", title: "Grade boundaries & mark converter", span: 5 },
@@ -163,6 +166,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Questions",
     subtitle: "Real past-paper questions and exam-style ones by topic and subtopic, with mark schemes. Practise, sit timed tests, self-mark or let Apollo mark.",
     blocks: [
+      { type: "srbadge", title: "Questions to retry", span: 12, props: { area: "school", kind: "question", title: "Questions to retry" } },
       { type: "questionbank", span: 12 },
       { type: "stat", title: "Average score %", span: 3, bind: { table: "question_attempts", agg: { fn: "avg", field: "pct" } } },
       { type: "stat", title: "Questions answered, 7 days", span: 3, bind: { table: "question_attempts", days: 7, agg: { fn: "count", by: "day" } } },
@@ -282,6 +286,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Specification",
     subtitle: "Every content statement in your official specs, word for word, with your confidence (1-5) and the flashcards, questions, tests and mistakes linked to each. Apollo uses these as the source of truth.",
     blocks: [
+      { type: "srbadge", title: "Weak spec points due", span: 12, props: { area: "school", kind: "spec", title: "Spec points" } },
       { type: "spec", title: "Spec", span: 12 },
       { type: "specreview", title: "Due for a confidence check", span: 6 },
       { type: "blurt", title: "Blurt it: write what you remember", span: 6 },
@@ -524,6 +529,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Openings",
     subtitle: "Explore every line of theory with the attacking, defensive and strategic ideas, drill each branch, and check anything on the analysis board beside it.",
     blocks: [
+      { type: "srbadge", title: "Openings due for a drill", span: 12, props: { area: "mind", kind: "opening", title: "Openings" } },
       { type: "openings", span: 9, bind: { table: "opening_drills", limit: 500 } },
       { type: "bar", title: "Drills per opening", span: 3, rows: 2, bind: { table: "opening_drills", agg: { fn: "count", by: { field: "name" } } } },
       { type: "table", title: "Recent drills", span: 12, bind: { table: "opening_drills", limit: 12 }, props: { columns: ["created_at", "name", "side", "mistakes"] } },
@@ -533,6 +539,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Puzzles",
     subtitle: "Lichess tactics by theme and difficulty, plus positions from your own mistakes.",
     blocks: [
+      { type: "srbadge", title: "Puzzles from your games, due", span: 12, props: { area: "mind", kind: "puzzle", title: "Puzzles" } },
       { type: "puzzles", span: 9, bind: { table: "chess_puzzles", limit: 200 } },
       { type: "stat", title: "Solved, 7 days", span: 3, bind: { table: "puzzle_attempts", where: { solved: true }, days: 7, agg: { fn: "count", by: "day" } } },
       { type: "donut", title: "Solved vs missed, 30 days", span: 3, bind: { table: "puzzle_attempts", days: 30, agg: { fn: "count", by: { field: "solved" } } } },
@@ -783,6 +790,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Deep dives",
     subtitle: "Totals, averages, medians, records, trends, consistency, weekday and time-of-day patterns and distributions, computed in code. Switch the period on each.",
     blocks: [
+      { type: "heatmap", title: "Reviews per day (spaced repetition)", span: 12, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "count", by: "day" } } },
+      { type: "line", title: "Average rating per week (1 again … 4 easy)", span: 6, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "avg", field: "rating", by: "week" } } },
+      { type: "donut", title: "Answers by rating, 30 days", span: 6, bind: { table: "sr_reviews", days: 30, dateField: "reviewed_at", agg: { fn: "count", by: { field: "rating" } } } },
       { type: "deepstats", title: "Revision minutes", span: 12, props: { table: "study_sessions", field: "minutes", unit: "min", groupBy: "subject" } },
       { type: "deepstats", title: "Flashcard reviews", span: 12, props: { table: "reviews", groupBy: "deck" } },
       { type: "deepstats", title: "Training volume per set", span: 12, props: { table: "sets", field: "volume", unit: "kg", groupBy: "exercise" } },
@@ -825,6 +835,15 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
 
   /* ======================= inbox ======================= */
+  review: {
+    title: "Review",
+    subtitle: "Everything due for spaced repetition, across School, Mind and Languages. Missed items come back sooner; known ones further out. End any session whenever you like.",
+    blocks: [
+      { type: "srqueue", title: "Due now", span: 12 },
+      { type: "heatmap", title: "Reviews per day", span: 12, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "count", by: "day" } } },
+      { type: "srsettings", title: "Settings", span: 12 },
+    ],
+  },
   settings: {
     title: "Settings",
     subtitle: "Connections and what Apollo may do on your PC.",
@@ -832,6 +851,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "spotify", title: "Music", span: 6 },
       { type: "pc_rules", title: "PC permissions", span: 6 },
       { type: "recurringreminders", title: "Recurring reminders (workouts, study hours)", span: 12 },
+      { type: "srsettings", title: "Spaced repetition", span: 12 },
       { type: "microsoft", title: "Microsoft 365 & Arbor", span: 12 },
     ],
   },

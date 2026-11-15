@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { previewLabel, GRADES, type Grade } from "@/core/srsCore";
 import { useApollo } from "@/shell/apollo";
 import COUNTRIES from "@/data/countries.json";
+import { useSession, useSrStatus } from "./SrBlocks";
 import { Bars, type BlockCtx } from "./Blocks";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = { id: string; [k: string]: any };
@@ -38,7 +39,8 @@ async function flushOffline() {
   }
   try { localStorage.setItem(QKEY, JSON.stringify(left)); } catch {}
 }
-export function Review({ p }: { p: P }) {
+/** Old per-card scheduler (kept for reference; flashcards now run on the shared engine). */
+export function ReviewLegacy({ p }: { p: P }) {
   const decks: string[] = p.decks ?? (p.deck ? [p.deck] : []);
   const decksKey = decks.join(",");
   // "" = all of this block's decks together
@@ -382,6 +384,8 @@ export function GeoQuiz({ p, ctx }: { p: P; ctx: BlockCtx }) {
   const [q, setQ] = useState<ReturnType<typeof make> | null>(null);
   const [ans, setAns] = useState<string | null>(null);
   const [score, setScore] = useState({ right: 0, total: 0, streak: 0 });
+  const [ended, setEnded] = useState(false);
+  const [sessionEl, startSession] = useSession();
   useEffect(() => { queueMicrotask(() => { setQ(make()); setAns(null); }); }, [make]);
   // type the answer: flags and capital→country want a country; country→capital wants a capital
   const options = useMemo(() => (kind === "capital" ? ALL.map((c) => c.c).filter(Boolean) : ALL.map((c) => c.n)).sort(), [kind]);
@@ -396,14 +400,32 @@ export function GeoQuiz({ p, ctx }: { p: P; ctx: BlockCtx }) {
     void ctx.write("create", "geo_attempts", { kind, item: q.pick.n, answer: v, correct: ok, region: q.pick.r, subregion: q.pick.s, seconds: Math.round((geoNow() - q.t0) / 100) / 10 });
   };
   const next = () => { setQ(make()); setAns(null); };
-  return (
-    <div className={u.geo} onKeyDown={(e) => { if (ans && e.key === "Enter") next(); }}>
+  const modeBar = (
       <div className={u.row}>
-        {kinds.map((x) => <button key={x} className="pill" aria-pressed={x === kind} onClick={() => setKind(x)}>{x === "country-of-capital" ? "capital → country" : x === "capital" ? "country → capital" : x}</button>)}
+        {kinds.map((x) => <button key={x} className="pill" aria-pressed={x === kind} onClick={() => { setKind(x); setEnded(false); }}>{x === "country-of-capital" ? "capital → country" : x === "capital" ? "country → capital" : x}</button>)}
         <select value={region} onChange={(e) => setRegion(e.target.value)} className={u.geoSel}>
           {["All", "Africa", "Americas", "Asia", "Europe", "Oceania"].map((r) => <option key={r}>{r}</option>)}
         </select>
       </div>
+  );
+  // flags and capitals run on the shared spaced-repetition session: due + learning items first, then new
+  if ((kind as string) !== "bigger") return (
+    <div className={u.geo}>
+      {sessionEl}
+      {modeBar}
+      <GeoSrStart kind={kind} region={region} onStart={() => startSession({ kind: "geo", direction: kind, region, area: "mind", title: `Geography: ${kind === "flag" ? "flags" : kind === "capital" ? "country → capital" : "capital → country"}${region !== "All" ? ` (${region})` : ""}` })} />
+    </div>
+  );
+  if (ended) return (
+    <div className={u.geo}>
+      {modeBar}
+      <b>Session ended: {score.right}/{score.total} right ({score.total ? Math.round((score.right / score.total) * 100) : 0}%).</b>
+      <div className={u.row}><button className="pill" data-active="true" onClick={() => { setEnded(false); setScore({ right: 0, total: 0, streak: 0 }); next(); }}>Start a new session</button></div>
+    </div>
+  );
+  return (
+    <div className={u.geo} onKeyDown={(e) => { if (ans && e.key === "Enter") next(); if (e.key === "Escape") setEnded(true); }}>
+      {modeBar}
       <div className={u.geoQ}>
         {kind === "flag" && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -430,6 +452,7 @@ export function GeoQuiz({ p, ctx }: { p: P; ctx: BlockCtx }) {
       <div className={u.row}>
         <span className="label">{score.right}/{score.total} this session · streak {score.streak}</span>
         {ans && <button className="pill" data-active="true" onClick={next}>Next (Enter)</button>}
+        <button className="pill" style={{ marginLeft: "auto", background: "var(--danger)", color: "#fff", borderColor: "var(--danger)" }} onClick={() => { if (!score.total || confirm(`End now? ${score.total} answered.`)) setEnded(true); }}>■ End session</button>
       </div>
     </div>
   );
@@ -437,6 +460,8 @@ export function GeoQuiz({ p, ctx }: { p: P; ctx: BlockCtx }) {
 
 /** Geography in depth: accuracy by continent, region and quiz type, hardest countries, speed, trend. */
 export function GeoStats({ ctx }: { ctx: BlockCtx }) {
+  // reload after any review session so the numbers are live
+  useEffect(() => { const f = () => ctx.refresh?.(); window.addEventListener("noesis:sr-reviewed", f); return () => window.removeEventListener("noesis:sr-reviewed", f); }, [ctx]);
   const rows: Row[] = ((ctx.data?.rows ?? []) as Row[]).map((r) => {
     const c = ALL.find((x) => x.n === r.item || x.c === r.item);
     return { ...r, region: r.region ?? c?.r ?? "?", subregion: r.subregion ?? c?.s ?? "?" } as Row;
@@ -474,6 +499,44 @@ export function GeoStats({ ctx }: { ctx: BlockCtx }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Geography due counts for the chosen mode + Start. */
+function GeoSrStart({ kind, region, onStart }: { kind: string; region: string; onStart: () => void }) {
+  const d = useSrStatus();
+  const c = d?.counts?.mind?.kinds ?? {};
+  return (
+    <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
+      <small className="label">{c.geo ?? 0} geography items due across all modes · {d?.counts?.mind?.new ?? 0} new allowed today. Missed countries come back in the same session and on later days; countries you mix them up with come back sooner too.</small>
+      <button className="pill" data-active="true" style={{ height: 46, fontSize: 16, padding: "0 20px" }} onClick={onStart}>▶ Start {kind === "flag" ? "flags" : kind === "capital" ? "capitals" : "capital → country"}{region !== "All" ? ` · ${region}` : ""}</button>
+    </div>
+  );
+}
+
+/** Flashcard review (School subjects or a language): the shared spaced-repetition session. */
+export function Review({ p }: { p: P }) {
+  const d = useSrStatus();
+  const [el, start] = useSession();
+  const langs = ["Mandarin", "Spanish", "French", "English"];
+  const decks: string[] = p.deck ? [p.deck] : p.decks ?? [];
+  const area = decks.length && decks.every((x) => langs.includes(x)) ? "languages" : "school";
+  const c = d?.counts?.[area];
+  const n = p.deck ? (c?.decks?.[`flashcard:${p.deck}`] ?? 0) : (c?.kinds?.flashcard ?? 0);
+  const fresh = c?.kinds?.["flashcard (new)"] ?? 0;
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {el}
+      <div className={u.row} style={{ gap: 12, flexWrap: "wrap" }}>
+        <span><b style={{ fontSize: 26 }}>{n}</b> <small className="label">due{p.deck ? ` in ${p.deck}` : ""}</small></span>
+        {fresh > 0 && <span><b style={{ fontSize: 18 }}>{Math.min(fresh, c?.new ?? 0)}</b> <small className="label">new today</small></span>}
+      </div>
+      <div className={u.row} style={{ gap: 6, flexWrap: "wrap" }}>
+        <button className="pill" data-active="true" style={{ height: 42, padding: "0 18px" }} onClick={() => start({ area, kind: "flashcard", deck: p.deck, title: p.deck ? `${p.deck} flashcards` : "Flashcards" })}>▶ Review {p.deck ?? "flashcards"}</button>
+        {!p.deck && decks.map((dk) => <button key={dk} className="pill" onClick={() => start({ area, kind: "flashcard", deck: dk, title: `${dk} flashcards` })}>{dk} ({c?.decks?.[`flashcard:${dk}`] ?? 0})</button>)}
+      </div>
+      <small className="label">Again / Hard / Good / Easy (1-4). Missed cards repeat in the session until you get them; End session any time (Esc).</small>
     </div>
   );
 }
