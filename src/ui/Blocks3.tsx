@@ -6,6 +6,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import type { BlockCtx } from "./Blocks";
+import { usePersist } from "./usePersist";
+import { useSchoolWeek } from "./useSchoolWeek";
+import { inWeek, type Wk } from "@/core/schoolWeek";
 import u from "./ui.module.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -18,17 +21,33 @@ const hm = (t: string) => { const [h, m] = String(t).split(":").map(Number); ret
 
 /* ---------- timetable: today (now / next) or the week ---------- */
 export function Timetable({ p, ctx }: { p: P; ctx: BlockCtx }) {
-  const rows = (ctx.data?.rows ?? []) as Row[];
+  const all = (ctx.data?.rows ?? []) as Row[];
+  const wk = useSchoolWeek();
+  // Week A | Week B | Both: defaults to this week, remembered for the session
+  const [pick, setPick] = usePersist<Wk | "both" | null>("timetable.week", null);
+  const shown: Wk | null = pick === "both" ? null : pick ?? wk?.current ?? null;
+  const twoWeek = all.some((r) => r.week);
+  // the week grid follows the toggle; today / now-next always use the real current week
+  const rows = all.filter((r) => inWeek(r, p.view === "week" ? shown : wk?.current ?? null));
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => { const f = () => setNow(new Date()); f(); const id = setInterval(f, 30_000); return () => clearInterval(id); }, []);
   if (ctx.data?.error) return <NoData>{ctx.data.error}</NoData>;
-  if (!rows.length) return <NoData>No timetable yet. Add lessons on School → Timetable, or ask Apollo to enter it from a photo or list.</NoData>;
+  if (!all.length) return <NoData>No timetable yet. Add lessons on School → Timetable, or ask Apollo to enter it from a photo or list.</NoData>;
   if (!now) return null;
   const dow = (now.getDay() + 6) % 7 + 1, mins = now.getHours() * 60 + now.getMinutes();
   const sorted = [...rows].sort((a, b) => Number(a.day) - Number(b.day) || hm(a.start) - hm(b.start));
   if (p.view === "week") {
     const days = [...new Set(sorted.map((r) => Number(r.day)))].filter((d) => d <= 5 || sorted.some((r) => Number(r.day) === d));
     return (
+      <div style={{ display: "grid", gap: 10 }}>
+      {twoWeek && (
+        <div className={u.row}>
+          {(["A", "B", "both"] as const).map((k) => (
+            <button key={k} className="pill" data-active={(pick ?? wk?.current) === k} onClick={() => setPick(k)}>{k === "both" ? "Both" : `Week ${k}`}</button>
+          ))}
+          {wk && <span className="pill" data-active="true" title={`Week A starts ${wk.anchor}; weeks alternate every Monday (settings.data.week_a_anchor)`}>Week {wk.current} (this week)</span>}
+        </div>
+      )}
       <div className={u.tt} style={{ gridTemplateColumns: `repeat(${days.length}, minmax(110px, 1fr))` }}>
         {days.map((d) => (
           <div key={d} data-today={d === dow}>
@@ -40,6 +59,7 @@ export function Timetable({ p, ctx }: { p: P; ctx: BlockCtx }) {
             ))}
           </div>
         ))}
+      </div>
       </div>
     );
   }

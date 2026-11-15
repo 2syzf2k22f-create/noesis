@@ -61,7 +61,9 @@ export async function buildUserPrompt(store: Store, conversationId: string, text
   if (summary?.summary) parts.push(`<earlier_in_this_chat>\n${summary.summary}\n</earlier_in_this_chat>`);
   if (history.length) parts.push(`<recent>\n${history.map((m) => `${m.role === "user" ? "Reg" : "Apollo"}: ${m.content}`).join("\n")}\n</recent>`);
   if (screen) parts.push(`<screen>\n${screen.slice(0, 9500)}\n</screen>`);
-  parts.push(`<now>${new Date().toLocaleString("en-GB", { timeZone: "Europe/London" })}</now>`);
+  const st = await store.get("settings", "main").catch(() => null);
+  const { anchorOf, weekOf } = await import("./schoolWeek");
+  parts.push(`<now>${new Date().toLocaleString("en-GB", { timeZone: "Europe/London" })} (timetable Week ${weekOf(new Date(), anchorOf(st?.data))}; lessons with week A/B only run in that week, no week = both)</now>`);
   parts.push(text);
   return parts.join("\n\n");
 }

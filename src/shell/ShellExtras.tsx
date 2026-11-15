@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import s from "./dock.module.css";
+import { inWeek } from "@/core/schoolWeek";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = { id: string; [k: string]: any };
@@ -76,7 +77,8 @@ export function ShellExtras() {
     const load = async () => {
       setHm(hmNow());
       const [tt, hw] = await data([{ table: "timetable", limit: 300 }, { table: "homework", where: { status: "to do" }, limit: 100 }]);
-      const today = ((tt?.rows ?? []) as Row[]).filter((l) => Number(l.day) === todayNum()).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+      const wk = await fetch("/api/school-week").then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const today = ((tt?.rows ?? []) as Row[]).filter((l) => Number(l.day) === todayNum() && inWeek(l, wk?.current ?? null)).sort((a, b) => String(a.start).localeCompare(String(b.start)));
       setLessons(today);
       // reminders
       for (const h of (hw?.rows ?? []) as Row[]) {

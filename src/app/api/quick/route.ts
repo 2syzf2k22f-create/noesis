@@ -22,7 +22,9 @@ async function answer(s: Exclude<ReturnType<typeof storeOr503>, Response>, req: 
 
   if (/^(what('?s| is)? )?(my )?(next|current) (lesson|class|period)|what (lesson|class) (is it|now|next)|timetable today|lessons today/.test(q)) {
     const t = hm();
-    const ls = (await s.list("timetable", { limit: 500 })).filter((l) => Number(l.day) === today()).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    const { anchorOf, inWeek, weekOf } = await import("@/core/schoolWeek");
+    const wkNow = weekOf(new Date(), anchorOf((await s.get("settings", "main").catch(() => null))?.data));
+    const ls = (await s.list("timetable", { limit: 500 })).filter((l) => Number(l.day) === today() && inWeek(l, wkNow)).sort((a, b) => String(a.start).localeCompare(String(b.start)));
     if (!ls.length) return Response.json({ answer: "No lessons in your timetable for today." });
     if (/today/.test(q)) return Response.json({ answer: ls.map((l) => `${l.start} ${l.subject}${l.room ? ` (${l.room})` : ""}`).join("\n") });
     const cur = ls.find((l) => l.start <= t && l.end > t), next = ls.find((l) => l.start > t);
