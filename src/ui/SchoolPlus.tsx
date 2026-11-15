@@ -4,6 +4,7 @@
 // Apollo study actions (quick quiz, mixed practice, formula sheet, homework autopilot, weekly review),
 // subject balance vs targets, plan vs done, study streak, command words, and a spec-tagged study timer.
 
+import { FxButton, MathPreview } from "./MathTools";
 import { useEffect, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { CONF_COLOR } from "./SpecBlock";
@@ -96,7 +97,8 @@ export function Blurt() {
         <input value={code} onChange={(e) => setCode(e.target.value)} placeholder={pick ? `Code, e.g. ${pick.code}` : "Spec code"} style={{ ...field, width: 150 }} />
         {pick && !code && <button className="pill" onClick={() => setCode(pick.code)}>Use weakest: {pick.code}</button>}
       </div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Blurt here…" style={{ ...field, height: "auto", padding: 10 }} />
+      <textarea id="blurt-box" value={text} onChange={(e) => setText(e.target.value)} rows={7} placeholder="Blurt here…" style={{ ...field, height: "auto", padding: 10 }} />
+      <div className={u.row}><FxButton target={() => document.getElementById("blurt-box") as HTMLTextAreaElement | null} value={text} set={setText} /><MathPreview value={text} /></div>
       <button className="pill" data-active="true" disabled={!code || text.trim().length < 10} style={{ justifySelf: "start" }}
         onClick={() => { submit(`Mark my blurt for ${subject} spec ${code}. Use get_spec(${subject}, ${code}) for the exact statements, compare point by point, score it 0-100, list exactly what I missed or got wrong, save it with create_record in blurts (subject, spec_code, recalled, score, missed, feedback), and set my confidence with set_spec_confidence. My blurt:\n${text}`, { thread: `spec:${subject}` }); setText(""); }}>Mark my blurt</button>
     </div>

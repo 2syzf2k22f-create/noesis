@@ -148,6 +148,7 @@ export function ShellExtras({ paneMode = false }: { paneMode?: boolean }) {
   return (
     <>
       <div className={s.extras}>
+        <InboxBell />
         {!paneMode && <><BackButton />
         <RecentPages /></>}
         {!paneMode && lessonText && <Link className={s.chip} href="/s/school/timetable" title="Today's timetable">{lessonText}</Link>}
@@ -211,4 +212,22 @@ function BackButton() {
   }, [pathname]);
   if (!can) return null;
   return <button className={s.chip} onClick={() => { try { sessionStorage.setItem("noesis.navBack", "1"); } catch {} router.back(); }} title="Back to the previous page (Alt+←)">← Back</button>;
+}
+
+/** Inbox icon with an unread badge (Teams, deadlines, reports, Apollo's notices). */
+function InboxBell() {
+  const pathname = usePathname();
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const load = () => data([{ table: "inbox_items", where: { read_at: null }, agg: { fn: "count" } }]).then((r) => setN(Number(r?.[0]?.value ?? r?.[0]?.rows?.length ?? 0))).catch(() => {});
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [pathname]);
+  return (
+    <Link className={s.chip} href="/s/inbox" title={n ? `${n} unread in your inbox` : "Inbox"} aria-label={n ? `Inbox, ${n} unread` : "Inbox"} style={{ position: "relative" }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 13l3-8h12l3 8v6H3z" /><path d="M3 13h5l1.5 3h5L16 13h5" /></svg>
+      {n > 0 && <b style={{ position: "absolute", top: -5, right: -5, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: "var(--danger)", color: "#fff", fontSize: 11, lineHeight: "18px", textAlign: "center" }}>{n > 99 ? "99+" : n}</b>}
+    </Link>
+  );
 }

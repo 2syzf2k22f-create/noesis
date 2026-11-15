@@ -1,5 +1,7 @@
 "use client";
 
+import { MathArea } from "./MathTools";
+import { hasMath, RichText } from "./RichText";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { QueryResult, Series } from "@/core/query";
 import type { Block } from "./spec";
@@ -200,7 +202,7 @@ function Form({ p, ctx }: { p: P; ctx: BlockCtx }) {
           {f.type === "select" ? (
             <SelectField f={f} />
           ) : f.type === "textarea" ? (
-            <textarea name={f.name} rows={3} required={f.required} />
+            <MathArea name={f.name} rows={3} required={f.required} />
           ) : (
             <input name={f.name} type={f.type ?? "text"} step={f.type === "number" ? "any" : undefined} required={f.required}
               defaultValue={f.type === "date" ? new Date().toISOString().slice(0, 10) : undefined} />
@@ -223,7 +225,7 @@ function List({ p, rows, ctx, table }: { p: P; rows: Row[]; ctx: BlockCtx; table
           <div>
             {p.link ? (
               <a href={String(p.link).replace(/\{(\w+)\}/g, (_: string, k: string) => encodeURIComponent(String(r[k] ?? "")))} target={String(p.link).startsWith("/") ? undefined : "_blank"} rel="noreferrer">{cell(r[prim])}</a>
-            ) : <span>{cell(r[prim])}</span>}
+            ) : <span>{typeof r[prim] === "string" && hasMath(r[prim]) ? <RichText text={r[prim]} inline /> : cell(r[prim])}</span>}
             {p.secondary && <small>{([] as string[]).concat(p.secondary).map((k) => cell(r[k])).filter((x) => x !== "—").join(" · ")}</small>}
           </div>
           {act && (
@@ -333,7 +335,7 @@ function Flashcards({ p, rows }: { p: P; rows: Row[] }) {
   return (
     <div className={u.flash}>
       <button className={u.flashCard} data-flip={flip} onClick={() => setFlip((f) => !f)}>
-        <span>{flip ? c.back : c.front}</span>
+        <span><RichText text={flip ? c.back : c.front} /></span>
         <small className="label">{flip ? "answer" : "tap to flip"} · {i % cards.length + 1}/{cards.length}</small>
       </button>
       <div className={u.row}>
@@ -419,17 +421,8 @@ new ResizeObserver(()=>parent.postMessage({type:"noesis:height",h:document.docum
 }
 
 export function Markdown({ text }: { text: string }) {
-  // tiny, safe subset: paragraphs, "- " lists, **bold**, *italic*, `code`. No raw HTML.
-  const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).map((t, i) =>
-    t.startsWith("**") ? <b key={i}>{t.slice(2, -2)}</b> : t.startsWith("`") ? <code key={i}>{t.slice(1, -1)}</code> : t.startsWith("*") && t.length > 2 ? <em key={i}>{t.slice(1, -1)}</em> : t);
-  return (
-    <div className={u.md}>
-      {String(text).split(/\n{2,}/).map((para, i) =>
-        /^\s*[-•]\s/m.test(para)
-          ? <ul key={i}>{para.split("\n").filter(Boolean).map((l, j) => <li key={j}>{inline(l.replace(/^\s*[-•]\s/, ""))}</li>)}</ul>
-          : <p key={i}>{inline(para)}</p>)}
-    </div>
-  );
+  // Markdown + LaTeX maths (KaTeX)
+  return <RichText text={text} />;
 }
 
 /* ---------- dispatcher ---------- */

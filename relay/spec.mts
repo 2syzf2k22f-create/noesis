@@ -8,7 +8,10 @@ import { nowIso, type Row, type Store } from "../src/core/store";
 
 const pdfCache = new Map<string, { pages: string[]; norm: string[] }>();
 /** Compare on letters and digits only: PDF extraction mangles spaces, hyphenation, quotes and symbols. */
-const norm = (t: string) => t.normalize("NFKD").replace(/ﬁ/g, "fi").replace(/ﬂ/g, "fl").toLowerCase().replace(/[^a-z0-9]/g, "");
+/** A lone bullet at the start of a line ("o", "•", "◦", "▪", "·" + space) is the same token on both sides:
+ *  Edexcel prints sub-bullets as "o", which PDF extraction reads as the letter. Only at line starts, nothing else. */
+export const BULLET = /^[ \t]*(?:o|•|◦|▪|·)[ \t]+/gm;
+export const norm = (t: string) => t.replace(BULLET, "\u0001").normalize("NFKD").replace(/ﬁ/g, "fi").replace(/ﬂ/g, "fl").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 async function loadPdf(url: string) {
   const hit = pdfCache.get(url);
@@ -96,6 +99,24 @@ export const SPEC_TOOLS: Tool[] = [
       await ctx.store.insert("action_log", { actor: "apollo", tool: "import_spec_points", table_name: "spec_points", row_id: null, before: null, after: { subject: a.subject, version: a.source_version, sent: a.points.length, verified, unverified: unverified.length } }).catch(() => null);
       return { subject: a.subject, pdf_pages: pdf.pages.length, sent: a.points.length, created, updated, verified, unverified, changed_text: changed,
         next: unverified.length ? "Re-copy the unverified statements EXACTLY from the PDF page text (web_read the page range) and resend them. If one truly can't be matched (formulas, symbols), leave it unverified and tell Reg." : "All verified." };
+    },
+  },
+  {
+    name: "reverify_spec",
+    description: "Re-check every stored statement of a subject against its official PDF with the current matching rules (e.g. after the bullet fix), updating verified + page. Doesn't change any text. Run spec_report afterwards.",
+    input: { subject: z.enum(["Maths", "Further Maths", "Physics", "Economics"]), only_unverified: z.boolean().optional() },
+    async run(ctx, a: { subject: string; only_unverified?: boolean }) {
+      const rows = (await ctx.store.list("spec_points", { eq: { subject: a.subject }, limit: 5000 })).filter((r) => !r.deleted_at && r.source_url && (!a.only_unverified || !r.verified));
+      let nowVerified = 0, stillUnverified: string[] = [];
+      for (const r of rows) {
+        const pdf = await loadPdf(r.source_url);
+        const page = findPage(pdf, r.text || r.title || "");
+        const ok = page != null && (!r.text || !r.title || findPage(pdf, r.title) != null);
+        if (ok !== !!r.verified || page !== r.source_page) await ctx.store.update("spec_points", r.id, { verified: ok, verified_at: ok ? nowIso() : null, source_page: page });
+        if (ok && !r.verified) nowVerified++;
+        if (!ok) stillUnverified = [...stillUnverified, r.code];
+      }
+      return { checked: rows.length, newly_verified: nowVerified, unverified: stillUnverified };
     },
   },
   {

@@ -1338,3 +1338,18 @@
 .yAxis { display: flex; flex-direction: column; justify-content: space-between; font: 10px var(--font-mono), monospace; color: var(--text-dim); text-align: right; padding: 2px 0 18px; }
 .xAxis { display: flex; justify-content: space-between; font: 10px var(--font-mono), monospace; color: var(--text-dim); margin-top: 3px; }
 .barVal { display: block; text-align: center; font: 600 10px var(--font-mono), monospace; color: var(--text-dim); margin-bottom: 2px; white-space: nowrap; }
+
+/* maths (KaTeX): colour follows the theme; long display formulas scroll inside their block */
+.mathBlock {
+  margin: 6px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+  padding: 2px 0;
+  max-width: 100%;
+}
+.mathInline :global(.katex) {
+  font-size: 1.05em;
+  line-height: 1;
+}
+.mathBlock :global(.katex), .mathInline :global(.katex) { color: inherit; }

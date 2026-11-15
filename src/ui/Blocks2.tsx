@@ -2,6 +2,8 @@
 // Phase 8-11 blocks: spaced-repetition review, ask-Apollo prompts, weekly scores,
 // brain tests and the geography quiz. All numbers come from code or datasets.
 
+import { MathArea } from "./MathTools";
+import { RichText } from "./RichText";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { previewLabel, GRADES, type Grade } from "@/core/srsCore";
 import { useApollo } from "@/shell/apollo";
@@ -87,7 +89,7 @@ export function Review({ p }: { p: P }) {
       ) : (
         <>
           <button className={u.flashCard} data-flip={flip} onClick={() => setFlip(true)}>
-            <span>{flip ? card.back : card.front}</span>
+            <span><RichText text={flip ? card.back : card.front} /></span>
             <small className="label">{card.deck}{card.topic ? ` · ${card.topic}` : ""} · {flip ? "how well did you know it?" : "tap or Enter to reveal"}</small>
           </button>
           {flip ? (
@@ -133,7 +135,7 @@ export function AskBlock({ p }: { p: P }) {
         <label key={f.name} data-wide={f.type === "textarea"}>
           <span className="label">{f.label ?? f.name}</span>
           {f.type === "select" ? <AskSelect f={f} />
-            : f.type === "textarea" ? <textarea name={f.name} rows={p.rows ?? 3} required /> : <input name={f.name} required />}
+            : f.type === "textarea" ? <MathArea name={f.name} rows={p.rows ?? 3} required /> : <input name={f.name} required />}
         </label>
       ))}
       <button className="pill" data-active="true">{p.submit ?? "Ask Apollo"}</button>

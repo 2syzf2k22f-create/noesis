@@ -3,6 +3,8 @@
 // time or sit a timed test, self-mark against the mark scheme or have Apollo mark it.
 // Every attempt is stored, so scores by topic/subtopic are always available.
 
+import { MathPreview } from "./MathTools";
+import { RichText } from "./RichText";
 import { useEffect, useMemo, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { usePersist } from "@/ui/usePersist";
@@ -112,15 +114,16 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
         </div>
         <div className={s.q}>
           <div className={s.meta}>{cur.subject}{cur.spec_code ? ` · spec ${cur.spec_code}` : ""} · {cur.topic ?? "general"}{cur.subtopic ? ` › ${cur.subtopic}` : ""} · <b>[{cur.marks} mark{cur.marks > 1 ? "s" : ""}]</b> · <i data-src={cur.source}>{cur.source === "past paper" ? `${cur.board ?? ""} ${cur.paper ?? "past paper"} ${cur.year ?? ""} Q${cur.number ?? ""}` : cur.source}</i></div>
-          <p className={s.text}>{cur.question}</p>
-          <textarea className={s.answer} rows={6} placeholder="Your answer (working, steps, final answer)…" value={run.answers[cur.id] ?? ""} disabled={reviewing}
+          <div className={s.text}><RichText text={cur.question} /></div>
+          <MathPreview value={run.answers[cur.id] ?? ""} />
+          <textarea id="qb-answer" className={s.answer} rows={6} placeholder="Your answer (working, steps, final answer; maths as $x^2$)…" value={run.answers[cur.id] ?? ""} disabled={reviewing}
             onChange={(e) => setRun({ ...run, answers: { ...run.answers, [cur.id]: e.target.value } })} />
         </div>
         {showScheme ? (
           <div className={s.scheme}>
             <div className="label">Mark scheme</div>
-            <p>{cur.mark_scheme ?? "No mark scheme stored."}</p>
-            {cur.answer && <p><b>Answer:</b> {cur.answer}</p>}
+            <RichText text={cur.mark_scheme ?? "No mark scheme stored."} />
+            {cur.answer && <div><b>Answer:</b> <RichText text={cur.answer} inline /></div>}
             <div className={s.row}>
               <span className="label">Marks</span>
               {Array.from({ length: Number(cur.marks) + 1 }, (_, m) => (

@@ -3,6 +3,8 @@
 // a description of the page with each question), or anything at all, or "take me to…".
 // Apollo can move/resize it, open it next to something it's explaining, and highlight things.
 
+import { FxButton, MathPreview } from "@/ui/MathTools";
+import { RichText } from "@/ui/RichText";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useApollo } from "./apollo";
@@ -126,6 +128,7 @@ export function ChatDock() {
         ))}
       </div>
     )}
+    {open && <MathPreview value={text} />}
     <div className={s.inputRow}>
       <label className={s.mic} title="Attach a picture or file: PDF, Word, CSV, text (or paste / drop it)" style={{ cursor: "pointer" }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-8 8" /></svg>
@@ -135,6 +138,7 @@ export function ChatDock() {
         onPaste={(e) => { const fs = [...e.clipboardData.files]; if (fs.length) { e.preventDefault(); void addFiles(fs); } }}
         onChange={(e) => setText(e.target.value)} onFocus={() => uiStore.setChat({ open: true })}
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } if (e.key === "Escape") { (e.target as HTMLElement).blur(); uiStore.setChat({ open: false }); } }} />
+      {open && <FxButton target={() => input.current} value={text} set={setText} compact />}
       {orbState === "speaking" && <button className={s.mic} onClick={stopSpeaking} title="Stop talking (Esc)" aria-label="Stop talking">■</button>}
       <button className={s.mic} data-on={orbState === "listening"} onClick={toggleMic} aria-label="Talk"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></button>
       <button className={s.send} onClick={send} aria-label="Send" disabled={(!text.trim() && !imgs.length && !docs.length) || reading > 0}>↑</button>
@@ -168,11 +172,11 @@ export function ChatDock() {
             <p>Press <kbd>/</kbd> to type from anywhere.</p>
           </div>
         )}
-        {shown.map((m) => <div key={m.id} className={s.msg} data-role={m.role}>{m.content}</div>)}
+        {shown.map((m) => <div key={m.id} className={s.msg} data-role={m.role}><RichText text={m.content} /></div>)}
         {notice && <div className="label" style={{ textAlign: "center" }}>{notice}</div>}
         <Proposals />
         <PcApprovals />
-        {live && <div className={s.msg} data-role="assistant" data-pending={live.pending} data-tone={live.tone}>{live.text || "…"}</div>}
+        {live && <div className={s.msg} data-role="assistant" data-pending={live.pending} data-tone={live.tone}>{live.text ? <RichText text={live.text} /> : "…"}</div>}
       </div>
       {inputRow}
       <span className={s.grip} onPointerDown={(e) => begin("size", e)} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-hidden />

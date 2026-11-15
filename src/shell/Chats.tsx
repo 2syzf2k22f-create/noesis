@@ -1,5 +1,6 @@
 "use client";
 
+import { RichText } from "@/ui/RichText";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useApollo } from "./apollo";
@@ -67,7 +68,7 @@ export function Chats() {
             {open.messages.map((m) => (
               <div key={m.id} className={s.msg} data-role={m.role}>
                 <span className="label">{m.role === "user" ? "You" : `Apollo${m.model ? ` · ${(/(haiku|sonnet|opus)/.exec(m.model)?.[1] ?? m.model)}` : ""}`}</span>
-                <p>{m.content}</p>
+                <RichText text={m.content} />
               </div>
             ))}
           </article>

@@ -1,3 +1,4 @@
+import "katex/dist/katex.min.css";
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk, Syne, VT323 } from "next/font/google";
 import { ThemeProvider } from "@/theme/ThemeProvider";

@@ -4,6 +4,7 @@
 // grid/list, preview (Markdown, code, images, PDFs), download (one, or many as a zip), trash with
 // restore, and shortcuts to Apollo (ask about it, flashcards, knowledge).
 
+import { FxButton } from "./MathTools";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { readAttachment } from "@/shell/files";
@@ -217,7 +218,8 @@ function NewFile({ onClose, onSaved }: { onClose: () => void; onSaved: () => voi
   return (
     <Modal onClose={onClose} title="New file">
       <input value={name} onChange={(e) => setName(e.target.value)} style={{ ...field, width: "100%" }} />
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={16} placeholder="Write Markdown or plain text…" style={{ ...field, height: "auto", padding: 10, width: "100%", fontFamily: "var(--font-mono, monospace)" }} />
+      <div className={u.row}><FxButton target={() => document.getElementById("newfile-box") as HTMLTextAreaElement | null} value={text} set={setText} /><small className="label">Maths: $x^2$ inline, $$x^2$$ on its own line</small></div>
+      <textarea id="newfile-box" value={text} onChange={(e) => setText(e.target.value)} rows={16} placeholder="Write Markdown or plain text…" style={{ ...field, height: "auto", padding: 10, width: "100%", fontFamily: "var(--font-mono, monospace)" }} />
       {err && <div style={{ color: "var(--danger)" }}>{err}</div>}
       <div className={u.row}><button className="pill" data-active="true" onClick={async () => { const r = await api({ action: "create", name, content: text }); if (r.error) setErr(r.error); else onSaved(); }}>Save</button><button className="pill" onClick={onClose}>Cancel</button></div>
     </Modal>

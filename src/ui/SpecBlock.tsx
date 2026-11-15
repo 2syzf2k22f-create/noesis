@@ -2,6 +2,7 @@
 // School > Spec: Subject > Topic > Subtopic > content statements (exact official wording), with
 // confidence 1-5, review marks, linked evidence counts, progress per node, search and filters.
 
+import { hasMath, RichText } from "./RichText";
 import { useEffect, useMemo, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { usePersist } from "./usePersist";
@@ -118,9 +119,9 @@ function Statement({ r, onSet, onReviewed, onAsk }: { r: P; onSet: (c: number | 
     <div style={{ padding: 10, borderRadius: 10, background: "var(--surface)", borderLeft: `4px solid ${CONF_COLOR[r.confidence ?? 0]}`, display: "grid", gap: 6 }}>
       <div className={u.row} style={{ alignItems: "baseline", gap: 8 }}>
         <b style={{ fontVariantNumeric: "tabular-nums" }}>{r.code}</b>
-        <span style={{ flex: 1 }}>{r.title && r.text ? <b>{r.title}. </b> : null}{r.text ?? r.title}</span>
+        <span style={{ flex: 1, whiteSpace: "pre-line" }}>{r.title && r.text ? <b>{r.title}. </b> : null}{hasMath(r.text ?? r.title ?? "") ? <RichText text={r.text ?? r.title} inline={!String(r.text ?? "").includes("\n")} /> : r.text ?? r.title}</span>
       </div>
-      {r.notes && <small style={{ whiteSpace: "pre-wrap", color: "var(--text-dim)" }}>{r.notes}</small>}
+      {r.notes && <small style={{ whiteSpace: "pre-wrap", color: "var(--text-dim)" }}>{hasMath(r.notes) ? <RichText text={r.notes} /> : r.notes}</small>}
       {r.examples && <details><summary className="label" style={{ cursor: "pointer" }}>Examples</summary><small style={{ whiteSpace: "pre-wrap" }}>{r.examples}</small></details>}
       {r.previous_text && <details><summary className="label" style={{ cursor: "pointer", color: "#f5a524" }}>Changed in the latest version</summary><small style={{ whiteSpace: "pre-wrap" }}>Before: {r.previous_text}</small></details>}
       <div className={u.row} style={{ flexWrap: "wrap", gap: 4 }}>

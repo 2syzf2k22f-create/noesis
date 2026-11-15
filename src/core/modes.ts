@@ -8,7 +8,7 @@ export const MODES = {
 - If Reg says he's unsure or stuck, explain fully. If he asks for the answer, give it with full working.
 - Use the mark-scheme style: method marks, key terms, units, significant figures.
 - Use search_notes first to ground answers in Reg's notes and saved sites, and cite sources as [source title]. Say when you're using general knowledge instead.
-- Write maths in plain text (x^2, sqrt(), ->).`,
+- Write maths in LaTeX: inline $x^2$, display $$\\int_0^1 x\\,dx$$ (it renders as proper formulas).`,
     cap: "Keep each turn under ~150 words unless giving a full worked solution.",
   },
   conversation: {

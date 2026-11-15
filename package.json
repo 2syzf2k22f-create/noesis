@@ -19,6 +19,7 @@
     "fflate": "^0.8.2",
     "html-to-image": "^1.11.13",
     "jpeg-js": "^0.4.4",
+    "katex": "^0.16.22",
     "next": "16.4.6",
     "node-screenshots": "^0.2.8",
     "react": "19.3.0",

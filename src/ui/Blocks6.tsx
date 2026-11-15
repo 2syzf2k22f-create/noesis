@@ -177,8 +177,19 @@ export function PlanShare({ ctx }: { ctx: BlockCtx }) {
     const elapsed = Math.max(1, now - weekStart), frac = elapsed / (7 * 864e5);
     const projected = wu / frac;
     if (wu >= 100) pace = { text: "Weekly limit reached", tone: "var(--danger)" };
-    else if (projected <= 100) pace = { text: `On track: at this rate you'd finish the week at about ${Math.round(projected)}%`, tone: "var(--good)" };
-    else { const runOut = weekStart + elapsed * (100 / Math.max(wu, 0.1)); pace = { text: `At this rate you'd run out around ${new Date(runOut).toLocaleString("en-GB", { weekday: "long", hour: "2-digit", minute: "2-digit" })} (${dur(week.resetsAt * 1000 - runOut)} before the reset)`, tone: "#f5a524" }; }
+    else {
+      // always say when 100% would be hit at this pace, even when that's after the reset
+      const runOut = weekStart + elapsed * (100 / Math.max(wu, 0.1));
+      const when = new Date(runOut).toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      pace = projected <= 100
+        ? { text: `On track: at this pace you'd finish the week at about ${Math.round(projected)}% (you'd only hit 100% on ${when}, after the reset)`, tone: "var(--good)" }
+        : { text: `At this pace you'd run out around ${when} (${dur(week.resetsAt * 1000 - runOut)} before the reset)`, tone: "#f5a524" };
+    }
+    // the 5-hour window too
+    if (five && fu != null && fu > 0 && fu < 100) {
+      const el5 = Math.max(60e3, now - fiveStart), out5 = fiveStart + el5 * (100 / fu);
+      if (out5 < five.resetsAt * 1000) pace = { ...pace, text: `${pace.text}. 5-hour limit: at this pace you'd hit it around ${new Date(out5).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` };
+    }
   }
   const withPlan = rows.filter((r) => r.plan_7d_delta != null || r.plan_5h_delta != null);
   const meter = (label: string, total: number | null, mine: number, resets?: number) => (
