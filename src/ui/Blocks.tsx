@@ -1,5 +1,6 @@
 "use client";
 
+import { RoutinesPage } from "./RoutinesPage";
 import { MathArea } from "./MathTools";
 import { hasMath, RichText } from "./RichText";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -489,6 +490,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "pc_rules": return <PcRulesBlock />;
     case "usagejobs": return <UsageJobs ctx={ctx} />;
     case "filemanager": return <FilesBlock />;
+    case "routinespage": return <RoutinesPage />;
     case "spec": return <SpecBlock />;
     case "weakspec": return <WeakSpec p={p} />;
     case "specreview": return <SpecReview />;

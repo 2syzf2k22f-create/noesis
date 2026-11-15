@@ -316,7 +316,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Log",
     blocks: [
       { type: "form", title: "Log a set", span: 12, props: { table: "sets", submit: "Log set", fields: [
-        { name: "routine", type: "select", options: ["push", "pull", "legs", "other"] }, { name: "exercise", required: true },
+        { name: "routine", type: "select", optionsFrom: { table: "routines", field: "name" } }, { name: "exercise", required: true },
         { name: "weight_kg", label: "Weight (kg)", type: "number" }, { name: "reps", type: "number", required: true },
       ] } },
       { type: "timer", title: "Rest timer", span: 4, props: { minutes: 2, choices: [1, 2, 3, 5] } },
@@ -339,14 +339,12 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "fitness--routines": {
     title: "Routines",
+    subtitle: "Your splits, what's scheduled, last weights and progress. Start a workout to log it set by set.",
     blocks: [
-      { type: "form", title: "New routine", span: 5, props: { table: "routines", submit: "Save", fields: [
-        { name: "name", required: true }, { name: "day", label: "Split", type: "select", options: ["push", "pull", "legs", "full body"] },
-        { name: "exercises", label: "Exercises (one per line, e.g. Bench press 4×8)", type: "textarea" },
-      ] } },
-      { type: "list", title: "Routines", span: 7, bind: { table: "routines", limit: 20 }, props: { primary: "name", secondary: ["day", "exercises"] } },
-      { type: "ask", title: "Build me a routine", span: 12, props: { submit: "Build it", template: "Design a {split} routine for me ({goal}), save it to the routines table (name, day, exercises one per line with sets×reps), and tell me in one line.",
-        fields: [{ name: "split", type: "select", options: ["push", "pull", "legs", "full body"] }, { name: "goal", type: "select", options: ["strength", "hypertrophy", "general fitness"] }] } },
+      { type: "routinespage", title: "Routines", span: 12 },
+      { type: "bar", title: "Volume per day (kg), 28 days", span: 6, bind: { table: "sets", days: 28, agg: { fn: "sum", field: "volume", by: "day" } } },
+      { type: "donut", title: "Split, last 28 days (sessions)", span: 6, bind: { table: "workouts", days: 28, agg: { fn: "count", by: { field: "routine" } } } },
+      { type: "heatmap", title: "Consistency: workouts per day, 12 weeks", span: 12, bind: { table: "workouts", days: 84, agg: { fn: "count", by: "day" } } },
     ],
   },
   "fitness--recovery": {

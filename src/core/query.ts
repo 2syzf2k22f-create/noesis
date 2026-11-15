@@ -19,7 +19,7 @@ export const BINDABLE = new Set([
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
 ]);
-const SOFT = new Set(["inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities", "notes", "events"]);
+const SOFT = new Set(["routines", "inbox_items", "files", "pages", "projects", "project_notes", "workouts", "meals", "recipes", "conversations", "books", "journal_entries", "flashcards", "homework", "opportunities", "notes", "events"]);
 
 export type Series = { label: string; value: number }[];
 export type QueryResult = { rows?: Row[]; value?: number | null; series?: Series; error?: string };

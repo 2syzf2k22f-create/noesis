@@ -28,7 +28,7 @@ export const WRITABLE = [
 ] as const;
 // Apollo can read everything except your private journal and stored sign-in tokens
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions", "jobs", "usage_log", "relay_status", "messages", "chat_summaries", "reviews", "note_chunks", "spec_topics", "subjects", "spec_points"] as const;
-const SOFT_DELETE = new Set(["pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
+const SOFT_DELETE = new Set(["routines", "pages", "widgets", "inbox_items", "files", "conversations", "projects", "project_notes", "workouts", "meals", "recipes", "flashcards", "homework", "books", "opportunities", "notes", "events", "questions"]);
 /** What the user's own forms may write (the journal is private: Apollo can't write or read it). */
 export const USER_WRITABLE = new Set<string>([...WRITABLE, "journal_entries", "geo_attempts", "memory_sessions"]);
 /** Built-in pages: spaces ("school") and subpages ("school/flashcards", stored as slug "school--flashcards"). */
