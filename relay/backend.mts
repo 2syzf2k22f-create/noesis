@@ -13,6 +13,8 @@ export type RunResult = {
   isError: boolean;
   rateLimited: { resetsAt: number | null } | null;
   plan: Record<string, PlanWindow> | null;
+  /** Tools Apollo called in this run, with counts. */
+  tools?: Record<string, number>;
 };
 export type RunOpts = {
   model: string;
@@ -118,6 +120,10 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
               o.onText?.(turnText);
             }
             if (e?.type === "message_start" && e.message?.model) res.model = e.message.model;
+            if (e?.type === "content_block_start" && e.content_block?.type === "tool_use") {
+              const n = String(e.content_block.name ?? "?").replace(/^mcp__noesis__/, "");
+              res.tools = { ...(res.tools ?? {}), [n]: (res.tools?.[n] ?? 0) + 1 };
+            }
           } else if (ev.type === "rate_limit_event") {
             const info = ev.rate_limit_info ?? {};
             res.plan = info.unifiedWindows ?? res.plan;

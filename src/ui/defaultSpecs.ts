@@ -793,7 +793,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "deepstats", title: "Job time in depth (ms)", span: 12, props: { table: "usage_log", field: "duration_ms", groupBy: "feature", better: "lower" } },
       { type: "bar", title: "Weekly limit used by feature, 30 days (%)", span: 6, bind: { table: "usage_log", days: 30, agg: { fn: "sum", field: "plan_7d_delta", by: { field: "feature" } } } },
       { type: "line", title: "Weekly limit used (%)", span: 6, bind: { table: "usage_log", days: 30, agg: { fn: "max", field: "plan_7d_pct", by: "day" } } },
-      { type: "table", title: "Recent jobs", span: 12, bind: { table: "usage_log", limit: 30 }, props: { columns: ["created_at", "feature", "model", "tokens_total", "plan_7d_delta", "plan_5h_delta", "duration_ms"] } },
+      { type: "usagejobs", title: "Recent jobs (click one for details)", span: 12, bind: { table: "usage_log", days: 60, limit: 1000 } },
     ],
   },
 

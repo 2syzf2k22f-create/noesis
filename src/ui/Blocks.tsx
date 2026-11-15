@@ -10,6 +10,7 @@ import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Strea
 import { QuestionBank } from "./QuestionBank";
 import { MicrosoftBlock } from "./MicrosoftBlock";
 import { PcRulesBlock, SpotifyBlock } from "./SettingsBlocks";
+import { UsageJobs } from "./UsageJobs";
 import { BuildBlock } from "./BuildBlock";
 import { WorkoutPlanner } from "./WorkoutPlanner";
 import { SchoolAnalysisBlock, SchoolTestForm, SpecRag } from "./SchoolBlocks";
@@ -490,6 +491,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "microsoft": return <MicrosoftBlock ctx={ctx} />;
     case "spotify": return <SpotifyBlock />;
     case "pc_rules": return <PcRulesBlock />;
+    case "usagejobs": return <UsageJobs ctx={ctx} />;
     case "build": return <BuildBlock />;
     case "gradepredictor": return <GradePredictor ctx={ctx} />;
     case "prs": return <PersonalRecords ctx={ctx} />;

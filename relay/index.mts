@@ -71,7 +71,12 @@ function throttle(fn: (s: string) => void, ms: number) {
 
 /** Every model run: tokens plus how much it moved your plan's 5-hour and weekly usage (from Claude Code's own readings). */
 let lastPlan: RunResult["plan"] = null;
+/** Never store secrets in previews: strip anything that looks like a key or token. */
+const redact = (t: unknown) => typeof t !== "string" ? null : t
+  .replace(/\b(sk|pk|rk|ghp|gho|github_pat|xox[abpr]|AKIA|AIza|eyJ)[A-Za-z0-9_\-.]{12,}/g, "[redacted]")
+  .replace(/\b(password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S+/gi, "$1=[redacted]").slice(0, 600);
 async function logUsage(s: Store, row: Row | Record<string, unknown>, r: RunResult) {
+  if (r.tools && !("tools_used" in row)) (row as Record<string, unknown>).tools_used = r.tools;
   const delta = (k: string) => {
     const now = r.plan?.[k], prev = lastPlan?.[k];
     if (!now) return null;
@@ -133,7 +138,11 @@ async function runApollo(s: Store, job: Row) {
   const msg = await s.insert("messages", {
     conversation_id: convId, role: "assistant", content: r.text, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut,
   });
-  await logUsage(s, { job_id: job.id, feature: ({ chat: "chat", conversation: "language practice", mealplan: "meal plan", flashcards: "flashcard maker", questions: "question writer", tutor: "tutor", report: "weekly report" } as Record<string, string>)[mode] ?? mode, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
+  const screenTxt = typeof job.input?.screen === "string" ? job.input.screen : "";
+  const page = /^url: (\S+)/m.exec(screenTxt)?.[1] ?? null;
+  const histCount = Math.min(10, Math.max(0, (await s.count("messages", { eq: { conversation_id: convId } }).catch(() => 1)) - 1));
+  const hidden = /journal/.test(page ?? "");
+  await logUsage(s, { conversation_id: convId ?? null, prompt_preview: hidden ? "[journal, hidden]" : redact(text), reply_preview: hidden ? "[journal, hidden]" : redact(r.text), page, history_messages: histCount, duration_ms: job.started_at ? Date.now() - Date.parse(job.started_at) : null, error: r.isError ? redact(r.text) : null, job_id: job.id, feature: ({ chat: "chat", conversation: "language practice", mealplan: "meal plan", flashcards: "flashcard maker", questions: "question writer", tutor: "tutor", report: "weekly report" } as Record<string, string>)[mode] ?? mode, model: r.model, tokens_in: r.tokensIn, tokens_out: r.tokensOut }, r);
   await s.update("conversations", convId, { updated_at: nowIso() });
   const actions = await s.count("action_log", { eq: { job_id: job.id } });
   // don't keep big image data in the jobs table once answered
@@ -293,6 +302,14 @@ async function schedule() {
     if (now.getDay() === 0 && now.getHours() >= 18 && data.last_opps_week !== thisWeek && data.auto_opportunities !== false) await queue("research", { topic: "opportunities" }, "last_opps_week");
     // daily syncs (on by default; Apollo can switch them off with settings.data.auto_chess_sync = false)
     const today = now.toISOString().slice(0, 10);
+    // usage previews are kept 90 days, then cleared (tokens and counts stay)
+    if (data.last_usage_prune !== today) {
+      const cutoff = new Date(Date.now() - 90 * 864e5).toISOString();
+      for (const row of await store!.list("usage_log", { limit: 2000 }).catch(() => [] as Row[])) {
+        if (row.created_at < cutoff && (row.prompt_preview || row.reply_preview)) await store!.update("usage_log", row.id, { prompt_preview: null, reply_preview: null }).catch(() => null);
+      }
+      await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), last_usage_prune: today } });
+    }
     if (data.auto_chess_sync !== false && data.last_chess_sync !== today && now.getHours() >= 6) {
       const r = await syncChess(store!).catch((e) => ({ error: (e as Error).message }));
       if (!("error" in r && /username/.test(String(r.error)))) log("daily chess.com sync", JSON.stringify(r).slice(0, 80));

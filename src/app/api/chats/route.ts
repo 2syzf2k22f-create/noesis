@@ -17,5 +17,12 @@ export async function GET(req: NextRequest) {
     rows = rows.filter((c) => c.title?.toLowerCase().includes(q) || hit.has(c.id));
   }
   rows.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
-  return Response.json(rows.map((c) => ({ id: c.id, title: c.title ?? "Untitled", pinned: !!c.pinned, updatedAt: c.updated_at ?? c.created_at, space: c.space ?? null })));
+  // tokens and jobs per chat (from the usage log), so the biggest chats are visible
+  const use = new Map<string, { tokens: number; jobs: number }>();
+  for (const u of await s.list("usage_log", { order: { col: "created_at", asc: false }, limit: 5000 }).catch(() => [])) {
+    if (!u.conversation_id) continue;
+    const x = use.get(u.conversation_id) ?? { tokens: 0, jobs: 0 };
+    x.tokens += Number(u.tokens_total ?? 0); x.jobs += 1; use.set(u.conversation_id, x);
+  }
+  return Response.json(rows.map((c) => ({ id: c.id, title: c.title ?? "Untitled", pinned: !!c.pinned, updatedAt: c.updated_at ?? c.created_at, space: c.space ?? null, tokens: use.get(c.id)?.tokens ?? 0, jobs: use.get(c.id)?.jobs ?? 0 })));
 }

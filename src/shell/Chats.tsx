@@ -6,7 +6,8 @@ import { useApollo } from "./apollo";
 import { Icon } from "./Icon";
 import s from "./shell.module.css";
 
-type Chat = { id: string; title: string; pinned: boolean; updatedAt: string };
+type Chat = { id: string; title: string; pinned: boolean; updatedAt: string; tokens?: number; jobs?: number };
+const kTok = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
 type Msg = { id: string; role: string; content: string; model: string | null };
 
 export function Chats() {
@@ -28,6 +29,8 @@ export function Chats() {
   }, [q, changes, tick]);
 
   const show = (id: string) => fetch(`/api/chats/${id}`).then((r) => r.json()).then(setOpen);
+  // deep link from Stats > Apollo usage: /s/chats?c=<id>
+  useEffect(() => { const c = new URLSearchParams(location.search).get("c"); if (c) void show(c); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const patch = (id: string, body: object) =>
     fetch(`/api/chats/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then(() => setTick((n) => n + 1));
 
@@ -45,7 +48,7 @@ export function Chats() {
             <li key={c.id} data-active={open?.id === c.id} data-current={chatId === c.id}>
               <button className={s.chatOpen} onClick={() => show(c.id)}>
                 <span>{c.title}</span>
-                <small>{new Date(c.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}{chatId === c.id ? " · current" : ""}</small>
+                <small>{new Date(c.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}{c.jobs ? ` · ${kTok(c.tokens ?? 0)} tokens · ${c.jobs} job${c.jobs === 1 ? "" : "s"}` : ""}{chatId === c.id ? " · current" : ""}</small>
               </button>
               <button className={s.chatTool} aria-pressed={c.pinned} aria-label={c.pinned ? "Unpin" : "Pin"} onClick={() => patch(c.id, { pinned: !c.pinned })}><Icon name="pin" size={15} /></button>
               <button className={s.chatTool} aria-label="Delete" onClick={() => { patch(c.id, { deleted: true }); if (open?.id === c.id) setOpen(null); }}><Icon name="close" size={15} /></button>
