@@ -1,7 +1,7 @@
 import { connection, type NextRequest } from "next/server";
 import { storeOr503 } from "@/core/api";
 import { nowIso } from "@/core/store";
-import { srQueue, srReview, srSettings, srStatus, srUndo } from "@/core/srStore";
+import { srQueue, srReview, srSettings, srStatus, srGeo, srCharts, srUndo } from "@/core/srStore";
 
 /** GET ?view=status | ?view=queue&area=&kind=&deck=&direction=&region=&limit= | ?view=session&id= | ?view=paused&area=&kind= */
 export async function GET(req: NextRequest) {
@@ -9,8 +9,10 @@ export async function GET(req: NextRequest) {
   const s = storeOr503();
   if (s instanceof Response) return s;
   const q = req.nextUrl.searchParams, view = q.get("view") ?? "status";
+  if (view === "geo") return Response.json(await srGeo(s));
+  if (view === "charts") return Response.json(await srCharts(s, q.get("kind") ?? undefined));
   if (view === "status") return Response.json(await srStatus(s));
-  if (view === "queue") return Response.json(await srQueue(s, { area: q.get("area") ?? undefined, kind: q.get("kind") ?? undefined, deck: q.get("deck") ?? undefined, direction: q.get("direction") ?? undefined, region: q.get("region") ?? undefined, limit: q.get("limit") ? Number(q.get("limit")) : undefined }));
+  if (view === "queue") return Response.json(await srQueue(s, { area: q.get("area") ?? undefined, kind: q.get("kind") ?? undefined, deck: q.get("deck") ?? undefined, direction: q.get("direction") ?? undefined, region: q.get("region") ?? undefined, weak: q.get("weak") === "1", ids: q.get("ids") ? String(q.get("ids")).split(",") : undefined, limit: q.get("limit") ? Number(q.get("limit")) : undefined }));
   if (view === "paused") {
     const rows = (await s.list("sr_sessions", { order: { col: "created_at", asc: false }, limit: 50 })).filter((x) => x.end_reason === "paused" && (x.area ?? "") === (q.get("area") ?? "") && (x.kind ?? "") === (q.get("kind") ?? ""));
     return Response.json({ session: rows[0] ?? null });
@@ -32,7 +34,7 @@ export async function POST(req: Request) {
         return Response.json({ id: row.id });
       }
       case "session_end": { // finished | ended_early | abandoned — answers already saved stay; unanswered items are untouched
-        await s.update("sr_sessions", b.id, { ended_at: nowIso(), end_reason: b.end_reason ?? "finished", state: null, updated_at: nowIso() });
+        await s.update("sr_sessions", b.id, { ended_at: nowIso(), end_reason: b.end_reason ?? "finished", state: null, updated_at: nowIso(), ...(b.answered != null ? { answered_count: b.answered, correct_count: b.correct ?? null } : {}) });
         return Response.json({ ok: true });
       }
       case "session_pause": { await s.update("sr_sessions", b.id, { end_reason: "paused", state: { queue: b.queue ?? [], index: b.index ?? 0 }, updated_at: nowIso() }); return Response.json({ ok: true }); }

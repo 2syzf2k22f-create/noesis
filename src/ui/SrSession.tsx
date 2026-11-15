@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useApollo } from "@/shell/apollo";
 import { RichText } from "./RichText";
+import { Chess } from "chess.js";
+import { Board } from "@/chess/Board";
 import u from "./ui.module.css";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -15,8 +17,8 @@ type A = any;
 const api = (body: object) => fetch("/api/sr", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
 const RATINGS = [[1, "Again", "#e5484d"], [2, "Hard", "#f5a524"], [3, "Good", "#30a46c"], [4, "Easy", "#5b8def"]] as const;
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const KIND_LABEL: Record<string, string> = { flashcard: "Flashcard", mistake: "Mistake", question: "Question", spec: "Spec point", geo: "Geography", puzzle: "Puzzle", opening: "Opening" };
-export type SrFilter = { area?: string; kind?: string; deck?: string; direction?: string; region?: string; limit?: number; title?: string };
+const KIND_LABEL: Record<string, string> = { flashcard: "Flashcard", mistake: "Mistake", question: "Question", spec: "Spec point", geo: "Geography", puzzle: "Puzzle", opening: "Opening", palace: "Memory palace", poker: "Poker", coding: "Coding" };
+export type SrFilter = { area?: string; kind?: string; deck?: string; direction?: string; region?: string; limit?: number; title?: string; weak?: boolean; ids?: string };
 const nowMs = () => Date.now();
 const Portal = ({ children }: { children: React.ReactNode }) => (typeof document === "undefined" ? null : createPortal(children, document.body));
 
@@ -36,7 +38,7 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
   const [busy, setBusy] = useState(false);
   const t0 = useRef(0);
   const started = useRef(0);
-  const qs = useMemo(() => new URLSearchParams(Object.entries({ view: "queue", ...filter }).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, String(v)])).toString(), [filter]);
+  const qs = useMemo(() => new URLSearchParams(Object.entries({ view: "queue", ...filter, weak: filter.weak ? "1" : "" }).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, String(v)])).toString(), [filter]);
 
   const load = useCallback(async (resume?: A) => {
     const st = await fetch("/api/sr?view=status").then((r) => r.json()).catch(() => null);
@@ -58,7 +60,7 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
 
   const cur = queue?.[i] ?? null;
   const answered = log.length;
-  const auto = cur?.kind === "geo";
+  const auto = cur?.kind === "geo" || cur?.kind === "puzzle";
   const grade = async (rating: number, extra: A = {}) => {
     if (!cur || busy) return;
     setBusy(true);
@@ -168,11 +170,17 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
           <textarea value={editing.back} onChange={(e) => setEditing({ ...editing, back: e.target.value })} rows={4} style={{ padding: 8, borderRadius: 8, background: "var(--surface)", color: "var(--text)", border: "1px solid var(--border)" }} />
           <div className={u.row}><button className="pill" data-active="true" onClick={async () => { await api({ action: "edit", item_id: cur.id, payload: editing }); setQueue((q) => (q ?? []).map((x: A) => (x.id === cur.id ? { ...x, payload: { ...x.payload, ...editing } } : x))); setEditing(null); }}>Save</button><button className="pill" onClick={() => setEditing(null)}>Cancel</button></div>
         </div>
-      ) : auto ? <GeoItem p={p} typed={typed} setTyped={setTyped} result={result} onCheck={(v) => { const correct = p.mode === "capital" ? p.capital : p.name; setTyped(v); setResult({ ok: norm(v) === norm(correct ?? ""), correct }); }}
+      ) : cur.kind === "puzzle" ? <PuzzleItem p={p} result={result} onResult={(ok, played, best) => { setTyped(played); setResult({ ok, correct: best }); }}
+        onNext={() => void grade(result?.ok ? 3 : 1, { correct: result?.ok, answer: typed })} />
+      : auto ? <GeoItem p={p} typed={typed} setTyped={setTyped} result={result} onCheck={(v) => { const correct = p.mode === "capital" ? p.capital : p.name; setTyped(v); setResult({ ok: norm(v) === norm(correct ?? ""), correct }); }}
         onNext={() => void grade(result?.ok ? 3 : 1, { correct: result?.ok, answer: typed, confused_with: result?.ok ? null : typed })} />
         : (
           <div style={{ display: "grid", gap: 12 }}>
-            <div style={{ padding: 18, borderRadius: 12, background: "var(--surface)", fontSize: 17, minHeight: 110 }}><RichText text={cur.kind === "opening" ? `Play the main line of **${p.name}** (as ${p.side}) from memory, then flip.` : p.front} /></div>
+            <div style={{ padding: 18, borderRadius: 12, background: "var(--surface)", fontSize: 17, minHeight: 110 }}>
+              <RichText text={cur.kind === "opening" ? `Play the main line of **${p.name}** (as ${p.side}) from memory, then flip.` : p.front} />
+              {p.listen && <Speak text={p.listen} lang={p.lang} />}
+              {p.dir && <small className="label" style={{ display: "block", marginTop: 8 }}>{p.dir === "recall" ? "Recall: meaning → word" : "Listening: sound → meaning"}</small>}
+            </div>
             {flipped ? (
               <>
                 <div style={{ padding: 18, borderRadius: 12, background: "var(--surface-2)", fontSize: 16 }}><RichText text={cur.kind === "opening" ? `Check it on Mind › Openings (Explore lines).` : p.back} /></div>
@@ -188,7 +196,40 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
   );
 }
 
-const label = (x: A) => { const p = x.payload ?? {}; return x.kind === "geo" ? `${p.mode === "flag" ? "Flag of" : p.mode === "capital" ? "Capital of" : "Country with capital"} ${p.mode === "country-of-capital" ? p.capital : p.name}` : String(p.front ?? p.name ?? "").slice(0, 140); };
+const label = (x: A) => { const p = x.payload ?? {}; if (x.kind === "puzzle") return `Puzzle from your games${p.note ? `: ${p.note}` : ""}`; if (x.kind === "opening") return `Opening: ${p.name}`; return x.kind === "geo" ? `${p.mode === "flag" ? "Flag of" : p.mode === "capital" ? "Capital of" : "Country with capital"} ${p.mode === "country-of-capital" ? p.capital : p.name}` : String(p.front ?? p.name ?? "").slice(0, 140); };
+
+/** Says the word aloud (browser speech, in the deck's language) on show, with a replay button. */
+function Speak({ text, lang }: { text: string; lang: string }) {
+  const say = useCallback(() => { try { const u = new SpeechSynthesisUtterance(text); u.lang = lang; u.rate = 0.85; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {} }, [text, lang]);
+  useEffect(() => { say(); }, [say]);
+  return <div style={{ marginTop: 10 }}><button className="pill" onClick={say} style={{ height: 40, padding: "0 16px" }}>🔊 Play again</button></div>;
+}
+
+/** A puzzle from his games: play the first move of the solution on the board; checked automatically. */
+function PuzzleItem({ p, result, onResult, onNext }: { p: A; result: { ok: boolean; correct: string } | null; onResult: (ok: boolean, played: string, best: string) => void; onNext: () => void }) {
+  const [fen, setFen] = useState<string>(p.fen);
+  const sol: string[] = Array.isArray(p.solution) ? p.solution : [];
+  const orient = new Chess(p.fen).turn() === "w" ? "white" : "black";
+  const san = (u: string) => { try { return new Chess(p.fen).move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }).san; } catch { return u; } };
+  return (
+    <div style={{ display: "grid", gap: 10, justifyItems: "center" }}>
+      <div style={{ width: "min(420px, 90vw)" }}>
+        <Board fen={fen} orientation={orient} interactive={!result} onMove={(from, to, promotion) => {
+          const g = new Chess(fen); let mv; try { mv = g.move({ from, to, promotion: promotion ?? "q" }); } catch { return false; }
+          setFen(g.fen());
+          onResult(mv.from + mv.to === String(sol[0] ?? "").slice(0, 4) || g.isCheckmate(), mv.san, sol.length ? san(sol[0]) : "?");
+          return true;
+        }} />
+      </div>
+      {!result ? <span className="label">Find the best move for {orient}{p.note ? ` · ${p.note}` : ""}</span> : (
+        <>
+          <div style={{ fontSize: 18 }}>{result.ok ? <b style={{ color: "var(--good)" }}>✓ Right</b> : <><b style={{ color: "var(--danger)" }}>✗ Not that</b> · best was <b>{result.correct}</b></>}</div>
+          <button className="pill" data-active="true" autoFocus onClick={onNext} style={{ height: 44, minWidth: 160, display: "grid", placeItems: "center" }}>Next (Enter)</button>
+        </>
+      )}
+    </div>
+  );
+}
 
 const COUNTRY_NAMES: string[] = [];
 function GeoItem({ p, typed, setTyped, result, onCheck, onNext }: { p: A; typed: string; setTyped: (s: string) => void; result: { ok: boolean; correct: string } | null; onCheck: (v: string) => void; onNext: () => void }) {

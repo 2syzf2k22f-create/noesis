@@ -11,6 +11,7 @@ export const DEFAULT_TARGETS = {
   reading_pages: 150, // per week
   chess_games: 10, // per week
   language_reviews: 100, // per week
+  sr_reviews: 250, // spaced-repetition answers per week, all areas
 };
 export type Targets = typeof DEFAULT_TARGETS;
 
@@ -37,6 +38,8 @@ export async function weeklyScores(store: Store, weeksAgo = 0) {
   const [study, sets, sleep, meals, reviews, reading, chess] = await Promise.all([
     inWeek("study_sessions"), inWeek("sets"), inWeek("sleep_logs"), inWeek("meals"), inWeek("reviews"), inWeek("reading_logs"), inWeek("chess_games"),
   ]);
+  const srAll = (await store.list("sr_reviews", { order: { col: "reviewed_at", asc: false }, limit: 5000 }).catch(() => [])).filter((r) => String(r.reviewed_at) >= from.toISOString() && String(r.reviewed_at) < to.toISOString());
+  const srRight = srAll.filter((r) => Number(r.rating) > 1).length;
   const langDecks = new Set(["Mandarin", "Spanish", "French", "English"]);
   const schoolReviews = reviews.filter((r) => !langDecks.has(String(r.deck)));
   const langReviews = reviews.filter((r) => langDecks.has(String(r.deck)));
@@ -53,6 +56,8 @@ export async function weeklyScores(store: Store, weeksAgo = 0) {
     area("Sleep", sleep.length ? sum(sleep, "hours") / sleep.length : null, T.sleep_hours, "h/night", "average hours ÷ target"),
     area("Nutrition", mealDays ? sum(meals, "protein_g") / mealDays : null, T.protein_g, "g protein/day", "average daily protein on logged days ÷ target"),
     area("Languages", langReviews.length ? langReviews.length : null, T.language_reviews, "reviews", "vocab reviews ÷ weekly target"),
+    // reviews done x accuracy: 250 answers at 100% hits the target; guessing through them doesn't
+    area("Reviews", srAll.length ? srRight : null, T.sr_reviews, "remembered", `answers remembered (${srAll.length} answered, ${srAll.length ? Math.round((srRight / srAll.length) * 100) : 0}% right) ÷ weekly target`),
     area("Reading", reading.length ? sum(reading, "pages") : null, T.reading_pages, "pages", "pages read ÷ weekly target"),
     area("Chess", chess.length ? chess.length : null, T.chess_games, "games", "games played ÷ weekly target"),
   ];

@@ -557,6 +557,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Poker",
     subtitle: "Practice table with play chips only, against human-like bots. Real-money sites (PokerStars and the like) are 18+ for every account, so they aren't connected.",
     blocks: [
+      { type: "srbadge", title: "Poker drills due (ranges, pot odds, outs)", span: 12, props: { area: "mind", kind: "poker", title: "Poker drills" } },
       { type: "poker", span: 12 },
       { type: "stat", title: "Hands played", span: 2, bind: { table: "poker_practice", agg: { fn: "count", by: "day" }, days: 30 } },
       { type: "stat", title: "Win rate (bb/100)", span: 2, bind: { table: "poker_practice", agg: { fn: "per100", field: "net_bb" } } },
@@ -580,6 +581,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "From the world-countries dataset, not the AI. Confusable neighbours as wrong answers; misses come back sooner.",
     blocks: [
       { type: "geo", title: "Quiz", span: 8 },
+      { type: "srgeo", title: "Mastery map and weakest countries", span: 12 },
       { type: "stat", title: "Correct, 7 days", span: 4, bind: { table: "geo_attempts", where: { correct: true }, days: 7, agg: { fn: "count", by: "day" } } },
       { type: "geostats", title: "In depth", span: 12, bind: { table: "geo_attempts", limit: 500 } },
     ],
@@ -597,8 +599,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "mind--memory": {
     title: "Memory sports",
     blocks: [
+      { type: "srbadge", title: "Palace loci due", span: 12, props: { area: "mind", kind: "palace", title: "Memory palaces" } },
       { type: "cards", title: "Card memory", span: 7 },
-      { type: "brain", title: "Number memory", span: 5, props: { test: "numbers" } },
+      { type: "benchmark", title: "Number memory", span: 5, props: { test: "numbers" } },
       { type: "form", title: "Memory palace builder", span: 5, props: { table: "palaces", submit: "Add locus", fields: [
         { name: "palace", required: true }, { name: "position", type: "number" }, { name: "locus", label: "Location (e.g. front door)", required: true }, { name: "image", label: "What you store there" },
       ] } },
@@ -609,6 +612,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "mind--coding": {
     title: "Programming",
     blocks: [
+      { type: "srbadge", title: "Algorithms and patterns due", span: 12, props: { area: "mind", kind: "coding", title: "Coding" } },
       { type: "sync", title: "Codeforces", span: 4, props: { service: "codeforces", label: "Sync Codeforces" } },
       { type: "stat", title: "Codeforces rating", span: 4, bind: { table: "coding_stats", where: { platform: "codeforces" }, agg: { fn: "last", field: "rating" } } },
       { type: "stat", title: "Problems solved", span: 4, bind: { table: "coding_stats", where: { platform: "codeforces" }, agg: { fn: "last", field: "solved" } } },
@@ -621,6 +625,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   languages: {
     title: "Languages",
     blocks: [
+      { type: "srbadge", title: "Corrections from your conversations", span: 12, props: { area: "languages", kind: "mistake", title: "Language corrections" } },
       { type: "review", title: "Due across languages", span: 7, props: { decks: LANGS } },
       { type: "bar", title: "Cards due per language", span: 5, bind: { table: "flashcards", due: { field: "due_at", includeNull: true }, whereIn: { deck: LANGS }, agg: { fn: "count", by: { field: "deck" } } } },
       ...LANGS.map((l) => tile(l, `/s/languages/${l.toLowerCase()}`, { table: "flashcards", where: { deck: l }, agg: { fn: "count" } }, "cards")),
@@ -783,7 +788,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "insights", title: "Patterns", span: 5 },
       { type: "history", title: "Last 8 weeks", span: 12 },
       { type: "ask", title: "Change a target", span: 12, props: { submit: "Save", template: "Set my weekly target {target} to {value} (settings.data.targets).",
-        fields: [{ name: "target", type: "select", options: ["revision_minutes", "sets", "sleep_hours", "protein_g", "flashcard_reviews", "reading_pages", "chess_games", "language_reviews"] }, { name: "value", type: "text" }] } },
+        fields: [{ name: "target", type: "select", options: ["revision_minutes", "sets", "sleep_hours", "protein_g", "flashcard_reviews", "reading_pages", "chess_games", "language_reviews", "sr_reviews"] }, { name: "value", type: "text" }] } },
     ],
   },
   "stats--deep": {
@@ -791,6 +796,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "Totals, averages, medians, records, trends, consistency, weekday and time-of-day patterns and distributions, computed in code. Switch the period on each.",
     blocks: [
       { type: "heatmap", title: "Reviews per day (spaced repetition)", span: 12, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "count", by: "day" } } },
+      { type: "srcharts", title: "Spaced repetition: intervals and retention curve", span: 12 },
       { type: "line", title: "Average rating per week (1 again … 4 easy)", span: 6, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "avg", field: "rating", by: "week" } } },
       { type: "donut", title: "Answers by rating, 30 days", span: 6, bind: { table: "sr_reviews", days: 30, dateField: "reviewed_at", agg: { fn: "count", by: { field: "rating" } } } },
       { type: "deepstats", title: "Revision minutes", span: 12, props: { table: "study_sessions", field: "minutes", unit: "min", groupBy: "subject" } },
@@ -840,6 +846,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     subtitle: "Everything due for spaced repetition, across School, Mind and Languages. Missed items come back sooner; known ones further out. End any session whenever you like.",
     blocks: [
       { type: "srqueue", title: "Due now", span: 12 },
+      { type: "srcharts", title: "Intervals and retention", span: 12 },
       { type: "heatmap", title: "Reviews per day", span: 12, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "count", by: "day" } } },
       { type: "srsettings", title: "Settings", span: 12 },
     ],

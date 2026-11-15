@@ -2,6 +2,7 @@
 // Chess: analysis board (and play vs Stockfish), opening trainer, puzzles, game review.
 
 import { Chess } from "chess.js";
+import { EndSession } from "@/ui/EndSession";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { usePersist } from "@/ui/usePersist";
@@ -461,6 +462,7 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
   const [msg, setMsg] = useState<{ t: string; tone?: string } | null>(null);
   const [hint, setHint] = useState(false);
   const [running, setRunning] = useState(false);
+  const [sitting, setSitting] = useState({ on: false, runs: 0, clean: 0 });
   const dpos = useMemo(() => { const g = new Chess(); for (const m of line.slice(0, ply)) g.move(m); return g; }, [line, ply]);
   const done = ply >= line.length;
   const stats = (id: string) => {
@@ -474,7 +476,7 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
     const fresh = all.filter((l) => !seen.includes(l.name));
     const pick = (fresh.length ? fresh : all)[Math.floor(Math.random() * (fresh.length || all.length))];
     setLine(pick.line.split(" ")); setLineName(pick.name);
-    setPly(0); setMistakes(0); setMsg(null); setHint(false); setRunning(true);
+    setPly(0); setMistakes(0); setMsg(null); setHint(false); setRunning(true); setSitting((x) => ({ ...x, on: true }));
   };
   useEffect(() => {
     if (!running || done || dpos.turn() === mySide) return;
@@ -485,6 +487,7 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
     if (running && done) {
       queueMicrotask(() => setMsg({ t: mistakes ? `${lineName} complete with ${mistakes} slip${mistakes > 1 ? "s" : ""}. Go again to make it clean.` : `Perfect: ${lineName} with no mistakes.`, tone: mistakes ? undefined : "good" }));
       void ctx.write("create", "opening_drills", { opening: op.id, name: op.name, side: op.side, mistakes, moves: line.length, line: lineName });
+      queueMicrotask(() => setSitting((x) => ({ ...x, runs: x.runs + 1, clean: x.clean + (mistakes ? 0 : 1) })));
       queueMicrotask(() => setRunning(false));
     }
   }, [running, done]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -582,6 +585,8 @@ export function OpeningTrainer({ ctx }: { ctx: BlockCtx }) {
           </>
         )}
       </div>
+      <EndSession active={mode === "drill" && sitting.on} kind="opening" unit="lines drilled" stats={{ answered: sitting.runs, correct: sitting.clean }}
+        onEnd={() => { setRunning(false); setMsg(null); setPly(0); setSitting({ on: false, runs: 0, clean: 0 }); }} onAgain={startDrill} />
       {showAn && <div className={c.side}><SideAnalysis fen={mode === "explore" ? fen : dpos.fen()} orientation={op.side} /></div>}
     </div>
   );
@@ -619,6 +624,7 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
   const [err, setErr] = useState<string | null>(null);
   const [rating, setRating] = useState(1500);
   const failed = useRef(false);
+  const [tally, setTally] = useState({ n: 0, ok: 0 });
   useEffect(() => { try { const r = Number(localStorage.getItem(RKEY)); if (r) queueMicrotask(() => setRating(r)); } catch {} }, []);
 
   const next = async () => {
@@ -641,6 +647,7 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
       setRating(nr);
       try { localStorage.setItem(RKEY, String(nr)); } catch {}
     }
+    setTally((t) => ({ n: t.n + 1, ok: t.ok + (solved ? 1 : 0) }));
     void ctx.write("create", "puzzle_attempts", { source: pz.source, puzzle_id: pz.id, rating: pz.rating ?? null, solved, themes: (pz.themes ?? []).join(" ") });
   };
   const onMove = (from: string, to: string, promotion?: string) => {
@@ -689,6 +696,8 @@ export function Puzzles({ ctx }: { ctx: BlockCtx }) {
           {pz && <button className="pill" onClick={() => { setFen(pz.fen); setStep(0); setState("play"); setLives(3); }}>Retry</button>}
         </div>
       </div>
+      <EndSession active={!!pz} kind="puzzle" unit="puzzles" stats={{ answered: tally.n, correct: tally.ok, lines: [`Puzzle rating now ${rating}`] }}
+        onEnd={() => { setPz(null); setFen(null); setStep(0); setState("play"); setTally({ n: 0, ok: 0 }); }} onAgain={() => void next()} />
     </div>
   );
 }

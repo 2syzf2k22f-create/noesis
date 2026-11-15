@@ -2,13 +2,17 @@
 // geography, puzzles, openings), builds review queues, records reviews (with side effects back into the
 // source tables), sessions, and status counts. Everything shown in the UI is computed here.
 import COUNTRIES from "../data/countries.json";
+import { BUILTIN } from "../data/srBuiltin";
 import { nowIso, type Row, type Store } from "./store";
 import { autoRating, dayEnd, DEFAULT_SR, schedule, studyDay, type Card, type SrSettings } from "./sr";
 
 type Country = { n: string; c: string; r: string; s: string; k: string; a: number };
 const ALL = COUNTRIES as Country[];
-export const AREA_OF: Record<string, string> = { flashcard: "school", mistake: "school", question: "school", spec: "school", geo: "mind", puzzle: "mind", opening: "mind", vocab: "languages" };
+export const AREA_OF: Record<string, string> = { flashcard: "school", mistake: "school", question: "school", spec: "school", geo: "mind", puzzle: "mind", opening: "mind", palace: "mind", poker: "mind", coding: "mind", vocab: "languages" };
 const LANGS = ["Mandarin", "Spanish", "French", "English"];
+const MIND_DECKS = ["Coding", "Poker", "Memory", "Chess"];
+/** Speech-synthesis language for each language deck (listening cards). */
+export const LANG_CODE: Record<string, string> = { Mandarin: "zh-CN", Spanish: "es-ES", French: "fr-FR", English: "en-GB" };
 export const GEO_MODES = ["flag", "capital", "country-of-capital"] as const;
 
 export async function srSettings(store: Store): Promise<SrSettings> {
@@ -38,11 +42,23 @@ export async function syncItems(store: Store, only?: string[]) {
     // migrate the old scheduling so nothing is reset: interval -> stability, ease -> difficulty
     const reps = Number(f.reps ?? 0);
     const seed = reps > 0 ? { state: "review", stability: Math.max(0.5, Number(f.interval_days ?? 1)), difficulty: Math.min(10, Math.max(1, 11 - (Number(f.ease ?? 2.5) - 1.3) * 5)), due_at: f.due_at ?? nowIso(), last_reviewed_at: f.updated_at ?? f.created_at, reps, lapses: Number(f.lapses ?? 0) } : f.due_at ? { due_at: f.due_at } : {};
-    ensure({ area: LANGS.includes(String(f.deck)) ? "languages" : "school", kind: "flashcard", source_table: "flashcards", source_id: f.id, deck: f.deck ?? null, topic: f.topic ?? null, spec_code: f.spec_code ?? null, payload: { front: f.front, back: f.back, deck: f.deck, topic: f.topic }, seed });
+    const lang = LANGS.includes(String(f.deck));
+    ensure({ area: lang ? "languages" : MIND_DECKS.includes(String(f.deck)) ? "mind" : "school", kind: "flashcard", source_table: "flashcards", source_id: f.id, deck: f.deck ?? null, topic: f.topic ?? null, spec_code: f.spec_code ?? null, payload: { front: f.front, back: f.back, deck: f.deck, topic: f.topic }, seed });
+    // vocab: recognition (the card as written) first; recall (meaning -> word) and listening (hear it -> meaning)
+    // are added once recognition has graduated, so production isn't asked before the word is known
+    const rec = have.get(key({ kind: "flashcard", source_table: "flashcards", source_id: f.id, direction: "" }));
+    if (lang && rec?.state === "review") {
+      ensure({ area: "languages", kind: "flashcard", source_table: "flashcards", source_id: f.id, direction: "recall", deck: f.deck, topic: f.topic ?? null, payload: { front: `${f.deck}: say/write the word for\n\n**${f.back}**`, back: f.front, deck: f.deck, dir: "recall" } });
+      ensure({ area: "languages", kind: "flashcard", source_table: "flashcards", source_id: f.id, direction: "listening", deck: f.deck, topic: f.topic ?? null, payload: { front: `${f.deck}: listen 🔊 and give the meaning`, back: `${f.front} = ${f.back}`, listen: f.front, lang: LANG_CODE[String(f.deck)] ?? "en-GB", deck: f.deck, dir: "listening" } });
+    }
   }
   if (want("mistake")) for (const m of await store.list("mistakes", { limit: 5000 })) {
     if (m.resolved) continue;
-    ensure({ area: "school", kind: "mistake", source_table: "mistakes", source_id: m.id, deck: m.subject ?? null, topic: m.topic ?? null, spec_code: m.spec_code ?? null, payload: { front: `${m.subject ?? ""}${m.topic ? ` · ${m.topic}` : ""}: what went wrong here, and how do you avoid it?\n\n${m.what}`, back: `${m.fix ? `Fix: ${m.fix}` : "No fix written yet: say how you'd avoid it."}${m.why ? `\nWhy it happened: ${m.why}` : ""}` } });
+    const lang = LANGS.includes(String(m.subject));
+    ensure({ area: lang ? "languages" : "school", kind: "mistake", source_table: "mistakes", source_id: m.id, deck: m.subject ?? null, topic: m.topic ?? null, spec_code: m.spec_code ?? null,
+      payload: lang
+        ? { front: `${m.subject}: you said\n\n*${m.what}*\n\nHow do you say it correctly?`, back: `${m.fix ?? "(no correction stored)"}${m.why ? `\n\n${m.why}` : ""}` }
+        : { front: `${m.subject ?? ""}${m.topic ? ` · ${m.topic}` : ""}: what went wrong here, and how do you avoid it?\n\n${m.what}`, back: `${m.fix ? `Fix: ${m.fix}` : "No fix written yet: say how you'd avoid it."}${m.why ? `\nWhy it happened: ${m.why}` : ""}` } });
   }
   if (want("question")) {
     const attempts = await store.list("question_attempts", { order: { col: "created_at", asc: false }, limit: 5000 });
@@ -68,6 +84,14 @@ export async function syncItems(store: Store, only?: string[]) {
     ensure({ area: "mind", kind: "puzzle", source_table: "chess_puzzles", source_id: p.id, deck: "my games", payload: { fen: p.fen, solution: p.solution, note: p.note ?? null } });
   if (want("opening")) for (const d of await store.list("opening_drills", { limit: 2000 }))
     ensure({ area: "mind", kind: "opening", source_table: "openings", source_id: String(d.opening), deck: d.side ?? null, payload: { opening: d.opening, name: d.name, side: d.side } });
+  if (want("palace")) for (const l of await store.list("palaces", { limit: 3000 }).catch(() => [] as Row[])) {
+    if (!l.image) continue;
+    ensure({ area: "mind", kind: "palace", source_table: "palaces", source_id: l.id, deck: l.palace, payload: { front: `**${l.palace}**, stop ${l.position ?? "?"}: *${l.locus}*\n\nWhat's stored here?`, back: l.image } });
+  }
+  if (want("poker") || want("coding")) for (const c of BUILTIN) {
+    const kind = c.deck === "Poker" ? "poker" : "coding";
+    if (want(kind)) ensure({ area: "mind", kind, source_table: "builtin", source_id: c.id, deck: c.deck, topic: c.topic, payload: { front: c.front, back: c.back } });
+  }
   for (let i = 0; i < add.length; i += 200) for (const r of add.slice(i, i + 200)) await store.insert("sr_items", r).catch(() => null);
   return add.length;
 }
@@ -126,8 +150,14 @@ export async function srStatus(store: Store) {
 }
 
 /** A review queue: learning first, then due reviews (exam-boosted), then new up to today's cap. */
-export async function srQueue(store: Store, f: { area?: string; kind?: string; deck?: string; direction?: string; limit?: number; region?: string }) {
+export async function srQueue(store: Store, f: { area?: string; kind?: string; deck?: string; direction?: string; limit?: number; region?: string; weak?: boolean; ids?: string[] }) {
   await syncItems(store, f.kind ? [f.kind] : undefined);
+  if (f.weak || f.ids?.length) {
+    // a targeted session (e.g. "my weak countries"): these items whether due or not, weakest first
+    const pool = (await store.list("sr_items", { limit: 20000 })).filter((i) => !i.suspended && (!f.kind || i.kind === f.kind) && (!f.area || f.area === "all" || i.area === f.area) && (!f.direction || i.direction === f.direction) && (!f.region || f.region === "All" || i.payload?.region === f.region));
+    const pick = f.ids?.length ? pool.filter((i) => f.ids!.includes(i.id)) : pool.filter((i) => weakness(i) > 0).sort((a, b) => weakness(b) - weakness(a));
+    return { items: pick.slice(0, f.limit ?? 25).map((i) => ({ ...i, exam: null })), total_due: pick.length, new_available: 0, now: Date.now() };
+  }
   const st = await srSettings(store);
   const caps = await examCaps(store);
   const items = (await store.list("sr_items", { limit: 20000 })).filter((i) => !i.suspended && !st.areas_off.includes(i.area)
@@ -150,8 +180,46 @@ export async function srQueue(store: Store, f: { area?: string; kind?: string; d
     const out: Row[] = []; while ([...byKind.values()].some((v) => v.length)) for (const v of byKind.values()) if (v.length) out.push(v.shift()!);
     all = out;
   }
-  const limit = f.limit ?? st.session_length[f.kind ?? "default"] ?? st.session_length.default;
+  // per kind, then per area, then the default; 0 = unlimited (the whole queue)
+  const limit = f.limit ?? (f.kind ? st.session_length[f.kind] : undefined) ?? (f.area ? st.session_length[f.area] : undefined) ?? st.session_length.default;
   return { items: all.slice(0, limit || all.length).map((i) => ({ ...i, exam: capFor(caps, i) })), total_due: learning.length + review.length, new_available: fresh.length, now };
+}
+
+/** How weak an item is: lapses, recent misses, and short stability for something already seen. */
+export const weakness = (i: Row) => {
+  const h = Array.isArray(i.history) ? i.history.slice(-5) : [];
+  const recentMiss = h.filter((x: { rating: number }) => x.rating === 1).length;
+  return Number(i.lapses ?? 0) * 2 + recentMiss * 3 + (i.state === "relearning" ? 3 : 0) + (i.state === "review" && Number(i.stability ?? 0) < 3 ? 1 : 0);
+};
+
+/** Geography mastery per country (all three modes) + the weakest countries. */
+export async function srGeo(store: Store) {
+  const items = (await store.list("sr_items", { eq: { kind: "geo" }, limit: 2000 }));
+  const by = new Map<string, Row[]>(); for (const i of items) by.set(i.source_id, [...(by.get(i.source_id) ?? []), i]);
+  const level = (r?: Row) => !r || r.state === "new" ? 0 : r.state !== "review" ? 1 : Number(r.stability ?? 0) >= 21 ? 3 : 2; // new, learning, known, mastered
+  const countries = ALL.map((c) => {
+    const rows = by.get(c.k) ?? [];
+    const modes = Object.fromEntries(GEO_MODES.map((m) => [m, level(rows.find((r) => r.direction === m))]));
+    const seen = rows.filter((r) => r.state !== "new");
+    return { code: c.k, name: c.n, region: c.r, subregion: c.s, modes, level: seen.length ? Math.min(...seen.map(level)) : 0, weak: rows.reduce((a, r) => a + weakness(r), 0), lapses: rows.reduce((a, r) => a + Number(r.lapses ?? 0), 0), ids: rows.filter((r) => weakness(r) > 0).map((r) => r.id) };
+  });
+  const weakest = countries.filter((c) => c.weak > 0).sort((a, b) => b.weak - a.weak).slice(0, 25);
+  return { countries, weakest };
+}
+
+/** Interval distribution (review items) and the real retention curve: % recalled by days since last review. */
+export async function srCharts(store: Store, kind?: string) {
+  const [items, reviews] = await Promise.all([store.list("sr_items", { limit: 20000 }), store.list("sr_reviews", { order: { col: "reviewed_at", asc: false }, limit: 20000 })]);
+  const B = [[0, 1, "<1d"], [1, 3, "1-3d"], [3, 7, "3-7d"], [7, 14, "1-2w"], [14, 30, "2-4w"], [30, 90, "1-3m"], [90, 1e9, "3m+"]] as const;
+  const rev = items.filter((i) => i.state === "review" && !i.suspended && (!kind || i.kind === kind));
+  const intervals = B.map(([a, b, label]) => ({ label, n: rev.filter((i) => { const iv = i.due_at && i.last_reviewed_at ? (Date.parse(i.due_at) - Date.parse(i.last_reviewed_at)) / 864e5 : Number(i.stability ?? 0); return iv >= a && iv < b; }).length }));
+  const rs = reviews.filter((r) => r.item_before?.state === "review" && r.item_before?.last_reviewed_at && (!kind || r.kind === kind));
+  const retention = B.map(([a, b, label]) => {
+    const inB = rs.filter((r) => { const d = (Date.parse(r.reviewed_at) - Date.parse(r.item_before.last_reviewed_at)) / 864e5; return d >= a && d < b; });
+    return { label, n: inB.length, pct: inB.length ? Math.round((inB.filter((r) => r.rating > 1).length / inB.length) * 1000) / 10 : null };
+  });
+  const st = await srSettings(store);
+  return { intervals, retention, target: Math.round(st.retention * 100), reviews_counted: rs.length, items_in_review: rev.length };
 }
 
 /** Record one answer: schedule, review row, and side effects in the source tables. */
@@ -171,7 +239,7 @@ export async function srReview(store: Store, b: { item_id: string; rating?: numb
   const rv = await store.insert("sr_reviews", { item_id: it.id, area: it.area, kind: it.kind, rating, correct: b.correct ?? rating > 1, response_ms: b.response_ms ?? null, session_id: b.session_id ?? null, interval_before: ivBefore, interval_after: next.interval_days, mode: b.mode ?? null, answer: b.answer ?? null, item_before: { ...before, history: it.history, leech: it.leech } });
   if (b.session_id) { const s = await store.get("sr_sessions", b.session_id); if (s) await store.update("sr_sessions", s.id, { answered_count: Number(s.answered_count ?? 0) + 1, correct_count: Number(s.correct_count ?? 0) + (rating > 1 ? 1 : 0), updated_at: nowIso() }); }
   // side effects
-  if (it.kind === "flashcard") await store.update("flashcards", it.source_id, { due_at: next.due_at, interval_days: Math.round(next.interval_days * 10) / 10, reps: next.reps, lapses: next.lapses, last_grade: rating, updated_at: nowIso() }).catch(() => null);
+  if (it.kind === "flashcard" && !it.direction) await store.update("flashcards", it.source_id, { due_at: next.due_at, interval_days: Math.round(next.interval_days * 10) / 10, reps: next.reps, lapses: next.lapses, last_grade: rating, updated_at: nowIso() }).catch(() => null);
   if (it.kind === "flashcard") await store.insert("reviews", { card_id: it.source_id, deck: it.deck, grade: rating, interval_days: Math.round(next.interval_days * 10) / 10 }).catch(() => null);
   if (it.kind === "mistake") {
     // a mistake is resolved after it's answered right twice in a row
@@ -217,7 +285,6 @@ export async function srNudge(store: Store) {
   const st = await srSettings(store);
   const status = await srStatus(store);
   const due = Object.values(status.counts).reduce((a, c) => a + c.due, 0);
-  if (!due) return 0;
   const { dowOf, ukTime } = await import("./tests");
   const date = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
   let at = ukTime(date, st.nudge_time || "07:30");
@@ -226,12 +293,22 @@ export async function srNudge(store: Store) {
   for (const l of lessons) { const s = ukTime(date, l.start), e = ukTime(date, l.end); if (at >= s && at < e) at = e; }
   let n = 0;
   const id = `srnudge:${date}`;
-  if (!(await store.list("inbox_items", { eq: { external_id: id }, limit: 1 })).length && at.getTime() > Date.now() - 3600e3) {
+  if (due && !(await store.list("inbox_items", { eq: { external_id: id }, limit: 1 })).length && at.getTime() > Date.now() - 3600e3) {
     await store.insert("inbox_items", { external_id: id, source: "Apollo reminder", title: `${due} item${due === 1 ? "" : "s"} due for review`, body: Object.entries(status.counts).filter(([, c]) => c.due).map(([a, c]) => `${a}: ${c.due}`).join(" · ") + ". Start all due on the Review page.", link: "/s/review", deliver_at: at.toISOString(), read_at: null, deleted_at: null }).catch(() => null);
     n++;
   }
   if (due > 50 && !(await store.list("inbox_items", { eq: { external_id: `srpile:${date}` }, limit: 1 })).length) {
     await store.insert("inbox_items", { external_id: `srpile:${date}`, source: "Apollo reminder", title: `Reviews are piling up: ${due} due`, body: "A 15-minute mixed session clears the oldest first. You can end it any time.", link: "/s/review", deliver_at: new Date(Math.max(Date.now(), at.getTime())).toISOString(), read_at: null, deleted_at: null }).catch(() => null);
+    n++;
+  }
+  // brain tests: a nudge to retest anything not played for 14+ days (at most once a week)
+  const brain = await store.list("brain_test_results", { order: { col: "created_at", asc: false }, limit: 2000 }).catch(() => [] as Row[]);
+  const lastBy = new Map<string, Row>(); for (const r of brain) if (!lastBy.has(r.test)) lastBy.set(r.test, r);
+  const stale = [...lastBy.values()].filter((r) => Date.now() - Date.parse(r.created_at) > 14 * 864e5);
+  const wk = (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); })();
+  if (stale.length && !(await store.list("inbox_items", { eq: { external_id: `brainretest:${wk}` }, limit: 1 })).length) {
+    const best = (t: string) => { const v = brain.filter((r) => r.test === t).map((r) => Number(r.score)); return t === "reaction" ? Math.min(...v) : Math.max(...v); };
+    await store.insert("inbox_items", { external_id: `brainretest:${wk}`, source: "Apollo reminder", title: `Retest: ${stale.map((r) => r.test).join(", ")}`, body: stale.map((r) => `${r.test}: last ${Math.floor((Date.now() - Date.parse(r.created_at)) / 864e5)} days ago, best ${best(r.test)} ${r.unit ?? ""}`).join(" · ") + ". A retest every couple of weeks shows the trend.", link: "/s/mind/brain", deliver_at: new Date(Math.max(Date.now(), at.getTime())).toISOString(), read_at: null, deleted_at: null }).catch(() => null);
     n++;
   }
   return n;

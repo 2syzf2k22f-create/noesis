@@ -10,7 +10,7 @@ import u from "./ui.module.css";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type A = any;
 const AREAS: [string, string][] = [["school", "School"], ["mind", "Mind"], ["languages", "Languages"]];
-const KIND_NAME: Record<string, string> = { flashcard: "Flashcards", mistake: "Mistakes", question: "Questions", spec: "Spec points", geo: "Geography", puzzle: "Chess puzzles", opening: "Openings", vocab: "Vocabulary" };
+const KIND_NAME: Record<string, string> = { flashcard: "Flashcards", mistake: "Mistakes", question: "Questions", spec: "Spec points", geo: "Geography", puzzle: "Chess puzzles", opening: "Openings", vocab: "Vocabulary", palace: "Memory palaces", poker: "Poker", coding: "Coding" };
 
 let cache: Promise<A> | null = null, at = 0;
 export function useSrStatus() {
@@ -30,7 +30,7 @@ export function useSession() {
   const [f, setF] = useState<SrFilter | null>(null);
   useEffect(() => {
     const q = new URLSearchParams(location.search).get("review");
-    if (q) { const [area, kind, deck] = q.split(":"); queueMicrotask(() => setF({ area: area || "all", kind: kind || undefined, deck: deck || undefined, title: "Review" })); }
+    if (q) { const [area, kind, deck, weak] = q.split(":"); queueMicrotask(() => setF({ area: area || "all", kind: kind || undefined, deck: deck || undefined, weak: weak === "weak" || undefined, title: weak === "weak" ? "Weakest items" : "Review" })); }
     const h = (e: Event) => setF((e as CustomEvent).detail as SrFilter);
     window.addEventListener("noesis:start-session", h);
     return () => window.removeEventListener("noesis:start-session", h);
@@ -138,7 +138,15 @@ export function SrSettingsBlock() {
         {num("max_reviews_per_day", "Max reviews per day")}
         {num("leech_lapses", "Leech after N lapses")}
         {num("rollover_hour", "Day rolls over at (hour)")}
-        <label className="label" style={{ display: "grid", gap: 2 }}>Session length<input type="number" value={s.session_length?.default ?? 20} onChange={(e) => setS({ ...s, session_length: { ...s.session_length, default: Number(e.target.value) } })} style={f} /></label>
+        {[["default", "Session length"], ...AREAS.map(([k, n]) => [k, `${n} session`])].map(([k, label]) => (
+          <label key={k} className="label" style={{ display: "grid", gap: 2 }}>{label}
+            <select value={String(s.session_length?.[k] ?? (k === "default" ? 20 : ""))} onChange={(e) => { const sl = { ...s.session_length }; if (e.target.value === "") delete sl[k]; else sl[k] = Number(e.target.value); setS({ ...s, session_length: sl }); }} style={{ ...f, width: 120 }}>
+              {k !== "default" && <option value="">as default</option>}
+              {[10, 20, 30, 50, 100].map((n) => <option key={n} value={n}>{n} items</option>)}
+              <option value="0">Unlimited</option>
+            </select>
+          </label>
+        ))}
         <label className="label" style={{ display: "grid", gap: 2 }}>Learning steps (min)<input value={(s.learning_steps ?? []).join(", ")} onChange={(e) => setS({ ...s, learning_steps: e.target.value.split(/[,\s]+/).map(Number).filter((x) => x > 0) })} style={{ ...f, width: 110 }} /></label>
         <label className="label" style={{ display: "grid", gap: 2 }}>Morning nudge<input type="time" value={s.nudge_time ?? "07:30"} onChange={(e) => setS({ ...s, nudge_time: e.target.value })} style={{ ...f, width: 110 }} /></label>
       </div>
@@ -151,6 +159,79 @@ export function SrSettingsBlock() {
         {AREAS.map(([k, n]) => <label key={k} className="label" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={!s.areas_off?.includes(k)} onChange={(e) => setS({ ...s, areas_off: e.target.checked ? (s.areas_off ?? []).filter((x: string) => x !== k) : [...(s.areas_off ?? []), k] })} />SR for {n}</label>)}
       </div>
       <button className="pill" data-active="true" style={{ justifySelf: "start" }} onClick={async () => { await fetch("/api/sr", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "settings", settings: s }) }); setSaved(true); setTimeout(() => setSaved(false), 1500); }}>{saved ? "Saved" : "Save"}</button>
+    </div>
+  );
+}
+
+const LEVEL = [["New", "var(--surface-2)"], ["Learning", "#f5a524"], ["Known", "#30a46c"], ["Mastered", "#5b8def"]] as const;
+/** Geography: every country coloured by how well it's known (weakest mode decides), and the weakest list. */
+export function SrGeo() {
+  const { changes } = useApollo();
+  const [d, setD] = useState<A>(null);
+  const [tick, setTick] = useState(0);
+  const [el, start] = useSession();
+  const [mode, setMode] = useState<"all" | "flag" | "capital" | "country-of-capital">("all");
+  useEffect(() => { fetch("/api/sr?view=geo").then((r) => r.json()).then(setD).catch(() => {}); }, [changes, tick]);
+  useEffect(() => { const f = () => setTick((t) => t + 1); window.addEventListener("noesis:sr-reviewed", f); return () => window.removeEventListener("noesis:sr-reviewed", f); }, []);
+  if (!d) return <div className="label">Loading…</div>;
+  const lv = (c: A) => (mode === "all" ? c.level : c.modes[mode] ?? 0);
+  const regions = [...new Set<string>(d.countries.map((c: A) => c.region))].sort();
+  const counts = LEVEL.map((_, k) => d.countries.filter((c: A) => lv(c) === k).length);
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {el}
+      <div className={u.row} style={{ flexWrap: "wrap", gap: 6 }}>
+        {(["all", "flag", "capital", "country-of-capital"] as const).map((m) => <button key={m} className="pill" data-active={mode === m} onClick={() => setMode(m)}>{m === "all" ? "All modes" : m === "flag" ? "Flags" : m === "capital" ? "Capitals" : "Capital → country"}</button>)}
+        <span style={{ flex: 1 }} />
+        {LEVEL.map(([n, c], k) => <span key={n} className="label" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}><i style={{ width: 10, height: 10, borderRadius: 3, background: c, display: "inline-block" }} />{n} {counts[k]}</span>)}
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {regions.map((r) => (
+          <div key={r}>
+            <span className="label">{r} · {d.countries.filter((c: A) => c.region === r && lv(c) >= 2).length}/{d.countries.filter((c: A) => c.region === r).length} known</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 4 }}>
+              {d.countries.filter((c: A) => c.region === r).map((c: A) => <span key={c.code} title={`${c.name}: ${LEVEL[lv(c)][0]}${c.lapses ? ` · ${c.lapses} lapses` : ""}`} style={{ width: 16, height: 16, borderRadius: 3, background: LEVEL[lv(c)][1], outline: c.weak ? "1.5px solid var(--danger)" : undefined }} />)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        <div className={u.row}><b>Weakest countries</b><span style={{ flex: 1 }} />{d.weakest.length > 0 && <button className="pill" data-active="true" onClick={() => start({ area: "mind", kind: "geo", weak: true, limit: 25, title: "Weakest countries" })}>▶ Review these ({d.weakest.length})</button>}</div>
+        {d.weakest.length ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{d.weakest.map((c: A) => <span key={c.code} className="pill" style={{ height: 26, fontSize: 12 }}>{c.name}<small className="label" style={{ marginLeft: 6 }}>{c.lapses} lapse{c.lapses === 1 ? "" : "s"}</small></span>)}</div>
+        ) : <small className="label">No weak countries yet: anything you miss shows up here.</small>}
+      </div>
+    </div>
+  );
+}
+
+/** Interval distribution + the real retention curve (share remembered vs days since the last review). */
+export function SrCharts({ p }: { p: A }) {
+  const { changes } = useApollo();
+  const [d, setD] = useState<A>(null);
+  useEffect(() => { fetch(`/api/sr?view=charts${p?.kind ? `&kind=${p.kind}` : ""}`).then((r) => r.json()).then(setD).catch(() => {}); }, [changes, p?.kind]);
+  if (!d) return <div className="label">Loading…</div>;
+  const maxN = Math.max(1, ...d.intervals.map((x: A) => x.n));
+  const bar = (h: number, color: string, label: string, top: string) => (
+    <div style={{ display: "grid", gridTemplateRows: "auto 120px auto", justifyItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
+      <small style={{ fontSize: 11 }}>{top}</small>
+      <div style={{ alignSelf: "end", width: "70%", height: `${Math.max(2, h)}%`, background: color, borderRadius: "4px 4px 0 0" }} />
+      <small className="label" style={{ fontSize: 10 }}>{label}</small>
+    </div>
+  );
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 18 }}>
+      <div>
+        <span className="label">Intervals now ({d.items_in_review} items in review)</span>
+        <div style={{ display: "flex", gap: 4, marginTop: 6 }}>{d.intervals.map((x: A) => bar((x.n / maxN) * 100, "var(--accent)", x.label, String(x.n)))}</div>
+      </div>
+      <div>
+        <span className="label">Retention by gap since last review ({d.reviews_counted} reviews) · target {d.target}%</span>
+        <div style={{ position: "relative", display: "flex", gap: 4, marginTop: 6 }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: `calc(18px + 120px * ${(100 - d.target) / 100})`, borderTop: "1px dashed var(--text-dim)" }} />
+          {d.retention.map((x: A) => bar(x.pct ?? 0, x.pct == null ? "transparent" : x.pct >= d.target ? "#30a46c" : "#f5a524", x.label, x.pct == null ? "–" : `${x.pct}% (${x.n})`))}
+        </div>
+      </div>
     </div>
   );
 }

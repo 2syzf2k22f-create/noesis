@@ -4,6 +4,7 @@
 // Every attempt is stored, so scores by topic/subtopic are always available.
 
 import { MathPreview } from "./MathTools";
+import { EndSession } from "./EndSession";
 import { RichText } from "./RichText";
 import { useEffect, useMemo, useState } from "react";
 import { useApollo } from "@/shell/apollo";
@@ -110,7 +111,9 @@ export function QuestionBank({ ctx }: { ctx: BlockCtx }) {
           <b>{run.mode === "test" ? (reviewing ? `Test done: ${got}/${total} (${pct(got, total)}%)` : "Test") : "Practice"}</b>
           <span>Question {run.i + 1} of {run.qs.length}</span>
           {run.mode === "test" && !reviewing && <span className={s.timer} data-low={left < 120}>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</span>}
-          <button className="pill" onClick={() => { setRun(null); setTick((x) => x + 1); }}>Exit</button>
+          <EndSession active kind={run.mode === "test" ? "timed test" : "questions"} area="school" unit="marked"
+            stats={{ answered: Object.keys(run.marks).length, lines: [`${got}/${total} marks so far${run.mode === "test" && !run.done ? " · the test result is saved only when you finish and mark it" : ""}`] }}
+            onEnd={() => { setRun(null); setTick((x) => x + 1); }} />
         </div>
         <div className={s.q}>
           <div className={s.meta}>{cur.subject}{cur.spec_code ? ` · spec ${cur.spec_code}` : ""} · {cur.topic ?? "general"}{cur.subtopic ? ` › ${cur.subtopic}` : ""} · <b>[{cur.marks} mark{cur.marks > 1 ? "s" : ""}]</b> · <i data-src={cur.source}>{cur.source === "past paper" ? `${cur.board ?? ""} ${cur.paper ?? "past paper"} ${cur.year ?? ""} Q${cur.number ?? ""}` : cur.source}</i></div>

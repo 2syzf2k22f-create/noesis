@@ -1,6 +1,6 @@
 "use client";
 
-import { SrBadge, SrDue, SrQueue, SrSettingsBlock } from "./SrBlocks";
+import { SrBadge, SrDue, SrQueue, SrSettingsBlock, SrGeo, SrCharts } from "./SrBlocks";
 import { UpcomingTests } from "./UpcomingTests";
 import { RoutinesPage } from "./RoutinesPage";
 import { MathArea } from "./MathTools";
@@ -495,6 +495,8 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "srdue": return <SrDue />;
     case "srbadge": return <SrBadge p={p} />;
     case "srsettings": return <SrSettingsBlock />;
+    case "srgeo": return <SrGeo />;
+    case "srcharts": return <SrCharts p={p} />;
     case "usagejobs": return <UsageJobs ctx={ctx} />;
     case "filemanager": return <FilesBlock />;
     case "routinespage": return <RoutinesPage />;

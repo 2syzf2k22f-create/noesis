@@ -2,6 +2,7 @@
 // Practice poker table (play chips only): you vs 1-5 human-like bots.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EndSession } from "@/ui/EndSession";
 import { useApollo } from "@/shell/apollo";
 import { usePersist } from "@/ui/usePersist";
 import type { BlockCtx } from "@/ui/Blocks";
@@ -24,6 +25,7 @@ export function PokerTable({ ctx }: { ctx: BlockCtx }) {
   const handStart = useRef(0);
   const flags = useRef({ vpip: false, pfr: false });
   const savedHand = useRef(0);
+  const [sit, setSit] = useState({ hands: 0, won: 0, net: 0 });
 
   const begin = () => {
     const ps = PERSONAS.slice(0, cfg.opponents);
@@ -59,6 +61,7 @@ export function PokerTable({ ctx }: { ctx: BlockCtx }) {
     savedHand.current = s.handNo;
     const me = s.seats[0];
     const net = me.chips - handStart.current;
+    queueMicrotask(() => setSit((x) => ({ hands: x.hands + 1, won: x.won + (s.result!.winners.some((w) => w.seat === 0) ? 1 : 0), net: x.net + net })));
     void ctx.write("create", "poker_practice", {
       hand_no: s.handNo, cards: me.hole.join(" "), board: s.board.join(" "), net, net_bb: Math.round((net / s.bb) * 10) / 10,
       won: s.result.winners.some((w) => w.seat === 0), showdown: s.result.showdown && !me.folded,
@@ -149,6 +152,8 @@ export function PokerTable({ ctx }: { ctx: BlockCtx }) {
         ) : <div className="label">Waiting for {s.seats[s.toAct]?.name}…</div>}
         <ol className={k.log}>{s.log.slice(-14).map((l, i) => <li key={i}>{l}</li>)}</ol>
       </div>
+      <EndSession active={!!s} kind="poker" unit="hands" stats={{ answered: sit.hands, correct: sit.won, lines: [`Net ${sit.net >= 0 ? "+" : ""}${sit.net} chips (${Math.round((sit.net / s.bb) * 10) / 10} bb)`] }}
+        onEnd={() => { setS(null); setSit({ hands: 0, won: 0, net: 0 }); }} />
     </div>
   );
 }

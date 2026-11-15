@@ -3,6 +3,7 @@
 // plus the remaining brain tests (chimp, verbal, visual) and card memory.
 
 import Link from "next/link";
+import { EndSession } from "./EndSession";
 import { useEffect, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import type { BlockCtx } from "./Blocks";
@@ -312,8 +313,10 @@ export function CardMemory({ ctx }: { ctx: BlockCtx }) {
   const [picks, setPicks] = useState<string[]>([]);
   const [result, setResult] = useState("");
   const [studySecs, setStudySecs] = useState(0);
+  const [sit, setSit] = useState({ on: false, rounds: 0, perfect: 0, lines: [] as string[] });
   const deck = DECK;
-  const startDeck = () => { setCards(dealCards(n)); setI(0); setPicks([]); setT0(clock()); setPhase("study"); };
+  const startDeck = () => { setCards(dealCards(n)); setI(0); setPicks([]); setT0(clock()); setPhase("study"); setSit((x) => ({ ...x, on: true })); };
+  const endBar = <EndSession active={sit.on} kind="memory" unit="rounds" stats={{ answered: sit.rounds, correct: sit.perfect, lines: sit.lines.slice(-5) }} onEnd={() => { setPhase("idle"); setSit({ on: false, rounds: 0, perfect: 0, lines: [] }); }} onAgain={() => startDeck()} />;
   if (phase === "idle" || phase === "done")
     return (
       <div className={u.game}>
@@ -325,6 +328,7 @@ export function CardMemory({ ctx }: { ctx: BlockCtx }) {
             <button className="pill" data-active="true" onClick={() => startDeck()}>Start</button>
           </div>
         </div>
+        {endBar}
       </div>
     );
   if (phase === "study")
@@ -338,6 +342,7 @@ export function CardMemory({ ctx }: { ctx: BlockCtx }) {
             {i < cards.length - 1 ? <button className="pill" onClick={() => setI(i + 1)}>›</button> : <button className="pill" data-active="true" onClick={() => { setStudySecs(Math.round((clock() - t0) / 1000)); setPhase("recall"); }}>Recall</button>}
           </div>
         </div>
+        {endBar}
       </div>
     );
   return (
@@ -351,11 +356,13 @@ export function CardMemory({ ctx }: { ctx: BlockCtx }) {
             const correct = np.findIndex((x, k) => x !== cards[k]);
             const score = correct === -1 ? cards.length : correct;
             setResult(`${score}/${cards.length} in order · studied for ${studySecs}s`);
+            setSit((x) => ({ ...x, rounds: x.rounds + 1, perfect: x.perfect + (score === cards.length ? 1 : 0), lines: [...x.lines, `${score}/${cards.length} in ${studySecs}s`] }));
             void ctx.write("create", "memory_sessions", { kind: "cards", score, notes: `${cards.length} cards, ${studySecs}s study` });
             setPhase("done");
           }
         }}>{c}</button>)}
       </div>
+      {endBar}
     </div>
   );
 }

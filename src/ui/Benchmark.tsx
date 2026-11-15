@@ -3,6 +3,7 @@
 // and an "about" section. Scores save to brain_test_results; all stats are computed in code.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { EndSession } from "./EndSession";
 import { useApollo } from "@/shell/apollo";
 import type { BlockCtx } from "./Blocks";
 import { Bars } from "./Blocks";
@@ -371,12 +372,14 @@ export function Benchmark({ ctx, p }: { ctx: BlockCtx; p: Record<string, unknown
   const [test, setTest] = useState<TestId | null>((p.test as TestId) ?? null);
   const [rows, setRows] = useState<(Res & { test: string })[]>([]);
   const [tick, setTick] = useState(0);
+  const [played, setPlayed] = useState<string[]>([]);
+  const [run, setRun] = useState(0);
   useEffect(() => {
     fetch("/api/data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ binds: [{ table: "brain_test_results", limit: 500, order: { col: "created_at", asc: false } }] }) })
       .then((r) => (r.ok ? r.json() : [])).then((j) => setRows(j?.[0]?.rows ?? [])).catch(() => {});
   }, [changes, tick]);
   const m = TESTS.find((t) => t.id === test);
-  const save = (id: TestId, unit: string) => (score: number) => { void ctx.write("create", "brain_test_results", { test: id, score, unit }).then(() => setTick((t) => t + 1)); };
+  const save = (id: TestId, unit: string) => (score: number) => { setPlayed((x) => [...x, `${TESTS.find((t) => t.id === id)?.name ?? id}: ${score} ${unit}`]); void ctx.write("create", "brain_test_results", { test: id, score, unit }).then(() => setTick((t) => t + 1)); };
   const bestOf = (t: Meta) => { const v = rows.filter((r) => r.test === t.id).map((r) => Number(r.score)); return v.length ? (t.better === "higher" ? Math.max(...v) : Math.min(...v)) : null; };
 
   if (!m)
@@ -396,7 +399,9 @@ export function Benchmark({ ctx, p }: { ctx: BlockCtx; p: Record<string, unknown
   return (
     <div className={b.page}>
       {!p.test && <button className={b.back} onClick={() => setTest(null)}>← All tests</button>}
-      <Comp key={m.id} m={m} save={save(m.id, m.unit)} />
+      <Comp key={`${m.id}:${run}`} m={m} save={save(m.id, m.unit)} />
+      <EndSession active={!!m && (!p.test || played.length > 0)} kind="brain" unit="tests played" stats={{ answered: played.length, lines: played.slice(-6) }}
+        onEnd={() => { setPlayed([]); setRun((r) => r + 1); if (!p.test) setTest(null); }} />
       <div className={b.below}>
         <section><h3>Statistics</h3><Stats m={m} rows={rows.filter((r) => r.test === m.id)} /></section>
         <section><h3>About the test</h3><p className={b.dim}>{m.about}</p></section>

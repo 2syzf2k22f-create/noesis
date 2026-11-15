@@ -43,7 +43,7 @@ export type UiAction =
   | { type: "set_theme"; id: string }
   | { type: "reload" }
   | { type: "back" }
-  | { type: "start_session"; area?: string; kind?: string; deck?: string }
+  | { type: "start_session"; area?: string; kind?: string; deck?: string; weak?: boolean }
   | { type: "end_session" }
   | { type: "highlight"; target: string; label?: string; ms?: number }
   | { type: "chatbox"; x?: number; y?: number; w?: number; h?: number; near?: string; open?: boolean }
@@ -343,9 +343,9 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "start_sr_session",
-    description: "Open a review session for Reg on screen: area school|mind|languages|all, optional kind (flashcard, mistake, question, spec, geo, puzzle, opening) and deck (e.g. a subject or continent). E.g. 'quiz me on my weak countries' -> area mind, kind geo.",
-    input: { area: z.enum(["school", "mind", "languages", "all"]).optional(), kind: z.string().optional(), deck: z.string().optional() },
-    async run(ctx, a) { await pushUi(ctx, { type: "start_session", area: a.area ?? "all", kind: a.kind, deck: a.deck }); return { started: true }; },
+    description: "Open a review session for Reg on screen: area school|mind|languages|all, optional kind (flashcard, mistake, question, spec, geo, puzzle, opening, palace, poker, coding) and deck (e.g. a subject, language or continent). weak: true = his weakest items whether due or not. E.g. 'quiz me on my weak countries' -> area mind, kind geo, weak true.",
+    input: { area: z.enum(["school", "mind", "languages", "all"]).optional(), kind: z.string().optional(), deck: z.string().optional(), weak: z.boolean().optional() },
+    async run(ctx, a) { await pushUi(ctx, { type: "start_session", area: a.area ?? "all", kind: a.kind, deck: a.deck, weak: a.weak }); return { started: true }; },
   },
   {
     name: "end_sr_session",

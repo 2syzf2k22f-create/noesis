@@ -300,7 +300,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const [space, sub] = ui.to.split("--");
       router.push(ui.to === "home" ? "/" : SPACES.some((s) => s.id === space) ? (sub ? `/s/${space}/${sub}` : `/s/${space}`) : `/p/${ui.to}`);
     }
-    else if (ui.type === "start_session") { const q = [ui.area ?? "all", ui.kind ?? "", ui.deck ?? ""].join(":"); router.push(`/s/review?review=${encodeURIComponent(q)}`); }
+    else if (ui.type === "start_session") { const q = [ui.area ?? "all", ui.kind ?? "", ui.deck ?? "", ui.weak ? "weak" : ""].join(":"); router.push(`/s/review?review=${encodeURIComponent(q)}`); }
     else if (ui.type === "end_session") window.dispatchEvent(new Event("noesis:end-session"));
     else if (ui.type === "back") { try { sessionStorage.setItem("noesis.navBack", "1"); } catch {} router.back(); }
     else if (ui.type === "open_panel" && ui.kind === "widget" && ui.widget) panelStore.open("widget", ui.widget);
