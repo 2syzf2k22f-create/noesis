@@ -91,6 +91,7 @@ export async function syncReminders(store: Store, t: Row) {
     items.push({ when: ukTime(d, "17:00"), title: `${t.title} in ${n} day${n === 1 ? "" : "s"}`, body: `${t.subject}, ${new Date(at).toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" })}${t.room ? `, room ${t.room}` : ""}. Open the test page to revise.` });
   }
   if (rs.morning_of) items.push({ when: ukTime(date, rs.morning_of), title: `${t.title} today${t.start_time ? ` at ${t.start_time}` : ""}`, body: `Good luck. Quick look at your weakest topics on the test page before it starts.` });
+  items.push({ when: ukTime(date, "18:00"), title: `How did ${t.title} go?`, body: "Enter your marks per topic and what went wrong on the test page: it saves a School test and logs the mistakes." });
   if (rs.nudges) items.push({ when: ukTime(new Date(Date.parse(`${date}T12:00:00Z`) - 10 * 864e5).toISOString().slice(0, 10), "16:00"), title: `Start revising for ${t.title}`, body: "Press \"Revise for this test\" on the test page; Apollo goes through every topic with you." });
   let n = 0;
   for (const it of items) if (it.when.getTime() > Date.now()) {
