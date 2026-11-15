@@ -590,6 +590,71 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "list_saved_files",
+    description: "List or search Reg's Library › Files (names AND contents). Filters: folder/tag, starred, type words. Returns ids for read_saved_file / update_saved_file.",
+    input: { query: z.string().max(200).optional(), folder: z.string().max(100).optional(), starred: z.boolean().optional(), limit: z.number().int().min(1).max(200).optional() },
+    async run(ctx, a) {
+      const q = (a.query ?? "").toLowerCase();
+      const rows = (await ctx.store.list("files", { order: { col: "created_at", asc: false }, limit: 2000 })).filter((f) => !f.deleted_at
+        && (!q || String(f.name).toLowerCase().includes(q) || String(f.content ?? "").toLowerCase().includes(q))
+        && (!a.folder || f.folder === a.folder || (f.tags ?? []).includes(a.folder)) && (a.starred == null || !!f.starred === a.starred));
+      return { count: rows.length, files: rows.slice(0, a.limit ?? 50).map((f) => ({ id: f.id, name: f.name, mime: f.mime, size_bytes: f.size_bytes, folder: f.folder, tags: f.tags, starred: f.starred, source: f.source, created_at: f.created_at, has_text: f.content != null })) };
+    },
+  },
+  {
+    name: "read_saved_file",
+    description: "Read a file from Library › Files by id: text, Markdown, code, and uploaded PDFs (by page range; keep calling with from_page until 'more' is null).",
+    input: { id: z.string(), from_page: z.number().int().min(1).optional(), max_chars: z.number().int().min(2000).max(120000).optional() },
+    async run(ctx, a) {
+      const f = await ctx.store.get("files", a.id);
+      if (!f || f.deleted_at) return { error: "not found (or in the trash)" };
+      const max = a.max_chars ?? 60000;
+      if (f.storage_path && /pdf/i.test(`${f.mime} ${f.name}`)) {
+        const { readObject } = await import("./storage");
+        const { extractText, getDocumentProxy } = await import("unpdf");
+        const { totalPages, text } = await extractText(await getDocumentProxy(await readObject(f.storage_path)), { mergePages: false });
+        const pages = text as string[], from = a.from_page ?? 1, out: string[] = [];
+        let used = 0, last = from - 1;
+        for (let i = from - 1; i < pages.length; i++) { const t = `[page ${i + 1}]\n${pages[i]}`; if (used + t.length > max && out.length) break; out.push(t); used += t.length; last = i + 1; }
+        return { id: f.id, name: f.name, total_pages: totalPages, text: out.join("\n\n"), more: last < pages.length ? `call again with from_page=${last + 1}` : null };
+      }
+      if (f.content != null) return { id: f.id, name: f.name, text: String(f.content).slice(0, max), truncated: String(f.content).length > max };
+      return { id: f.id, name: f.name, note: "Binary file with no text (e.g. an image). Ask Reg to open it, or use pc tools." };
+    },
+  },
+  {
+    name: "update_saved_file",
+    description: "Rename, move to a folder, tag, star/unstar, or replace the text of a file in Library › Files (text edits keep the old version so they can be restored).",
+    input: { id: z.string(), name: z.string().max(200).optional(), folder: z.string().max(100).nullable().optional(), tags: z.array(z.string()).max(20).optional(), starred: z.boolean().optional(), content: z.string().max(2000000).optional() },
+    async run(ctx, a) {
+      const f = await ctx.store.get("files", a.id);
+      if (!f || f.deleted_at) return { error: "not found" };
+      const patch: Row = { id: f.id };
+      if (a.name) patch.name = a.name;
+      if (a.folder !== undefined) patch.folder = a.folder;
+      if (a.tags) patch.tags = a.tags;
+      if (a.starred != null) patch.starred = a.starred;
+      if (a.content != null) { patch.content = a.content; patch.size_bytes = a.content.length; patch.versions = [{ at: f.updated_at ?? f.created_at, content: f.content }, ...(f.versions ?? [])].slice(0, 10); }
+      const { id: _id, ...rest } = patch; void _id;
+      const after = await ctx.store.update("files", f.id, { ...rest, updated_at: nowIso() });
+      await log(ctx, "update_saved_file", "files", f.id, { ...f, content: undefined, versions: undefined }, { ...after, id: f.id, content: undefined, versions: undefined });
+      return { updated: f.id };
+    },
+  },
+  {
+    name: "delete_saved_file",
+    description: "Move a file in Library › Files to the Trash (restorable for 30 days; never permanent).",
+    input: { id: z.string() },
+    async run(ctx, a) {
+      const f = await ctx.store.get("files", a.id);
+      if (!f || f.deleted_at) return { error: "not found" };
+      await ctx.store.insert("trash", { table_name: "files", row_id: f.id, data: { ...f, content: f.content ? String(f.content).slice(0, 200) : null }, deleted_at: nowIso() });
+      const after = await ctx.store.update("files", f.id, { deleted_at: nowIso() });
+      await log(ctx, "delete_saved_file", "files", f.id, { ...f, content: undefined }, after);
+      return { deleted: f.id, restorable: true };
+    },
+  },
+  {
     name: "get_week_summary",
     description: "Compact precomputed stats for a week (scores per area plus the previous week) to talk about progress without reading raw logs.",
     input: { weeks_ago: z.number().int().min(0).max(52).optional() },

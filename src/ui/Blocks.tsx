@@ -11,6 +11,7 @@ import { QuestionBank } from "./QuestionBank";
 import { MicrosoftBlock } from "./MicrosoftBlock";
 import { PcRulesBlock, SpotifyBlock } from "./SettingsBlocks";
 import { UsageJobs } from "./UsageJobs";
+import { FilesBlock } from "./FilesBlock";
 import { BuildBlock } from "./BuildBlock";
 import { WorkoutPlanner } from "./WorkoutPlanner";
 import { SchoolAnalysisBlock, SchoolTestForm, SpecRag } from "./SchoolBlocks";
@@ -415,7 +416,7 @@ new ResizeObserver(()=>parent.postMessage({type:"noesis:height",h:document.docum
   return <iframe ref={ref} className={u.custom} sandbox="allow-scripts" srcDoc={doc} style={{ height: h }} onLoad={send} title={p.title ?? "Custom widget"} />;
 }
 
-function Markdown({ text }: { text: string }) {
+export function Markdown({ text }: { text: string }) {
   // tiny, safe subset: paragraphs, "- " lists, **bold**, *italic*, `code`. No raw HTML.
   const inline = (s: string) => s.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).map((t, i) =>
     t.startsWith("**") ? <b key={i}>{t.slice(2, -2)}</b> : t.startsWith("`") ? <code key={i}>{t.slice(1, -1)}</code> : t.startsWith("*") && t.length > 2 ? <em key={i}>{t.slice(1, -1)}</em> : t);
@@ -492,6 +493,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "spotify": return <SpotifyBlock />;
     case "pc_rules": return <PcRulesBlock />;
     case "usagejobs": return <UsageJobs ctx={ctx} />;
+    case "filemanager": return <FilesBlock />;
     case "build": return <BuildBlock />;
     case "gradepredictor": return <GradePredictor ctx={ctx} />;
     case "prs": return <PersonalRecords ctx={ctx} />;

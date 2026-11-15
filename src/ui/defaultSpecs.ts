@@ -663,9 +663,9 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "library--files": {
     title: "Files",
-    subtitle: "Things Apollo or Claude made for you (saved with save_file).",
+    subtitle: "Everything you, Apollo or Claude saved: upload, write, organise, search and preview. Deleted files stay in the Trash for 30 days.",
     blocks: [
-      { type: "list", title: "Files", span: 12, bind: { table: "files", limit: 60 }, props: { primary: "name", secondary: ["project", "source", "created_at"], link: "/api/files/{id}" } },
+      { type: "filemanager", title: "Files", span: 12 },
     ],
   },
   "library--reports": {
