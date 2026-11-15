@@ -13,6 +13,7 @@ import { Icon } from "./Icon";
 import { PanelLayer } from "./Panels";
 import { ChatDock, Highlighter } from "./ChatDock";
 import { SideWindows } from "./SideWindows";
+import { useUi } from "./uiStore";
 import { ShellExtras } from "./ShellExtras";
 import { HoverTip } from "./HoverTip";
 import { panelStore } from "./panelStore";
@@ -55,10 +56,12 @@ function Shell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [setPaletteOpen]);
 
+  // with side-by-side panes open, each pane has its own toolbar instead of the global one
+  const panes = useUi().windows.length > 0;
   return (
     <div className={s.shell} data-home={home}>
       {home && <Backdrop />}
-      <CornerMenus />
+      {(home || !panes) && <CornerMenus />}
       <div className={s.orbStage} data-docked={!home} ref={stageRef}>
         <ApolloOrb className={s.orb} state={orbState} theme={preset.orb} getLevel={getLevel} small={!home} />
         {!home && <Link href="/" className={s.orbHome} aria-label="Back to Apollo" />}
@@ -78,7 +81,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
       <div className={s.content}>{home ? children : <SideWindows>{children}</SideWindows>}</div>
       <ChatDock />
-      {!home && <ShellExtras />}
+      {!home && <ShellExtras paneMode={panes} />}
       <Highlighter />
       <HoverTip />
       <PanelLayer />

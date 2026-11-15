@@ -4,6 +4,8 @@
 // window navigates on its own (a link inside a window changes only that window).
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { PaneToolbar } from "./PaneToolbar";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { WinCtx } from "./winNav";
 import { getSpace, getSub } from "./spaces";
@@ -95,6 +97,8 @@ const MAIN = "__main";
 
 function Window({ id, w, idx, rank, v, onDrag, others, children }: { id: string; w: Win; idx: number; rank: number; v: View; onDrag: (d: Drag | null) => void; others: Win[]; children?: React.ReactNode }) {
   const isMain = id === MAIN;
+  const router = useRouter();
+  const pathname = usePathname();
   const [sp, sub] = w.page.split("--");
   const space = getSpace(sp), x = sub ? getSub(sp, sub) : null;
   const title = isMain ? "This page" : x ? `${space?.name} › ${x.name}` : space?.name ?? w.page;
@@ -179,8 +183,10 @@ function Window({ id, w, idx, rank, v, onDrag, others, children }: { id: string;
       style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, zIndex: 30 + rank }}
       onPointerDownCapture={() => uiStore.focusWindow(id)}>
       <header className={s.winHead} onPointerDown={startMove} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button,a")) toggleMax(); }}>
-        {hist.length > 0 && <button onClick={() => { const prev = hist[hist.length - 1]; setHist(hist.slice(0, -1)); uiStore.updateWindow(id, { page: prev }); }} title="Back" aria-label="Back">←</button>}
         <b>{isMain ? "⠿ This page" : title}</b>
+        {isMain
+          ? <PaneToolbar canBack onBack={() => router.back()} onOpen={(h) => router.push(h)} current={pathname} />
+          : <PaneToolbar canBack={hist.length > 0} onBack={() => { const prev = hist[hist.length - 1]; setHist(hist.slice(0, -1)); uiStore.updateWindow(id, { page: prev }); }} onOpen={(h) => { const to = toId(h); if (to) go(to); }} current={href(w.page)} />}
         <span>
           {isMain ? <button onClick={() => uiStore.updateWindow(MAIN, { snap: null, box: null })} title="Back to full width behind the windows">Unsnap</button> : <>
           <Link href={href(w.page)} onClick={() => uiStore.closeWindow(id)}>Make main</Link>
@@ -262,6 +268,8 @@ export function SideWindows({ children }: { children: React.ReactNode }) {
 
 /** A bar on the base page (while windows are open): drag it into a snap layout like any window. */
 function MainGrip({ v, onDrag, others }: { v: View; onDrag: (d: Drag | null) => void; others: Win[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const st = useRef<{ target: Frac | null; moved: boolean; sx: number; sy: number } | null>(null);
   return (
     <div className={s.mainGrip}
@@ -281,7 +289,8 @@ function MainGrip({ v, onDrag, others }: { v: View; onDrag: (d: Drag | null) => 
       onPointerUp={() => { const o = st.current; st.current = null; onDrag(null); if (o?.target) uiStore.updateWindow(MAIN, { snap: o.target }); }}
       onPointerCancel={() => { st.current = null; onDrag(null); }}
       title={others.length ? "Drag this page into a snap layout" : undefined}>
-      ⠿ Drag this page to snap it next to your windows
+      <span>⠿ Drag to snap this page</span>
+      <PaneToolbar canBack onBack={() => router.back()} onOpen={(h) => router.push(h)} current={pathname} />
     </div>
   );
 }

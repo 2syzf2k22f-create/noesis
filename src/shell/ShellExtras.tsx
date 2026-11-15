@@ -63,7 +63,7 @@ function RecentPages() {
   );
 }
 
-export function ShellExtras() {
+export function ShellExtras({ paneMode = false }: { paneMode?: boolean }) {
   const [lessons, setLessons] = useState<Row[]>([]);
   const [hm, setHm] = useState("");
   const [focus, setFocus] = useState<{ end: number; minutes: number; subject: string } | null>(null);
@@ -71,6 +71,8 @@ export function ShellExtras() {
   const [menu, setMenu] = useState(false);
   const [help, setHelp] = useState(false);
   const [perm, setPerm] = useState<string>("default");
+  // a pane toolbar's Focus button opens this menu
+  useEffect(() => { const f = () => setMenu(true); window.addEventListener("noesis:focus-menu", f); return () => window.removeEventListener("noesis:focus-menu", f); }, []);
 
   // timetable + reminders, refreshed every 5 minutes
   useEffect(() => {
@@ -146,12 +148,12 @@ export function ShellExtras() {
   return (
     <>
       <div className={s.extras}>
-        <BackButton />
-        <RecentPages />
-        {lessonText && <Link className={s.chip} href="/s/school/timetable" title="Today's timetable">{lessonText}</Link>}
-        <button className={s.chip} data-on={!!focus} onClick={() => setMenu(!menu)} title="Focus timer">
+        {!paneMode && <><BackButton />
+        <RecentPages /></>}
+        {!paneMode && lessonText && <Link className={s.chip} href="/s/school/timetable" title="Today's timetable">{lessonText}</Link>}
+        {(!paneMode || focus) && <button className={s.chip} data-on={!!focus} onClick={() => setMenu(!menu)} title="Focus timer">
           {focus ? `◷ ${focus.subject} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "◷ Focus"}
-        </button>
+        </button>}
         {menu && (
           <div className={s.extrasMenu}>
             {focus ? (
