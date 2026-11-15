@@ -1,0 +1,11 @@
+import { FILE_TOOLS } from "../relay/files.mts";
+const t = (n: string) => FILE_TOOLS.find((x) => x.name === n)!;
+const ctx = { store: { insert: async () => null } as never, jobId: null };
+const pdf = await t("web_read").run(ctx, { url: "http://127.0.0.1:8765/spec.pdf" }) as Record<string, unknown>;
+console.log("PDF:", JSON.stringify(pdf).slice(0, 300));
+const html = await t("web_read").run(ctx, { url: "http://127.0.0.1:8765/" }) as Record<string, unknown>;
+console.log("HTML:", JSON.stringify(html).slice(0, 300));
+const dl = await t("web_download").run(ctx, { url: "http://127.0.0.1:8765/spec.pdf", folder: "/tmp/claude-0/noesis-dl" }) as Record<string, unknown>;
+console.log("DL:", JSON.stringify(dl));
+if (dl.saved) console.log("READ:", JSON.stringify(await t("read_file").run(ctx, { path: String(dl.saved) })).slice(0, 200));
+console.log("EXE:", JSON.stringify(await t("web_download").run(ctx, { url: "http://127.0.0.1:8765/setup.exe" })));

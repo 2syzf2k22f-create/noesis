@@ -20,32 +20,43 @@ const win = process.platform === "win32";
 /** Never auto-allowed, even with a rule: always an Allow card. */
 const HARD: [RegExp, string][] = [
   [/\b(remove-item|rm|rmdir|rd|del|erase|clear-content|clear-item|clear-recyclebin|ri|rni)\b/i, "deletes files"],
-  [/\b(move-item|mv|mi|move|rename-item|ren|set-content|add-content|ac|out-file|copy-item|cp|cpi|copy|new-item|ni)\b|(^|[^>2])>{1,2}\s*[^&\s]/i, "creates, moves or overwrites files"],
   [/\b(format(-volume)?|diskpart|bcdedit|cipher|chkdsk|initialize-disk|clear-disk)\b/i, "changes disks or boot settings"],
   [/\b(stop-computer|restart-computer|shutdown|logoff)\b/i, "shuts down, restarts or logs off"],
   [/\b(stop-process|spps|taskkill|kill)\b/i, "kills programs (unsaved work could be lost)"],
   [/\b(reg(\.exe)?\s+(add|delete|import)|set-itemproperty|new-itemproperty|remove-itemproperty)\b|\b(hklm|hkcu):/i, "edits the registry"],
   [/\b(set-executionpolicy|set-mppreference|netsh|set-netfirewall\w*|new-netfirewallrule|disable-\w+|enable-\w+|set-service|stop-service|new-service|schtasks|sc(\.exe)?\s+(config|create|delete|stop))\b/i, "changes system or security settings"],
   [/\b(winget|choco|scoop|msiexec|uninstall|install-package|install-module|npm\s+(i|install|uninstall)|pip\s+(install|uninstall))\b/i, "installs or uninstalls software"],
-  [/\b(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget|start-bitstransfer|downloadstring|downloadfile)\b/i, "downloads from the internet"],
+  [/\b(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget|start-bitstransfer|downloadfile)\b[^|]*\.(exe|msi|msix|bat|cmd|ps1|vbs|js|jar|scr|dll|reg|hta)\b/i, "downloads a program or script"],
+  [/\bdownloadstring\b|\|\s*(iex|invoke-expression)\b/i, "downloads and runs code"],
+  [/\b(c:\\windows|c:\\program files|\\system32\\|\\appdata\\(roaming|local)\\microsoft\\(credentials|protect|vault))/i, "touches system folders"],
   [/\b(invoke-expression|iex|encodedcommand|frombase64string)\b|\s-e(nc?)?\s|add-type\s+(-typedefinition|-memberdefinition|-path)/i, "runs encoded or generated code"],
   [/(-verb\s+runas|\brunas\b)/i, "asks for admin rights"],
   [/\b(net\s+user|icacls|takeown|get-credential|convertfrom-securestring|cmdkey|vaultcmd)\b/i, "touches accounts, permissions or passwords"],
   [/\b(git\s+(push|reset|clean|checkout\s+--|rebase))\b/i, "changes a git repository"],
   [/\.env\b|\b(password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token)s?\b/i, "touches secrets"],
   [/\[(system\.)?(io\.(file|directory)|diagnostics\.process)\]::/i, "calls file or process APIs directly"],
-  [/;|&&|\|\|/, "chains several commands"],
 ];
+/** Split "a; b && c" into its parts (rough, ignores quoting) so each part is judged on its own. */
+const parts = (command: string) => command.split(/;|&&|\|\|/).map((x) => x.trim()).filter(Boolean);
 export function hardRisk(command: string): string | null {
-  for (const [re, why] of HARD) if (re.test(command)) return why;
+  for (const part of [command, ...parts(command)]) for (const [re, why] of HARD) if (re.test(part)) return why;
+  return null;
+}
+/** Asks first, but Reg can "Always allow" the whole type: writing files in his folders, downloading documents. */
+const SOFT: [RegExp, string, Category][] = [
+  [/\b(move-item|mv|mi|move|rename-item|ren|set-content|add-content|ac|out-file|copy-item|cp|cpi|copy|new-item|ni|expand-archive|compress-archive)\b|(^|[^>2])>{1,2}\s*[^&\s]/i, "creates, moves or overwrites files", "file_write"],
+  [/\b(invoke-webrequest|iwr|invoke-restmethod|irm|curl|wget|start-bitstransfer|downloadfile)\b/i, "downloads from the internet", "download"],
+];
+export function softRisk(command: string): { why: string; category: Category } | null {
+  for (const [re, why, category] of SOFT) if (re.test(command)) return { why, category };
   return null;
 }
 /** Back-compat name used by scripts. */
 export const riskOf = hardRisk;
 
 /* ======================= always-allow rules ======================= */
-export type Category = "launch_app" | "open_website" | "media_keys" | "read_only" | "open_path" | "window_control";
-export const CATEGORY_LABEL: Record<Category, string> = { launch_app: "launch app", open_website: "open website", media_keys: "media keys", read_only: "read-only query", open_path: "open file or folder", window_control: "window control" };
+export type Category = "launch_app" | "open_website" | "media_keys" | "read_only" | "open_path" | "window_control" | "file_write" | "download";
+export const CATEGORY_LABEL: Record<Category, string> = { launch_app: "launch app", open_website: "open website", media_keys: "media keys", read_only: "read-only query", open_path: "open file or folder", window_control: "window control", file_write: "create, copy or move files", download: "download files" };
 
 /** One category + one normalised target for a simple command, or null if it isn't a single allowable action. */
 export function classify(command: string): { category: Category; target: string } | null {
@@ -167,9 +178,9 @@ const sendKeysText = (t: string) => t.replace(/[+^%~(){}[\]]/g, (m) => `{${m}}`)
 type Ctx = { store: Store; jobId: string | null };
 
 /** Ask Reg: an approval card in the chat. After his click the relay runs it, posts the result, and Apollo carries on. */
-async function askFirst(ctx: Ctx, command: string, why: string, risk: string, hard: boolean) {
+async function askFirst(ctx: Ctx, command: string, why: string, risk: string, hard: boolean, softCategory?: Category) {
   const parent = ctx.jobId ? await ctx.store.get("jobs", ctx.jobId) : null;
-  const c = hard ? null : classify(command);
+  const c = hard ? null : softCategory ? { category: softCategory, target: command.toLowerCase() } : classify(command);
   const job = await ctx.store.insert("jobs", {
     kind: "pc", status: "proposed", ui_actions: [], output: { step: "Waiting for your OK" },
     input: { command, why, risk, hard, allowable: c && !isSensitive(c) ? { category: c.category, pattern: wideOf(c.category), label: `${CATEGORY_LABEL[c.category]}: ${ANY}` } : null, conversation_id: parent?.input?.conversation_id ?? null, from_job: ctx.jobId, model_pref: parent?.input?.model_pref ?? "auto" },
@@ -276,6 +287,16 @@ export const PC_TOOLS: Tool[] = [
     async run(ctx, a: { command: string; why: string; risky?: boolean }) {
       const hard = hardRisk(a.command);
       if (hard) return askFirst(ctx, a.command, a.why, hard, true);
+      const soft = softRisk(a.command);
+      if (soft) {
+        const c = { category: soft.category, target: a.command.toLowerCase() };
+        const rule = isSensitive(c) ? null : await findRule(ctx.store, c);
+        if (!rule) return askFirst(ctx, a.command, a.why, soft.why, false, soft.category);
+        const r = await runCommand(a.command, 10 * 60_000);
+        await countRuleUse(ctx.store, rule);
+        await logRun(ctx.store, "apollo", "pc_run", { command: a.command, ok: r.ok, rule_id: rule.id, rule: rule.label, out: r.out.slice(0, 2000) });
+        return { ...r, ran_under_rule: rule.label, note: `Ran automatically under your always-allow rule "${rule.label}": say so in your reply.` };
+      }
       if (a.risky) {
         const c = classify(a.command);
         const rule = c ? await findRule(ctx.store, c) : null;

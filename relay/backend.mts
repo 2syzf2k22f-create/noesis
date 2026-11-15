@@ -22,6 +22,8 @@ export type RunOpts = {
   mcpConfig?: string;
   /** Built-in Claude Code tools to allow (only research jobs use this: "WebSearch,WebFetch"). */
   builtins?: string[];
+  /** Claude Code's own WebSearch + WebFetch (read-only internet). */
+  web?: boolean;
   onText?: (soFar: string) => void;
   timeoutMs?: number;
   /** Build mode only: run inside the repo with file edits auto-accepted. */
@@ -78,18 +80,18 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
       // via a file: exact text, no quoting problems, and the same file content keeps prompt caching
       "--system-prompt-file", sysFile(o.system),
       // No built-in tools at all (no Bash, no files, no web). Only the site's MCP tools.
-      "--tools", [...new Set((o.builtins ?? []).map((b) => b.replace(/\(.*$/, "")))].join(","),
+      "--tools", [...new Set([...(o.builtins ?? []), ...(o.web ? ["WebSearch", "WebFetch"] : [])].map((b) => b.replace(/\(.*$/, "")))].join(","),
       "--strict-mcp-config",
     ];
     // with images, the question goes in as a structured message (text + pictures) on stdin
     const imgs = (o.images ?? []).map((d) => /^data:(image\/[a-z]+);base64,(.+)$/.exec(d)).filter((m): m is RegExpExecArray => !!m);
     if (imgs.length) args.push("--input-format", "stream-json");
-    const allowed = [...(o.mcpConfig ? ["mcp__noesis"] : []), ...(o.builtins ?? [])];
+    const allowed = [...(o.mcpConfig ? ["mcp__noesis"] : []), ...(o.builtins ?? []), ...(o.web ? ["WebSearch", "WebFetch"] : [])];
     if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig);
     if (allowed.length) args.push("--allowedTools", ...allowed);
     if (o.permissionMode) args.push("--permission-mode", o.permissionMode);
     // belt and braces: Apollo jobs never get Claude Code's own file, shell or agent tools
-    if (!o.builtins?.length) args.push("--disallowedTools", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit", "WebFetch", "WebSearch", "Task", "TodoWrite");
+    if (!o.builtins?.length) args.push("--disallowedTools", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit", ...(o.web ? [] : ["WebFetch", "WebSearch"]), "Task", "TodoWrite");
 
     return new Promise((resolve, reject) => {
       // never through a shell (see resolveClaude)

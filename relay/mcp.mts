@@ -7,6 +7,7 @@ import { TOOLS } from "../src/core/tools";
 import { setSemanticSearch } from "../src/core/notes";
 import { semanticSearch } from "./embed.mts";
 import { PC_TOOLS } from "./pc.mts";
+import { FILE_TOOLS } from "./files.mts";
 
 const store = getStore();
 if (!store) {
@@ -31,7 +32,7 @@ for (const t of TOOLS) {
 }
 
 // PC control (only here, on Reg's PC): risky commands become approval cards
-if (process.env.NOESIS_PC !== "0") for (const t of PC_TOOLS) {
+if (process.env.NOESIS_PC !== "0") for (const t of [...PC_TOOLS, ...FILE_TOOLS]) {
   server.registerTool(t.name, { description: t.description, inputSchema: t.input }, async (args: unknown) => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
