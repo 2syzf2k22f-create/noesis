@@ -455,6 +455,50 @@ $amt = if (${a.pages} -lt 0) { [System.Windows.Automation.ScrollAmount]::LargeIn
     },
   },
 
+  {
+    name: "pc_clipboard",
+    description: "Read what's on Reg's clipboard, or put text on it (so he can paste it anywhere).",
+    input: { set: z.string().max(200000).optional().describe("Text to copy; omit to read the clipboard") },
+    async run(_ctx, a: { set?: string }) {
+      if (!win) return { error: "only works on Windows" };
+      if (a.set != null) return runCommand(`Set-Clipboard -Value ${ps(a.set)}; "copied ${a.set.length} characters"`, 15_000);
+      const r = await runCommand(`Get-Clipboard -Raw`, 15_000);
+      return { text: r.out.slice(0, 50000) };
+    },
+  },
+  {
+    name: "pc_window",
+    description: "Minimise, maximise, restore or close a window by title/app name (close asks the app to close normally, so it can prompt to save).",
+    input: { window: z.string().min(1).max(200), action: z.enum(["minimize", "maximize", "restore", "close"]) },
+    async run(_ctx, a: { window: string; action: string }) {
+      if (!win) return { error: "only works on Windows" };
+      const st = { minimize: "Minimized", maximize: "Maximized", restore: "Normal" }[a.action as "minimize"];
+      return runCommand(`${UIA_HEAD}
+${FIND_WIN(a.window)}
+$wp = $AE::FromHandle($p.MainWindowHandle).GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+${a.action === "close" ? "$wp.Close()" : `$wp.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::${st})`}
+"${a.action}: " + $p.MainWindowTitle`, 20_000);
+    },
+  },
+  {
+    name: "pc_system",
+    description: "Reg's PC status: battery, CPU and memory use, disk space, network/Wi-Fi, uptime, top programs by CPU and memory, and the screen size.",
+    input: {},
+    async run() {
+      if (!win) return { error: "only works on Windows" };
+      return runCommand(`$b = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+$os = Get-CimInstance Win32_OperatingSystem
+$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+"Battery: " + $(if ($b) { "$($b.EstimatedChargeRemaining)% " + $(if ($b.BatteryStatus -eq 2) { "(charging)" } else { "(on battery)" }) } else { "none (desktop)" })
+"CPU: $cpu%   Memory: " + [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize * 100) + "% of " + [math]::Round($os.TotalVisibleMemorySize / 1MB, 1) + " GB"
+"Uptime: " + ((Get-Date) - $os.LastBootUpTime).ToString("d\\d\\ h\\h\\ m\\m")
+Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | ForEach-Object { "Disk $($_.Name): " + [math]::Round($_.Free / 1GB) + " GB free of " + [math]::Round(($_.Used + $_.Free) / 1GB) + " GB" }
+(netsh wlan show interfaces | Select-String '^\\s+(SSID|Signal|State)\\s') -join '  '
+"Top CPU: " + ((Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 | ForEach-Object { $_.ProcessName }) -join ', ')
+"Top memory: " + ((Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 5 | ForEach-Object { "$($_.ProcessName) " + [math]::Round($_.WorkingSet64 / 1MB) + "MB" }) -join ', ')`, 45_000);
+    },
+  },
+
   /* ---------- music (Spotify Web API; falls back to opening a search) ---------- */
   {
     name: "music_search",
