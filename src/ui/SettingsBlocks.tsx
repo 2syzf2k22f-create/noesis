@@ -69,16 +69,16 @@ export function PcRulesBlock() {
   );
 }
 
-type Rule = { id?: string; kind: string; label: string; weekday: number; start: string; end_time?: string | null; lead_minutes: number; link?: string | null; active: boolean; scheduled?: number; next?: string | null };
+type RRule = { id?: string; kind: string; label: string; weekday: number; start: string; end_time?: string | null; lead_minutes: number; link?: string | null; active: boolean; scheduled?: number; next?: string | null };
 const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 /** Recurring reminders (workouts, study hours): kept 28 days ahead automatically. */
 export function RecurringRemindersBlock() {
-  const [rules, setRules] = useState<Rule[] | null>(null);
-  const [edit, setEdit] = useState<Rule | null>(null);
+  const [rules, setRules] = useState<RRule[] | null>(null);
+  const [edit, setEdit] = useState<RRule | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const load = () => fetch("/api/reminders").then((r) => r.json()).then((j) => setRules(j.rules ?? [])).catch(() => setRules([]));
   useEffect(() => { void load(); }, []);
-  const save = async (r: Rule) => { const j = await post("/api/reminders", { action: "save", rule: r }); if (j?.error) setErr(j.error); else { setErr(null); setEdit(null); void load(); } };
+  const save = async (r: RRule) => { const j = await post("/api/reminders", { action: "save", rule: r }); if (j?.error) setErr(j.error); else { setErr(null); setEdit(null); void load(); } };
   const f: React.CSSProperties = { height: 30, padding: "0 6px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" };
   if (!rules) return <div className="label">Loading…</div>;
   return (
