@@ -1081,3 +1081,26 @@
 .clsGap {
   width: 16px;
 }
+
+/* chess.com-style report table: label | white | (icon) | black */
+.ccTable {
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) 64px 28px 64px;
+  align-items: center;
+  row-gap: 4px;
+  font-size: 13px;
+}
+.ccLine { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; justify-items: center; }
+.ccLine > .ccLabel { justify-self: start; }
+.ccLabel { color: var(--text-dim); font-size: 12.5px; }
+.ccPlayer { display: grid; justify-items: center; gap: 2px; }
+.ccPlayer i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 6px; font-style: normal; font-weight: 800; font-size: 12px; background: #f2f2f2; color: #111; }
+.ccPlayer i[data-side="b"] { background: #3a3a3a; color: #f2f2f2; }
+.ccPlayer[data-me="true"] i { outline: 2px solid var(--accent); }
+.ccPlayer small { font-size: 11px; color: var(--text-dim); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccSep { grid-column: 1 / -1; height: 1px; background: var(--border); margin: 4px 0; }
+.ccRow { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 3px 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-radius: 6px; text-align: left; }
+.ccRow:hover { background: var(--surface); }
+.ccRow b { text-align: center; font-variant-numeric: tabular-nums; font-weight: 800; }
+.ccRow i { justify-self: center; }
+.ccRating { min-width: 56px; padding: 3px 8px; border-radius: 6px; text-align: center; background: var(--surface); font-weight: 800; }

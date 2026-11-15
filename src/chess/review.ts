@@ -3,6 +3,7 @@
 // plus a coach line per move, per-phase accuracy and an estimated game rating.
 import { Chess } from "chess.js";
 import { OPENINGS } from "./openings";
+import { THEORY } from "./theory";
 import { winPct, fmtEval, type Analysis, type Line } from "./engine";
 
 export type Cls = "brilliant" | "great" | "best" | "excellent" | "good" | "book" | "inaccuracy" | "mistake" | "miss" | "blunder";
@@ -40,7 +41,10 @@ export type Review = {
   phases: Record<"w" | "b", Partial<Record<Phase, number>>>;
   rating: { w: number; b: number };
   opening: string | null;
+  /** Scoring version: older saved reviews are recomputed. */
+  v?: number;
 };
+export const REVIEW_VERSION = 2;
 
 const VAL: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const NAME: Record<string, string> = { p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" };
@@ -70,7 +74,13 @@ function swing(fen: string, pv: string[], color: "w" | "b", plies = 4) {
   return material(g.fen(), color) - m0;
 }
 const bookPrefixes = new Map<string, string>();
-for (const o of OPENINGS) { const m = o.moves.split(" "); m.forEach((_, i) => { const k = m.slice(0, i + 1).join(" "); if (!bookPrefixes.has(k)) bookPrefixes.set(k, o.name); }); }
+for (const o of OPENINGS) {
+  // main lines plus every branch of the theory tree count as book (chess.com uses a big opening database)
+  for (const line of [o.moves, ...(THEORY[o.id] ?? []).map((t) => t.line)]) {
+    const m = line.split(" ");
+    m.forEach((_, i) => { const k = m.slice(0, i + 1).join(" "); if (!bookPrefixes.has(k)) bookPrefixes.set(k, o.name); });
+  }
+}
 
 /** Final-position "analysis" when the game is over (no engine needed). */
 function terminal(fen: string): Line | null {
@@ -82,7 +92,8 @@ function terminal(fen: string): Line | null {
 
 /** Rough performance rating from accuracy (an estimate, not chess.com's formula). */
 export function estRating(acc: number) {
-  const pts: [number, number][] = [[0, 100], [40, 250], [50, 450], [60, 750], [70, 1100], [75, 1300], [80, 1550], [85, 1800], [90, 2100], [94, 2450], [97, 2750], [100, 3000]];
+  // calibrated against chess.com game reviews (e.g. ~62 accuracy ≈ 600-800 game rating)
+  const pts: [number, number][] = [[0, 100], [40, 200], [50, 350], [55, 450], [60, 600], [65, 800], [70, 1000], [75, 1200], [80, 1450], [85, 1700], [90, 2050], [94, 2400], [97, 2750], [100, 3000]];
   for (let i = 1; i < pts.length; i++) {
     if (acc <= pts[i][0]) { const [a0, r0] = pts[i - 1], [a1, r1] = pts[i]; return Math.round((r0 + ((acc - a0) / (a1 - a0)) * (r1 - r0)) / 50) * 50; }
   }
@@ -125,7 +136,8 @@ export async function reviewGame(sans: string[], analyse: (fen: string) => Promi
     if (bookName) opening = bookName; else leftBook = true;
     let cls: Cls;
     if (bookName) cls = "book";
-    else if (prev && BAD_CLS.includes(prev.cls) && prev.cls !== "inaccuracy" && loss >= 8 && wpBest > 60) cls = "miss";
+    // Miss (like chess.com): failing to punish the opponent's error, or missing a forced mate / big win
+    else if (loss >= 10 && ((prev && prev.loss >= 10) || (A[i].lines[0]?.mate != null && wpBest >= 95) || wpBest >= 80)) cls = "miss";
     else if (loss >= 20) cls = "blunder";
     else if (loss >= 10) cls = "mistake";
     else if (loss >= 5) cls = "inaccuracy";
@@ -165,10 +177,25 @@ export async function reviewGame(sans: string[], analyse: (fen: string) => Promi
     plies.push(ply);
   }
   const mean = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : 0);
-  const accuracy = { w: mean(acc.w), b: mean(acc.b) };
+  // Game accuracy like Lichess/chess.com: average of a volatility-weighted mean and a harmonic mean,
+  // so one blunder costs far more than a plain average would show.
+  const wpWhite = A.map((a) => winPct(a.lines[0]));
+  const win = Math.max(2, Math.min(8, Math.floor(moves.length / 10)));
+  const stdev = (xs: number[]) => { const m = xs.reduce((a, b) => a + b, 0) / xs.length; return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / xs.length); };
+  const weights = moves.map((_, i) => { const lo = Math.max(0, Math.min(i - Math.floor(win / 2), wpWhite.length - win)); return Math.max(0.5, Math.min(12, stdev(wpWhite.slice(lo, lo + win)))); });
+  const gameAcc = (c: "w" | "b") => {
+    const idx = moves.map((m, i) => (m.color === c ? i : -1)).filter((i) => i >= 0);
+    if (!idx.length) return 0;
+    const a = idx.map((i, k) => acc[c][k] ?? 0);
+    const w = idx.map((i) => weights[i]);
+    const weighted = a.reduce((s2, x, k) => s2 + x * w[k], 0) / w.reduce((s2, x) => s2 + x, 0);
+    const harmonic = a.length / a.reduce((s2, x) => s2 + 1 / Math.max(x, 1), 0);
+    return Math.round(((weighted + harmonic) / 2) * 10) / 10;
+  };
+  const accuracy = { w: gameAcc("w"), b: gameAcc("b") };
   const phases: Review["phases"] = { w: {}, b: {} };
   for (const c of ["w", "b"] as const) for (const ph of ["opening", "middlegame", "endgame"] as Phase[]) if (phaseAcc[c][ph].length) phases[c][ph] = mean(phaseAcc[c][ph]);
-  return { plies, startFen: start, accuracy, counts, phases, rating: { w: estRating(accuracy.w), b: estRating(accuracy.b) }, opening };
+  return { plies, startFen: start, accuracy, counts, phases, rating: { w: estRating(accuracy.w), b: estRating(accuracy.b) }, opening, v: REVIEW_VERSION };
 }
 
 /** A short coach comment for a move, built from the engine's numbers (no AI needed). */
@@ -212,6 +239,7 @@ function coach(p: Ply, x: { captured?: string; piece: string; to: string; bookNa
 
 /** Classify one move from its win-chance loss (same thresholds as the full review). */
 export function classifyLoss(loss: number, isBest: boolean): Cls {
+  // (used for "try your own move"; the full review also detects book, miss, great and brilliant)
   if (loss >= 20) return "blunder";
   if (loss >= 10) return "mistake";
   if (loss >= 5) return "inaccuracy";

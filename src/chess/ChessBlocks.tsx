@@ -12,7 +12,7 @@ import { Engine, fmtEval, winPct, type Analysis } from "./engine";
 import { OPENINGS, type Opening } from "./openings";
 import { THEORY } from "./theory";
 import { IDEAS } from "./ideas";
-import { BAD_CLS, CLS, CLS_ORDER, KEY_CLS, TC_EXPECT, classifyLoss, puzzlesFromReview, reviewGame, uciLineToSan, type Cls, type Phase, type Review } from "./review";
+import { REVIEW_VERSION, BAD_CLS, CLS, CLS_ORDER, KEY_CLS, TC_EXPECT, classifyLoss, puzzlesFromReview, reviewGame, uciLineToSan, type Cls, type Phase, type Review } from "./review";
 import c from "./chess.module.css";
 import u2 from "@/ui/ui.module.css";
 
@@ -717,7 +717,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
   const [game, setGame] = usePersist<Row | null>(`review.game${rk}`, null);
   const [view, setView] = useState<View>({ kind: "game" });
   const [tab, setTab] = useState<"report" | "moves">("report");
-  const [depth, setDepth] = useState<number>(p.depth ?? 13);
+  const [depth, setDepth] = useState<number>(p.depth ?? 16);
   const [filter, setFilter] = useState<"all" | "practice" | "chess.com">("all");
   const started = useRef(false);
 
@@ -725,7 +725,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
     if (!engine || !sans.length) return;
     setGame(g); setMe(side); setRev(null); setIdx(0); setTab("report"); setView({ kind: "game" });
     // already reviewed at this depth or deeper: reuse it
-    if (g?.review?.plies?.length === sans.length && (g.review.depth ?? 0) >= depth) { setRev(g.review as Review); return; }
+    if (g?.review?.plies?.length === sans.length && (g.review.depth ?? 0) >= depth && g.review.v === REVIEW_VERSION) { setRev(g.review as Review); return; }
     setProg([0, sans.length + 1]);
     const r = await reviewGame(sans, (fen) => engine.analyse(fen, { depth, multipv: 3 }), (d, t) => setProg([d, t]), startFen);
     setRev(r); setProg(null);
@@ -987,25 +987,35 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
 
         {tab === "report" ? (
           <div className={c.report}>
-            <div className={c.players}>
-              {(["w", "b"] as const).map((side) => (
-                <div key={side} data-me={side === me}>
-                  <small>{side === "w" ? "White" : "Black"}{side === me ? " · you" : ""}</small>
-                  <b className={c.accBig} data-side={side}>{rev.accuracy[side]}</b>
-                  <small>Accuracy</small>
-                  <em>{rev.rating[side]}</em>
-                  <small>Game rating (estimate)</small>
-                </div>
-              ))}
-            </div>
-            <div className={c.counts}>
+            {/* laid out like chess.com: players, accuracy, the classification table, then game rating */}
+            <div className={c.ccTable}>
+              <div className={c.ccLine}>
+                <span className={c.ccLabel}>Players</span>
+                {(["w", "b"] as const).map((side, k) => (
+                  <span key={side} className={c.ccPlayer} data-me={side === me} style={{ gridColumn: k ? 4 : 2 }}>
+                    <i data-side={side}>{side === me ? "You" : (game?.opponent ?? "?").slice(0, 2).toUpperCase()}</i>
+                    <small>{side === me ? "You" : game?.opponent ?? (side === "w" ? "White" : "Black")}{side !== me && game?.opponent_rating ? ` (${game.opponent_rating})` : ""}</small>
+                  </span>
+                ))}
+              </div>
+              <div className={c.ccLine}>
+                <span className={c.ccLabel}>Accuracy</span>
+                {(["w", "b"] as const).map((side, k) => <b key={side} className={c.accBig} data-side={side} style={{ gridColumn: k ? 4 : 2, fontSize: 17, minWidth: 0 }}>{rev.accuracy[side].toFixed(1)}</b>)}
+              </div>
+              <span className={c.ccSep} />
               {CLS_ORDER.map((k) => (
-                <button key={k} className={c.countRow} onClick={() => { const i = rev.plies.findIndex((x) => x.cls === k && x.color === me); if (i >= 0) goto(i + 1); }}>
-                  <b>{rev.counts.w[k] ?? 0}</b>
-                  <span><i className={c.cls} style={{ background: CLS[k].color }}>{CLS[k].sym}</i> {CLS[k].label}</span>
-                  <b>{rev.counts.b[k] ?? 0}</b>
+                <button key={k} className={c.ccRow} onClick={() => { const i = rev.plies.findIndex((x) => x.cls === k && x.color === me); if (i >= 0) goto(i + 1); }} title={`Jump to your first ${CLS[k].label.toLowerCase()}`}>
+                  <span className={c.ccLabel}>{CLS[k].label}</span>
+                  <b style={{ color: CLS[k].color }}>{rev.counts.w[k] ?? 0}</b>
+                  <i className={c.cls} style={{ background: CLS[k].color }}>{CLS[k].sym}</i>
+                  <b style={{ color: CLS[k].color }}>{rev.counts.b[k] ?? 0}</b>
                 </button>
               ))}
+              <span className={c.ccSep} />
+              <div className={c.ccLine}>
+                <span className={c.ccLabel}>Game Rating</span>
+                {(["w", "b"] as const).map((side, k) => <b key={side} className={c.ccRating} style={{ gridColumn: k ? 4 : 2 }}>{rev.rating[side]}</b>)}
+              </div>
             </div>
             <div className={c.phases}>
               {PHASES.map((ph) => (
@@ -1016,7 +1026,7 @@ export function GameReview({ ctx, p, initial }: { ctx?: BlockCtx; p: P; initial?
                 </div>
               ))}
             </div>
-            <small className="label">Game rating is a rough estimate from accuracy, not chess.com&apos;s formula. Classifications are computed from Stockfish ({rev.plies[0]?.before?.depth ? `depth ${rev.plies[0].before.depth}` : "engine"}).</small>
+            <small className="label">Accuracy uses the same method as Lichess (close to chess.com&apos;s); game rating is estimated from accuracy, since chess.com&apos;s exact formulas aren&apos;t public. Classifications are computed from Stockfish ({rev.plies[0]?.before?.depth ? `depth ${rev.plies[0].before.depth}` : "engine"}).</small>
           </div>
         ) : (
           <div className={c.moveTable}>
