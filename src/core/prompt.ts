@@ -1,6 +1,6 @@
 // Apollo's prompt. The system prompt is a fixed string (stable prefix for caching);
 // everything that changes goes in the user turn, last.
-import type { Store } from "./store";
+import type { Row, Store } from "./store";
 import { ESCALATE } from "./routing";
 import { MODES, type Mode } from "./modes";
 import { SPACES } from "../shell/spaces";
@@ -71,6 +71,9 @@ export async function buildUserPrompt(store: Store, conversationId: string, text
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }), week = new Date(Date.now() + 7 * 864e5).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
     const tests = (await store.list("upcoming_tests", { limit: 100 })).filter((t) => !t.deleted_at && t.status === "upcoming" && String(t.date) >= today && String(t.date) <= week);
     const due = (await store.list("inbox_items", { limit: 200 })).filter((i) => !i.read_at && !i.deleted_at && i.deliver_at && Date.parse(i.deliver_at) <= Date.now() && Date.now() - Date.parse(i.deliver_at) < 18 * 3600e3);
+    const { rulesStartingSoon } = await import("./recurring");
+    const soon = await rulesStartingSoon(store, 30).catch(() => [] as Row[]);
+    if (soon.length) parts.push(`<starting_soon>\n${soon.map((r) => `${r.kind === "workout" ? "Workout" : r.label}: ${r.kind === "workout" ? r.label : ""} at ${r.start}`).join("\n")}\nOpen your reply with a one-line reminder about this.\n</starting_soon>`);
     if (tests.length || due.length) parts.push(`<coming_up>\n${tests.map((t) => `test: ${t.title} (${t.subject}) ${String(t.date).slice(0, 10)} ${t.start_time ?? ""} room ${t.room ?? "?"} [id ${t.id}]`).join("\n")}${due.length ? `\nreminders now: ${due.map((i) => i.title).join("; ")}` : ""}\n</coming_up>`);
   } catch { /* optional context */ }
   const st = await store.get("settings", "main").catch(() => null);

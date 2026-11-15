@@ -302,6 +302,13 @@ async function schedule() {
     if (now.getDay() === 0 && now.getHours() >= 18 && data.last_opps_week !== thisWeek && data.auto_opportunities !== false) await queue("research", { topic: "opportunities" }, "last_opps_week");
     // daily syncs (on by default; Apollo can switch them off with settings.data.auto_chess_sync = false)
     const today = now.toISOString().slice(0, 10);
+    // recurring reminders: keep 28 days ahead (also done by the daily Vercel cron)
+    if (data.last_recurring !== today) {
+      const { ensureRecurring } = await import("../src/core/recurring");
+      const n = await ensureRecurring(store!).catch(() => 0);
+      if (n) log(`recurring reminders: +${n}`);
+      await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), last_recurring: today } });
+    }
     // usage previews are kept 90 days, then cleared (tokens and counts stay)
     if (data.last_usage_prune !== today) {
       const cutoff = new Date(Date.now() - 90 * 864e5).toISOString();

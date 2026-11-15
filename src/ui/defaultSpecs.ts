@@ -242,6 +242,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "microsoft", title: "Sync lessons from Outlook or Arbor", span: 12 },
       { type: "timetable", title: "This week", span: 12, props: { view: "week" }, bind: { table: "timetable", limit: 300 } },
       { type: "upcomingtests", title: "Tests coming up", span: 12, props: { compact: true, limit: 8 } },
+      { type: "recurringreminders", title: "Reminders before workouts and study hours", span: 12 },
       { type: "form", title: "Add a lesson", span: 6, props: { table: "timetable", submit: "Add lesson", fields: [
         { name: "day", type: "select", options: DAYS }, { name: "start", type: "time", required: true }, { name: "end", type: "time", required: true },
         { name: "subject", type: "select", options: [...SUBJ, "Free", "Tutor", "Other"] }, { name: "room" },
@@ -830,6 +831,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     blocks: [
       { type: "spotify", title: "Music", span: 6 },
       { type: "pc_rules", title: "PC permissions", span: 6 },
+      { type: "recurringreminders", title: "Recurring reminders (workouts, study hours)", span: 12 },
       { type: "microsoft", title: "Microsoft 365 & Arbor", span: 12 },
     ],
   },
