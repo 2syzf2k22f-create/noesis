@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   await Promise.all(SOURCES.map(async (src) => {
     const rows = await s.list(src.table, { order: { col: "created_at", asc: false }, limit: 1500 }).catch(() => []);
     for (const r of rows) {
-      if (r.deleted_at) continue;
+      if (r.deleted_at || (r.deliver_at && Date.parse(r.deliver_at) > Date.now())) continue;
       const hay = src.fields.map((f) => String(r[f] ?? "")).join(" ").toLowerCase();
       if (!words.every((w) => hay.includes(w))) continue;
       out.push({ table: src.table, id: r.id, title: String(r[src.title] ?? "").slice(0, 90), sub: (src.sub ?? []).map((f) => r[f]).filter(Boolean).map((v) => (typeof v === "string" && /^\d{4}-\d\d-\d\dT/.test(v) ? new Date(v).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : String(v))).join(" · "), href: src.href, link: r.link ?? r.url ?? undefined });

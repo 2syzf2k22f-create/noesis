@@ -12,7 +12,7 @@ export async function agenda(store: Store, days = 14): Promise<AgendaItem[]> {
   const items: AgendaItem[] = [
     ...hw.filter((h) => h.status !== "done").map((h) => ({ at: h.due_at, title: h.title, kind: "homework", sub: h.subject, href: "/s/school/homework", id: h.id, table: "homework" })),
     ...ev.map((e) => ({ at: e.at, title: e.title, kind: e.kind ?? "event", sub: e.subject ?? e.location, href: "/s/school/timetable", id: e.id, table: "events" })),
-    ...inbox.filter((i) => !i.read_at).map((i) => ({ at: i.due_at, title: i.title, kind: "inbox", sub: i.source, href: i.link ?? "/s/inbox" })),
+    ...inbox.filter((i) => !i.read_at && (!i.deliver_at || Date.parse(i.deliver_at) <= now)).map((i) => ({ at: i.due_at, title: i.title, kind: "inbox", sub: i.source, href: i.link ?? "/s/inbox" })),
     ...opps.map((o) => ({ at: o.deadline, title: o.title, kind: "deadline", sub: "opportunity", href: o.url })),
   ];
   return items.sort((a, b) => String(a.at).localeCompare(String(b.at)));

@@ -222,8 +222,18 @@ function InboxBell() {
     const load = () => data([{ table: "inbox_items", where: { read_at: null }, agg: { fn: "count" } }]).then((r) => setN(Number(r?.[0]?.value ?? r?.[0]?.rows?.length ?? 0))).catch(() => {});
     void load();
     const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
+    const vis = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", vis); window.addEventListener("focus", vis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", vis); window.removeEventListener("focus", vis); };
   }, [pathname]);
+  // a timed reminder just arrived: show a browser notification (if they're on)
+  useEffect(() => {
+    if (!n) return;
+    void data([{ table: "inbox_items", where: { read_at: null }, limit: 10 }]).then((r) => {
+      for (const it of (r?.[0]?.rows ?? []) as { id: string; title: string; body?: string; deliver_at?: string }[])
+        if (it.deliver_at && Date.now() - Date.parse(it.deliver_at) < 10 * 60e3) notify(it.title, String(it.body ?? "").slice(0, 140), `inbox:${it.id}`);
+    }).catch(() => {});
+  }, [n]);
   return (
     <Link className={s.chip} href="/s/inbox" title={n ? `${n} unread in your inbox` : "Inbox"} aria-label={n ? `Inbox, ${n} unread` : "Inbox"} style={{ position: "relative" }}>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 13l3-8h12l3 8v6H3z" /><path d="M3 13h5l1.5 3h5L16 13h5" /></svg>

@@ -50,8 +50,10 @@ export async function runBind(store: Store, b: Bind, opts: { owner?: boolean } =
     eq: b.where as Record<string, string | number | boolean | null> | undefined,
     isNull: SOFT.has(b.table) ? ["deleted_at"] : undefined,
     order: b.order ?? { col: dateField, asc: !!b.agg },
-    limit: b.agg ? 5000 : (b.limit ?? 50),
+    limit: b.agg ? 5000 : b.table === "inbox_items" ? 1000 : (b.limit ?? 50),
   });
+  // timed reminders stay invisible (lists, counts, badge, Apollo panel) until their deliver_at arrives
+  if (b.table === "inbox_items") { const now = new Date().toISOString(); rows = rows.filter((r) => !r.deliver_at || String(r.deliver_at) <= now); if (!b.agg) rows = rows.slice(0, b.limit ?? 50); }
   // Date-only values ("2026-11-12") compare by calendar day; timestamps by instant.
   const today = new Date().toISOString().slice(0, 10);
   if (b.due) {
