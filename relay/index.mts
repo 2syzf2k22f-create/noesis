@@ -17,8 +17,11 @@ import { syncChess, syncCodeforces } from "../src/core/sync";
 import { indexPending } from "./embed.mts";
 import { runStt } from "./stt.mts";
 import { runPcJob } from "./pc.mts";
+import { BG_KINDS, runBgJob, runSchedules, syncFolderWatches } from "./desk.mts";
+import { indexFiles } from "./files.mts";
+import { pushDue } from "../src/core/push";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const HEARTBEAT_MS = 15_000;
 const POLL_MS = 1_500;
 const SUMMARY_EVERY = 20; // messages
@@ -188,6 +191,7 @@ async function runJob(job: Row) {
     else if (job.kind === "research") await runResearch(store!, job);
     else if (job.kind === "stt") await runStt(store!, job);
     else if (job.kind === "pc") await runPcJob(store!, job);
+    else if (BG_KINDS.includes(job.kind)) await runBgJob(store!, job);
     else if (job.kind === "build") await runBuild(store!, backend, job, log);
     else if (job.kind === "ship") await runShip(store!, job, log);
     else if (job.kind === "rollback") await runRollback(store!, job, log);
@@ -199,10 +203,18 @@ async function runJob(job: Row) {
 }
 
 /** Two lanes: chats/reports/research/speech never wait behind a long build, and builds run one at a time. */
+let bgRunning = 0;
 async function tick() {
+  // background lane: screen watches and long PC commands, up to 4 at once, never blocking chats
+  if (bgRunning < 4) {
+    try {
+      const job = await store!.claimNextJob({ kinds: BG_KINDS });
+      if (job) { bgRunning++; void runJob(job).finally(() => { bgRunning--; }); }
+    } catch { /* next tick */ }
+  }
   if (!busy) {
     try {
-      const job = await store!.claimNextJob({ notKinds: BUILD_KINDS });
+      const job = await store!.claimNextJob({ notKinds: [...BUILD_KINDS, ...BG_KINDS] });
       if (job) { busy = true; void runJob(job).finally(() => { busy = false; }); }
     } catch (e) { log("claim failed:", (e as Error).message); }
   }
@@ -224,7 +236,7 @@ async function recoverStale() {
         if (j.kind === "build" && !j.input?.resumed && !BUILD_ON_HOLD) await store!.update("jobs", j.id, { status: "queued", started_at: null, input: { ...j.input, resumed: true }, output: { ...(j.output ?? {}), step: "Queued: restarting after the relay restarted" } });
         else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay stopped while this was running. Press Retry.", finished_at: nowIso() });
       }
-      else if (j.kind === "apollo" || j.kind === "stt") await store!.update("jobs", j.id, { status: "queued", started_at: null });
+      else if (j.kind === "apollo" || j.kind === "stt" || j.kind === "pc_watch") await store!.update("jobs", j.id, { status: "queued", started_at: null });
       else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay restarted.", finished_at: nowIso() });
     }
     if (stale.length) log(`recovered ${stale.length} interrupted job(s)`);
@@ -363,3 +375,16 @@ async function indexTick() {
 setTimeout(indexTick, 60_000);
 setInterval(indexTick, 2 * 60_000);
 setInterval(msTick, 15 * 60_000);
+
+// every minute: scheduled PC tasks, folder watches, and phone pushes for inbox items that just became due
+async function minuteTick() {
+  await runSchedules(store!).catch((e) => log("schedules failed:", (e as Error).message));
+  await syncFolderWatches(store!, log).catch(() => null);
+  await pushDue(store!).catch(() => null);
+}
+setTimeout(minuteTick, 20_000);
+setInterval(minuteTick, 60_000);
+// full-text index of his documents (for search_file_contents), a batch at a time while idle
+async function fileIndexTick() { if (busy || buildBusy) return; try { const n = await indexFiles(200); if (n) log(`file index: ${n} files`); } catch (e) { log("file index failed:", (e as Error).message.slice(0, 120)); } }
+setTimeout(fileIndexTick, 90_000);
+setInterval(fileIndexTick, 5 * 60_000);

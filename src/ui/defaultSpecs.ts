@@ -797,6 +797,10 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     blocks: [
       { type: "heatmap", title: "Reviews per day (spaced repetition)", span: 12, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "count", by: "day" } } },
       { type: "srcharts", title: "Spaced repetition: intervals and retention curve", span: 12 },
+      { type: "deepstats", title: "School tests: scores in depth", span: 12, props: { table: "school_tests", field: "pct", unit: "%", groupBy: "subject" } },
+      { type: "line", title: "School test % over time", span: 6, bind: { table: "school_tests", days: 365, agg: { fn: "avg", field: "pct", by: "week" } } },
+      { type: "bar", title: "Upcoming tests per subject", span: 6, bind: { table: "upcoming_tests", where: { status: "upcoming" }, agg: { fn: "count", by: { field: "subject" } } } },
+      { type: "deepstats", title: "Test revision sessions (minutes)", span: 12, props: { table: "test_sessions", field: "minutes", unit: "min" } },
       { type: "line", title: "Average rating per week (1 again … 4 easy)", span: 6, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "avg", field: "rating", by: "week" } } },
       { type: "donut", title: "Answers by rating, 30 days", span: 6, bind: { table: "sr_reviews", days: 30, dateField: "reviewed_at", agg: { fn: "count", by: { field: "rating" } } } },
       { type: "deepstats", title: "Revision minutes", span: 12, props: { table: "study_sessions", field: "minutes", unit: "min", groupBy: "subject" } },
@@ -859,6 +863,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "pc_rules", title: "PC permissions", span: 6 },
       { type: "recurringreminders", title: "Recurring reminders (workouts, study hours)", span: 12 },
       { type: "srsettings", title: "Spaced repetition", span: 12 },
+      { type: "desksettings", title: "Phone notifications, scheduled PC tasks and watched folders", span: 12 },
       { type: "microsoft", title: "Microsoft 365 & Arbor", span: 12 },
     ],
   },

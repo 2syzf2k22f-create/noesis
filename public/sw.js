@@ -1,5 +1,5 @@
 // NOESIS service worker: app shell offline. Revision data caching is added with the School space.
-const CACHE = "noesis-shell-v2";
+const CACHE = "noesis-shell-v3";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/"])).then(() => self.skipWaiting()));
@@ -37,7 +37,7 @@ self.addEventListener("fetch", (e) => {
   }
 
   // Flashcards and page data: network first, cached copy when offline (revision works offline).
-  if (url.pathname.startsWith("/api/review") || url.pathname === "/api/pages" || url.pathname.startsWith("/api/pages/")) {
+  if (url.pathname.startsWith("/api/review") || (url.pathname === "/api/sr" && req.method === "GET") || url.pathname === "/api/pages" || url.pathname.startsWith("/api/pages/")) {
     e.respondWith(
       fetch(req)
         .then((res) => {

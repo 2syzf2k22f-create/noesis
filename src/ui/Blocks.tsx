@@ -14,7 +14,7 @@ import { AskBlock, BrainGame, GeoQuiz, Review, ScoresBlock, SyncBlock } from "./
 import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
 import { QuestionBank } from "./QuestionBank";
 import { MicrosoftBlock } from "./MicrosoftBlock";
-import { PcRulesBlock, RecurringRemindersBlock, SpotifyBlock } from "./SettingsBlocks";
+import { PcRulesBlock, RecurringRemindersBlock, SpotifyBlock, DeskSettings } from "./SettingsBlocks";
 import { UsageJobs } from "./UsageJobs";
 import { FilesBlock } from "./FilesBlock";
 import { SpecBlock } from "./SpecBlock";
@@ -496,6 +496,7 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "srbadge": return <SrBadge p={p} />;
     case "srsettings": return <SrSettingsBlock />;
     case "srgeo": return <SrGeo />;
+    case "desksettings": return <DeskSettings />;
     case "srcharts": return <SrCharts p={p} />;
     case "usagejobs": return <UsageJobs ctx={ctx} />;
     case "filemanager": return <FilesBlock />;

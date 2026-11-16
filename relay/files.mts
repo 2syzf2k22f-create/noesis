@@ -164,10 +164,40 @@ export const FILE_TOOLS: Tool[] = [
       if (st.size > 150 * 1024 * 1024) return { error: "over 150 MB" };
       const x = await extract(new Uint8Array(readFileSync(p)), p);
       const max = a.max_chars ?? 60000;
-      if (x.pages) return { path: p, kind: "pdf", total_pages: x.pages.length, ...window(x.pages, a.from_page ?? 1, a.to_page, max) };
+      if (x.pages) {
+        const from = a.from_page ?? 1, to = a.to_page ?? from + 19;
+        // scanned PDF (no text layer on these pages): read it with Windows OCR instead
+        const textChars = x.pages.slice(from - 1, to).join("").replace(/\s/g, "").length;
+        if (textChars < 40 * Math.max(1, Math.min(to, x.pages.length) - from + 1) / 4 && process.platform === "win32") {
+          const { ocrFile } = await import("./desk.mts");
+          const o = await ocrFile(p, from, Math.min(to, x.pages.length));
+          if (o.ok && String(o.text ?? "").trim()) return { path: p, kind: "pdf (scanned, read by OCR)", total_pages: x.pages.length, text: String(o.text).slice(0, max), from, to: Math.min(to, x.pages.length), more: Math.min(to, x.pages.length) < x.pages.length ? `call again with from_page=${Math.min(to, x.pages.length) + 1}` : null };
+        }
+        return { path: p, kind: "pdf", total_pages: x.pages.length, ...window(x.pages, from, a.to_page, max) };
+      }
       if (x.image) return { __image: { data: x.image, mimeType: x.mime! }, path: p };
       if (x.text != null) return { path: p, kind: x.kind, chars: x.text.length, text: x.text.slice(0, max), truncated: x.text.length > max };
       return { error: "Binary file: I can't read it as text." };
+    },
+  },
+  {
+    name: "search_file_contents",
+    description: "Search INSIDE Reg's documents (Desktop, Documents, Downloads, OneDrive: PDFs, Word, PowerPoint, Excel, text, Markdown, code) by words, using the full-text index the relay keeps up to date. Returns the best files with matching snippets; then read_file the one you want. All words must appear; quote nothing.",
+    input: { query: z.string().min(2).max(200), limit: z.number().int().min(1).max(50).optional() },
+    async run(_ctx, a: { query: string; limit?: number }) {
+      const idx = loadIndex();
+      const words = a.query.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+      const hits: { path: string; score: number; modified: string; snippets: string[] }[] = [];
+      for (const [path, f] of Object.entries(idx.files)) {
+        const low = f.text.toLowerCase(), name = path.toLowerCase();
+        if (!words.every((w) => low.includes(w) || name.includes(w))) continue;
+        let score = 0; for (const w of words) { let i = -1, n = 0; while ((i = low.indexOf(w, i + 1)) >= 0 && n < 50) n++; score += n + (name.includes(w) ? 5 : 0); }
+        const snippets: string[] = [];
+        for (const w of words.slice(0, 3)) { const i = low.indexOf(w); if (i >= 0) snippets.push("…" + f.text.slice(Math.max(0, i - 80), i + 120).replace(/\s+/g, " ") + "…"); }
+        hits.push({ path, score, modified: new Date(f.mtime).toISOString(), snippets });
+      }
+      hits.sort((x, y) => y.score - x.score);
+      return { indexed_files: Object.keys(idx.files).length, index_updated: idx.updated, found: hits.length, results: hits.slice(0, a.limit ?? 15), note: Object.keys(idx.files).length ? undefined : "The index is still being built by the relay (a few hundred files every 5 minutes)." };
     },
   },
   {
@@ -228,3 +258,47 @@ export const FILE_TOOLS: Tool[] = [
     },
   },
 ];
+
+/* ---------- full-text index of his documents (built by the relay while idle) ---------- */
+const INDEX_FILE = join(HOME, ".noesis", "fileindex.json");
+const INDEXABLE = /\.(pdf|docx|pptx|xlsx|txt|md|csv|json|html?|py|js|ts|tsx|java|c|cpp|cs|rtf|tex)$/i;
+type Index = { updated: string | null; files: Record<string, { mtime: number; text: string }> };
+let cached: { at: number; idx: Index } | null = null;
+function loadIndex(): Index {
+  if (cached && Date.now() - cached.at < 60_000) return cached.idx;
+  let idx: Index = { updated: null, files: {} };
+  try { idx = JSON.parse(readFileSync(INDEX_FILE, "utf8")); } catch {}
+  cached = { at: Date.now(), idx };
+  return idx;
+}
+/** Add/refresh up to `batch` new or changed files; drop deleted ones. Returns how many were (re)indexed. */
+export async function indexFiles(batch = 200) {
+  const idx = loadIndex();
+  const seen = new Set<string>(); const todo: { path: string; mtime: number }[] = [];
+  const walk = (dir: string, depth: number) => {
+    if (depth > 7 || seen.size > 60_000) return;
+    let ents; try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) { if (!SKIP_DIR.test(e.name) && !e.name.startsWith(".")) walk(full, depth + 1); continue; }
+      if (!INDEXABLE.test(e.name) || isSecretPath(full) || e.name.startsWith("~$")) continue;
+      try { const st = statSync(full); if (st.size > 25 * 1024 * 1024) continue; seen.add(full); if (idx.files[full]?.mtime !== st.mtimeMs) todo.push({ path: full, mtime: st.mtimeMs }); } catch {}
+    }
+  };
+  for (const r of ROOTS()) if (existsSync(r) && !/pictures|music|videos/i.test(r)) walk(r, 0);
+  for (const k of Object.keys(idx.files)) if (!seen.has(k)) delete idx.files[k];
+  todo.sort((a, b) => b.mtime - a.mtime);
+  let n = 0;
+  for (const f of todo.slice(0, batch)) {
+    try {
+      const x = await extract(new Uint8Array(readFileSync(f.path)), f.path);
+      const text = (x.pages ? x.pages.join("\n") : x.text ?? "").slice(0, 150_000);
+      idx.files[f.path] = { mtime: f.mtime, text }; n++;
+    } catch { idx.files[f.path] = { mtime: f.mtime, text: "" }; }
+  }
+  idx.updated = new Date().toISOString();
+  mkdirSync(join(HOME, ".noesis"), { recursive: true });
+  writeFileSync(INDEX_FILE, JSON.stringify(idx));
+  cached = { at: Date.now(), idx };
+  return n;
+}

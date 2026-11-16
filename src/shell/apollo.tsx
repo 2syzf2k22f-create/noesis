@@ -276,6 +276,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!wake || orbState !== "idle") return;
     const w = wakeWord("apollo", (rest) => {
+      (window as unknown as { noesisDesktop?: { show: () => void } }).noesisDesktop?.show();
       if (rest) submitRef.current(rest, { spoken: true });
       else startListening();
     });

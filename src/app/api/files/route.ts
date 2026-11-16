@@ -44,6 +44,27 @@ export async function POST(req: Request) {
   const get = async (id: string) => { const f = await s.get("files", id); if (!f) throw new Error("not found"); return f; };
   try {
     switch (b.action) {
+      case "teach_status": { const src = (await s.list("sources", { limit: 2000 })).find((x) => x.url === `file:${b.id}` && !x.deleted_at); return Response.json({ on: !!src }); }
+      case "teach": { // toggle: this file's text becomes one of Apollo's knowledge sources (searched in every answer)
+        const f = await get(b.id);
+        const existing = (await s.list("sources", { limit: 2000 })).filter((x) => x.url === `file:${f.id}`);
+        for (const x of existing) { for (const c of await s.list("note_chunks", { eq: { source_id: x.id }, limit: 5000 })) await s.remove("note_chunks", c.id); await s.remove("sources", x.id); }
+        if (!b.on) return Response.json({ on: false });
+        let text = f.content != null ? String(f.content) : "";
+        if (!text && f.storage_path && /pdf/i.test(`${f.mime} ${f.name}`)) {
+          const { readObject } = await import("@/core/storage");
+          const { extractText, getDocumentProxy } = await import("unpdf");
+          const { text: pages } = await extractText(await getDocumentProxy(await readObject(f.storage_path)), { mergePages: false });
+          text = (pages as string[]).map((t, i) => `[page ${i + 1}]\n${t}`).join("\n\n");
+        }
+        if (text.trim().length < 80) return Response.json({ on: false, error: "This file has no readable text to learn from." }, { status: 400 });
+        const { chunk } = await import("@/core/notes");
+        const parts = chunk(text).slice(0, 800);
+        const src = await s.insert("sources", { title: f.name, kind: "file", url: `file:${f.id}`, subject: f.subject ?? null, topic: null });
+        for (const [i, t] of parts.entries()) await s.insert("note_chunks", { source_id: src.id, source_title: f.name, idx: i, text: t, subject: f.subject ?? null, topic: null });
+        await s.insert("action_log", { actor: "reg", tool: "add_knowledge", table_name: "sources", row_id: src.id, before: null, after: { title: f.name, file_id: f.id }, undone_at: null });
+        return Response.json({ on: true, sections: parts.length });
+      }
       case "create": {
         const name = String(b.name ?? "").trim().slice(0, 200) || "Untitled.md";
         const content = String(b.content ?? "");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { azureInfo, azureVoice, createSpeaker, englishVoices, pickVoice, setAzureVoice, setVoice } from "@/voice/voice";
+import { azureInfo, azureVoice, createSpeaker, englishVoices, KOKORO_VOICES, kokoroVoice, loadKokoro, pickVoice, setAzureVoice, setKokoroVoice, setVoice } from "@/voice/voice";
 import { useApollo } from "./apollo";
 import s from "./shell.module.css";
 
@@ -22,6 +22,9 @@ export function ApolloPanel() {
   const [voiceName, setVoiceName] = useState("");
   const [az, setAz] = useState<{ configured: boolean; voices: { id: string; name: string; note: string }[] } | null>(null);
   const [azV, setAzV] = useState("");
+  const [kv, setKv] = useState<string>("");
+  const [kMsg, setKMsg] = useState("");
+  useEffect(() => { queueMicrotask(() => setKv(kokoroVoice() ?? "")); }, []);
   useEffect(() => { void azureInfo().then((a) => { setAz(a); setAzV(azureVoice()); }); }, []);
   useEffect(() => {
     const load = () => { setVoices(englishVoices()); setVoiceName(pickVoice()?.name ?? ""); };
@@ -94,6 +97,17 @@ export function ApolloPanel() {
           </select>
           <button className={s.linkBtn} onClick={() => createSpeaker({ onStart: () => {}, onEnd: () => {}, onWord: () => {} }).feed("Hello Reg. This is how I sound.", true)}>Test</button>
         </div>}
+        <div className={s.kv}>
+          <select style={{ maxWidth: 230 }} value={kv} onChange={async (e) => {
+            const v = e.target.value; setKv(v); setKokoroVoice(v || null);
+            if (v) { setKMsg("Downloading the natural voice (about 90 MB, once)…"); try { await loadKokoro(); setKMsg("Ready."); } catch { setKMsg("Couldn't load it in this browser."); setKokoroVoice(null); setKv(""); } } else setKMsg("");
+          }}>
+            <option value="">Natural on-device voice: off</option>
+            {KOKORO_VOICES.map(([id, n]) => <option key={id} value={id}>Natural: {n}</option>)}
+          </select>
+          {kv && <button className={s.linkBtn} onClick={() => createSpeaker({ onStart: () => {}, onEnd: () => {}, onWord: () => {} }).feed("Hello Reg. This is how I sound.", true)}>Test</button>}
+        </div>
+        {kMsg && <p className={s.note}>{kMsg}</p>}
         <p className={s.note}>{az?.configured ? "Azure neural voices. Language practice uses a native Spanish, French or Mandarin voice. " : "Azure voices aren't connected yet, so these are your browser's voices. "}The most natural British male voices are in Microsoft Edge (Ryan or Thomas &ldquo;Online (Natural)&rdquo;). Chrome has &ldquo;Google UK English Male&rdquo;. Push to talk: hold Alt+P.</p>
       </section>
 

@@ -9,6 +9,7 @@ import { useApollo } from "@/shell/apollo";
 import { RichText } from "./RichText";
 import { CONF_COLOR } from "./SpecBlock";
 import u from "./ui.module.css";
+import { MockExamButton } from "./MockExam";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type A = any;
@@ -77,6 +78,7 @@ export function TestPage({ id }: { id: string }) {
             </button>
             <div className={u.row} style={{ flexWrap: "wrap", gap: 4 }}>
               <button className="pill" onClick={async () => setSession({ ...(await post({ action: "session_start", id, order_mode: "chapter" })), topic_id: null, mode: "chapter" })}>In chapter order</button>
+              <MockExamButton d={d} />
               <MockButton d={d} />
             </div>
           </>}
@@ -222,7 +224,7 @@ Start with the first topic now.`, { thread });
 
 function MockButton({ d }: { d: A }) {
   const { submit } = useApollo();
-  return <button className="pill" onClick={() => submit(`Make me a mock paper for "${d.title}" (${d.subject}): questions only from these topics, marks proportional to how much each topic covers, total about ${d.total_marks ?? 50} marks, in exam-board style with full mark schemes (LaTeX for maths). Topics: ${d.topics.map((t: A) => `${t.label} [${t.codes.join(", ")}]${t.scope_note ? ` scope: ${t.scope_note}` : ""}${t.excluded ? ` NOT: ${t.excluded}` : ""}`).join("; ")}. Save the questions to my question bank with spec_code and tags "mock:${d.id}", then tell me to open School › Questions and start a timed test from them (${d.duration_min ?? 50} minutes). When I've done it, mark it and save the result to past_papers.`, { mode: "questions" })}>📝 Practise this test (mock)</button>;
+  return <button className="pill" onClick={() => submit(`Make me a mock paper for "${d.title}" (${d.subject}): questions only from these topics, marks proportional to how much each topic covers, total about ${d.total_marks ?? 50} marks, in exam-board style with full mark schemes (LaTeX for maths). Topics: ${d.topics.map((t: A) => `${t.label} [${t.codes.join(", ")}]${t.scope_note ? ` scope: ${t.scope_note}` : ""}${t.excluded ? ` NOT: ${t.excluded}` : ""}`).join("; ")}. Save the questions to my question bank with spec_code and tags "mock:${d.id}", then tell me to open School › Questions and start a timed test from them (${d.duration_min ?? 50} minutes). When I've done it, mark it and save the result to past_papers.`, { mode: "questions" })}>📝 Generate a mock with Apollo</button>;
 }
 
 function PlanPanel({ d, onChanged }: { d: A; onChanged: () => void }) {

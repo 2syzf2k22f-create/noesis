@@ -44,12 +44,30 @@ const evShort = (e: A) => `${e.cards} cards · ${e.questions} Qs${e.attempt_pct 
 /* 1. weakest statements */
 export function WeakSpec({ p }: { p: A }) {
   const { submit } = useApollo();
-  const [d, reload] = useWeak(p?.limit ?? 8);
+  const [testId, setTestId] = useState("");
+  const [tests, setTests] = useState<A[]>([]);
+  useEffect(() => { fetch("/api/tests").then((r) => (r.ok ? r.json() : null)).then((j) => setTests(j?.upcoming ?? [])).catch(() => {}); }, []);
+  const test = tests.find((t) => t.id === testId);
+  // with a test picked, look further down the list so its statements still fill the box
+  const [d, reload] = useWeak(test ? 400 : p?.limit ?? 8);
   if (!d) return null;
   if (!d.weak.length) return <Empty>No spec statements yet. Import them on School › Spec.</Empty>;
+  const onTest = (r: A) => !test || (r.subject === test.subject && (test.codes as string[]).some((c) => r.code === c || String(r.code).startsWith(c)));
+  const rows = d.weak.filter(onTest).slice(0, p?.limit ?? 8);
   return (
+    <div style={{ display: "grid", gap: 8 }}>
+    {tests.length > 0 && (
+      <div className={u.row} style={{ gap: 6, flexWrap: "wrap" }}>
+        <select value={testId} onChange={(e) => setTestId(e.target.value)} style={field}>
+          <option value="">All subjects</option>
+          {tests.map((t) => <option key={t.id} value={t.id}>{t.title} · {t.days === 0 ? "today" : `in ${t.days} day${t.days === 1 ? "" : "s"}`}</option>)}
+        </select>
+        {test && <small className="label">{rows.length} weak statement{rows.length === 1 ? "" : "s"} on this test</small>}
+      </div>
+    )}
+    {test && !rows.length && <Empty>Nothing weak on this test: every statement on it is rated 4+ or has no rating yet.</Empty>}
     <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
-      {d.weak.map((r: A) => (
+      {rows.map((r: A) => (
         <li key={r.id} style={{ fontSize: 13 }}>
           <b>{r.subject} {r.code}</b> {String(r.text ?? r.title ?? "").slice(0, 110)}
           <div className={u.row} style={{ flexWrap: "wrap", gap: 4, marginTop: 2 }}>
@@ -60,6 +78,7 @@ export function WeakSpec({ p }: { p: A }) {
         </li>
       ))}
     </ol>
+    </div>
   );
 }
 

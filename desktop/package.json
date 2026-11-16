@@ -1,0 +1,9 @@
+{
+  "name": "noesis-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Apollo on the Windows desktop: Alt+P anywhere, tray icon, wake word, starts with Windows.",
+  "main": "main.cjs",
+  "scripts": { "start": "electron ." },
+  "devDependencies": { "electron": "33.2.1" }
+}

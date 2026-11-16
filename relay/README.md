@@ -113,3 +113,14 @@ Extra setup for previews and shipping:
 - The relay handles one job at a time, so Apollo waits while a build runs (usually a few minutes).
 
 Auto-ship (off by default, toggle on the Build page) ships changes of 40 lines or fewer without asking.
+
+## Background lane, schedules, folder watches, phone push (relay 0.6)
+
+The relay now also runs, without blocking chats:
+- **Screen watches and background commands** (`pc_watch`, `pc_background`), up to 4 at once.
+- **Scheduled PC tasks** (Settings › Scheduled PC tasks), checked every minute.
+- **Folder watches** (`pc_watch_folder`), notifying the inbox when files arrive.
+- **Phone push** of due inbox items through ntfy (Settings › Phone notifications). Optional: set `NOESIS_SITE_URL=https://your-site` so tapping a notification opens the right page.
+- **File index**: a full-text index of Desktop/Documents/Downloads/OneDrive at `%USERPROFILE%\.noesis\fileindex.json`, refreshed every 5 minutes while idle.
+
+Desktop app: see `desktop/README.md`.

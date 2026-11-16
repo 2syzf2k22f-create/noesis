@@ -267,7 +267,7 @@ function Preview({ f, trash, folders, onClose, onUpdate, onDelete, onChanged, on
       {!trash && <div className={u.row} style={{ flexWrap: "wrap", gap: 6 }}>
         <button className="pill" onClick={() => ask("Answer questions about")}>Ask Apollo about this file</button>
         {k !== "image" && <button className="pill" onClick={() => ask("Make flashcards (save them to my decks) from")}>Make flashcards from this</button>}
-        {k !== "image" && <button className="pill" onClick={() => ask("Save to my Knowledge sources (so you use it as context)")}>Save to Knowledge</button>}
+        {k !== "image" && <TeachToggle id={f.id} />}
       </div>}
       {vers && (
         <div style={{ display: "grid", gap: 4 }}>
@@ -292,5 +292,19 @@ function Preview({ f, trash, folders, onClose, onUpdate, onDelete, onChanged, on
               : <span className="label">No preview for this type. Download it to open.</span>}
       </div>
     </Modal>
+  );
+}
+
+/** Teach Apollo: this file's text joins his knowledge sources (searched when he answers); off removes it. */
+function TeachToggle({ id }: { id: string }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { void api({ action: "teach_status", id }).then((r) => setOn(!!r.on)); }, [id]);
+  if (on == null) return null;
+  return (
+    <label className="pill" style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }} title="Apollo searches this file's text when answering you">
+      <input type="checkbox" checked={on} onChange={async (e) => { setMsg("…"); const r = await api({ action: "teach", id, on: e.target.checked }); setOn(!!r.on); setMsg(r.error ?? (r.on ? `${r.sections} sections` : "")); }} />
+      Teach Apollo{msg ? ` · ${msg}` : ""}
+    </label>
   );
 }

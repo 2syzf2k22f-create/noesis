@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 import u from "./ui.module.css";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type A = any;
 
 const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "never");
 const post = (url: string, body: object) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()).catch(() => null);
@@ -108,6 +110,58 @@ export function RecurringRemindersBlock() {
           {err && <small style={{ color: "var(--danger)" }}>{err}</small>}
         </div>
       ) : <button className="pill" style={{ justifySelf: "start" }} onClick={() => setEdit({ kind: "study", label: "Study hour", weekday: 1, start: "17:00", lead_minutes: 30, active: true, link: "/s/school/revise" })}>＋ Add a rule</button>}
+    </div>
+  );
+}
+
+/** Phone notifications (ntfy), scheduled PC tasks and folder watches. */
+export function DeskSettings() {
+  const [d, setD] = useState<A | null>(null);
+  const [topic, setTopic] = useState("");
+  const [msg, setMsg] = useState("");
+  const load = () => fetch("/api/desk").then((r) => r.json()).then((j) => { setD(j); setTopic((t) => t || j.push?.topic || ""); }).catch(() => {});
+  useEffect(() => { queueMicrotask(load); }, []);
+  const post = (b: object) => fetch("/api/desk", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then((r) => r.json());
+  if (!d) return <div className="label">Loading…</div>;
+  const f: React.CSSProperties = { height: 32, padding: "0 8px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text)" };
+  const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      <section style={{ display: "grid", gap: 6 }}>
+        <b>Phone notifications</b>
+        <small className="label">Install the free ntfy app (iPhone or Android), tap +, and subscribe to the topic below. Reminders, review nudges, PC alerts and background-task results then arrive on your phone (not between {d.push.quiet.replace("-", " and ")}).</small>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="private topic name" style={{ ...f, width: 260 }} />
+          <button className="pill" onClick={() => setTopic(`noesis-${crypto.randomUUID().slice(0, 13)}`)}>Make a private topic</button>
+          <button className="pill" data-active="true" onClick={async () => { await post({ action: "push_settings", topic, on: true, quiet: d.push.quiet }); setMsg("Saved: on."); void load(); }}>Save and turn on</button>
+          {d.push.on && <button className="pill" onClick={async () => { await post({ action: "push_settings", topic, on: false, quiet: d.push.quiet }); setMsg("Turned off."); void load(); }}>Turn off</button>}
+          <button className="pill" disabled={!d.push.on} onClick={async () => { const r = await post({ action: "push_test" }); setMsg(r.sent ? "Test sent: check your phone." : `Not sent: ${r.why ?? r.status}`); }}>Send a test</button>
+          <small className="label">{msg || (d.push.on ? "On" : "Off")}</small>
+        </div>
+        <small className="label">Anyone who knows the topic name can read these, so keep it random (Make a private topic).</small>
+      </section>
+      <section style={{ display: "grid", gap: 6 }}>
+        <b>Scheduled PC tasks</b>
+        <small className="label">Ask Apollo, e.g. &ldquo;every Friday at 5, back up my notes&rdquo;. They run on your PC while it&apos;s on (a missed time runs when it&apos;s next on that day). Ones with a risky command start switched off: only you can turn them on here.</small>
+        {!d.schedules.length && <small className="label">None yet.</small>}
+        {d.schedules.map((r: A) => (
+          <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: 8, borderRadius: 8, background: "var(--surface)" }}>
+            <b style={{ minWidth: 160 }}>{r.title}</b>
+            <span className="label">{(r.days?.length ? r.days.map((x: number) => DAYS[x]).join(", ") : "every day")} at {r.time}{r.last_run_on ? ` · last ran ${r.last_run_on}` : ""}</span>
+            <code style={{ fontSize: 11, flex: "1 1 220px", opacity: 0.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.kind === "apollo" ? `Apollo: ${r.prompt}` : r.command}</code>
+            <label className="label" style={{ display: "flex", gap: 4 }}><input type="checkbox" checked={!!r.enabled} onChange={async (e) => { await post({ action: "schedule_toggle", id: r.id, enabled: e.target.checked }); void load(); }} />on</label>
+            <button className="pill" onClick={async () => { await post({ action: "schedule_remove", id: r.id }); void load(); }}>Remove</button>
+          </div>
+        ))}
+      </section>
+      <section style={{ display: "grid", gap: 6 }}>
+        <b>Watched folders</b>
+        <small className="label">Ask Apollo to &ldquo;tell me when something new lands in Downloads&rdquo;.</small>
+        {!d.folder_watches.length && <small className="label">None yet.</small>}
+        {d.folder_watches.map((w: A) => (
+          <div key={w.path} style={{ display: "flex", gap: 8, alignItems: "center" }}><code style={{ fontSize: 12 }}>{w.path}{w.pattern ? ` (${w.pattern})` : ""}</code><button className="pill" onClick={async () => { await post({ action: "watch_remove", path: w.path }); void load(); }}>Stop</button></div>
+        ))}
+      </section>
     </div>
   );
 }

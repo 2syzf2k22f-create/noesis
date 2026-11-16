@@ -1,0 +1,4 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Apollo setup</title>
+<style>body{font:15px system-ui;background:#0b1020;color:#e8ecff;display:grid;place-items:center;height:100vh;margin:0}input{width:340px;padding:10px;border-radius:8px;border:1px solid #33406a;background:#121a33;color:#fff}button{padding:10px 18px;border-radius:999px;border:0;background:#3ee0ff;margin-top:10px;cursor:pointer}</style></head>
+<body><form id="f"><p>Your NOESIS address (the site you open in the browser):</p><input id="u" placeholder="https://your-site.vercel.app" autofocus><br><button>Save</button></form>
+<script>f.onsubmit=(e)=>{e.preventDefault();location.href='noesis-setup://'+encodeURIComponent(u.value.trim())}</script></body></html>

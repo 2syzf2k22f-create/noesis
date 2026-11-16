@@ -15,6 +15,19 @@ import u from "./ui.module.css";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type A = any;
 const api = (body: object) => fetch("/api/sr", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+// offline: answers are kept on this device and sent (in order, with their real times) when the connection is back
+const OUTBOX = "noesis.srOutbox";
+const readOutbox = (): object[] => { try { return JSON.parse(localStorage.getItem(OUTBOX) ?? "[]"); } catch { return []; } };
+const writeOutbox = (x: object[]) => { try { localStorage.setItem(OUTBOX, JSON.stringify(x)); } catch {} };
+export async function flushSrOutbox() {
+  const box = readOutbox(); if (!box.length || !navigator.onLine) return 0;
+  let sent = 0;
+  for (const b of box) { try { const r = await api(b); if (r?.error && !/not found/.test(r.error)) break; sent++; } catch { break; } }
+  writeOutbox(box.slice(sent));
+  if (sent) window.dispatchEvent(new Event("noesis:sr-reviewed"));
+  return sent;
+}
+if (typeof window !== "undefined") { window.addEventListener("online", () => void flushSrOutbox()); setTimeout(() => void flushSrOutbox(), 3000); }
 const RATINGS = [[1, "Again", "#e5484d"], [2, "Hard", "#f5a524"], [3, "Good", "#30a46c"], [4, "Easy", "#5b8def"]] as const;
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const KIND_LABEL: Record<string, string> = { flashcard: "Flashcard", mistake: "Mistake", question: "Question", spec: "Spec point", geo: "Geography", puzzle: "Puzzle", opening: "Opening", palace: "Memory palace", poker: "Poker", coding: "Coding" };
@@ -36,6 +49,7 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
   const [settings, setSettings] = useState<A>({ confirm_end: true, esc_ends: true });
   const [editing, setEditing] = useState<{ front: string; back: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [offline, setOffline] = useState(0);
   const t0 = useRef(0);
   const started = useRef(0);
   const qs = useMemo(() => new URLSearchParams(Object.entries({ view: "queue", ...filter, weak: filter.weak ? "1" : "" }).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, String(v)])).toString(), [filter]);
@@ -65,7 +79,15 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
     if (!cur || busy) return;
     setBusy(true);
     const ms = nowMs() - t0.current;
-    const r = await api({ action: "review", item_id: cur.id, rating: extra.correct == null ? rating : undefined, correct: extra.correct, response_ms: ms, session_id: sid, answer: extra.answer, confused_with: extra.confused_with, mode: cur.direction || cur.kind });
+    const body = { action: "review", item_id: cur.id, rating: extra.correct == null ? rating : undefined, correct: extra.correct, response_ms: ms, session_id: sid, answer: extra.answer, confused_with: extra.confused_with, mode: cur.direction || cur.kind };
+    let r = await api(body).catch(() => null);
+    if (!r) {
+      // offline: keep the answer, schedule it when back online; carry on with the session
+      writeOutbox([...readOutbox(), body]);
+      const rt = extra.correct == null ? rating : extra.correct ? 3 : 1;
+      r = { review_id: null, rating: rt, again_in_session: rt === 1, offline: true };
+      setOffline(readOutbox().length);
+    }
     setBusy(false);
     if (r.error) return;
     const again = r.again_in_session || r.rating === 1;
@@ -85,7 +107,7 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
   const pause = async () => { if (sid) await api({ action: "session_pause", id: sid, queue: (queue ?? []).slice(i).map((x: A) => x.id), index: 0 }); onClose(); };
   const undo = async () => {
     const last = log[log.length - 1]; if (!last) return;
-    await api({ action: "undo", review_id: last.review_id });
+    if (last.review_id) await api({ action: "undo", review_id: last.review_id }); else { writeOutbox(readOutbox().slice(0, -1)); setOffline(readOutbox().length); }
     setLog((l) => l.slice(0, -1));
     setQueue((q) => { const n = [...(q ?? [])]; if (last.again) { const k = n.findIndex((x, j) => j > i - 1 && x.id === last.item.id && x.state === "learning"); if (k >= 0) n.splice(k, 1); } return n; });
     setI((x) => Math.max(0, x - 1)); setFlipped(false); setResult(null); setTyped("");
@@ -115,6 +137,7 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
       <div role="dialog" aria-label="Review session" style={{ position: "fixed", inset: 0, zIndex: 320, background: "var(--bg)", display: "grid", gridTemplateRows: "auto 1fr", overflow: "hidden" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px max(12px, 3vw)", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
           <b style={{ flex: 1, minWidth: 120 }}>{filter.title ?? "Review"}</b>
+          {offline > 0 && <small className="label" style={{ color: "#f5a524" }}>offline: {offline} answer{offline === 1 ? "" : "s"} saved on this device</small>}
           {queue && !summary && <small className="label">{Math.min(i + 1, queue.length)}/{queue.length} · {answered} answered · {queue.slice(i).filter((x: A) => x.state === "new").length} new · {queue.slice(i).filter((x: A) => x.state === "learning" || x.state === "relearning").length} learning</small>}
           {!summary && <>
             <button className="pill" onClick={undo} disabled={!log.length} title="Undo last answer (Z)">↶ Undo</button>

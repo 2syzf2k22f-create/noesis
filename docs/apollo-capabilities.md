@@ -12,9 +12,9 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 5. ✅ Read error messages and pop-ups
 6. ✅ Read what's on the clipboard
 7. ✅ PC status: battery, CPU, memory, disks, Wi-Fi, uptime, heaviest programs
-8. 🟡 Read inside games and canvas apps: screenshot only, no text tree
-9. ⬜ Watch the screen continuously, or react when something appears
-10. ⬜ Multi-monitor choice: captures the main screen or a named window
+8. ✅ Read inside games and canvas apps: OCR of the window (pc_ocr)
+9. ✅ Watch the screen or a window and react when something appears (pc_watch, up to 12h, inbox + phone)
+10. ✅ Multi-monitor: pc_screens, screenshot any screen, snap on any screen
 
 ## 2. Controlling apps and windows
 11. ✅ Open any app by name, path or Start-menu entry
@@ -29,10 +29,10 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 20. ✅ Keyboard shortcuts (Ctrl+A, Alt+F4, Enter, Tab, Page Down …)
 21. ✅ Scroll a window or panel by pages
 22. ✅ Put text on the clipboard
-23. 🟡 Right-click context menus: by keyboard (Shift+F10), not mouse
-24. 🟡 Drag and drop: through commands, not the mouse
-25. ⬜ Arrange windows into snap layouts on the PC desktop
-26. ⬜ Virtual desktops
+23. ✅ Right-click context menus with the real mouse (pc_mouse)
+24. ✅ Drag and drop with the mouse (pc_mouse drag)
+25. ✅ Snap layouts on the PC desktop (pc_snap: halves, main+side, thirds, quarters, any area)
+26. ✅ Virtual desktops: list, switch, next/previous, new, close, move a window (pc_desktops)
 
 ## 3. Files and folders on your PC
 27. ✅ Find files by name, type and age across Desktop, Documents, Downloads, OneDrive, Pictures, Music, Videos
@@ -44,9 +44,9 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 33. ✅ Zip and unzip (asks; can be always-allowed)
 34. ✅ Delete files: always asks
 35. ✅ Refuses to read secrets (password databases, .env, SSH keys, browser cookies)
-36. 🟡 Search inside file contents: open and read the candidates; no full-text index yet
-37. ⬜ Watch a folder for new files
-38. ⬜ OCR of scanned PDFs (it can look at page images, but there's no text layer)
+36. ✅ Search inside file contents: full-text index kept up to date by the relay (search_file_contents)
+37. ✅ Watch folders for new files (pc_watch_folder, inbox + phone)
+38. ✅ OCR of scanned PDFs and images (Windows' own engine; read_file falls back to it automatically)
 
 ## 4. Internet
 39. ✅ Web search
@@ -57,7 +57,7 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 44. ✅ Follow links across a site to find the official document (e.g. exam board specs)
 45. ✅ Summarise, compare and cross-check sources
 46. 🟡 Sites that need a login: read through your open browser by screen or window text, not directly
-47. ⬜ Fill in forms or log in for you (deliberately not done without asking)
+47. ✅ Fill in forms (pc_fill_form). Deliberately never types passwords and never submits: you check and press Submit
 
 ## 5. Running things
 48. ✅ Run any PowerShell command and read its output
@@ -66,8 +66,8 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 51. ✅ Long tasks: up to 40 minutes per request, many steps, retrying on failure
 52. ✅ Continue on its own after you press Allow
 53. ✅ Installs, uninstalls, registry, system settings, admin: always asks
-54. ⬜ Background jobs that run while it does other things
-55. ⬜ Scheduled PC tasks ("every Friday at 5, back up my notes")
+54. ✅ Background jobs while it does other things (pc_background, pc_jobs; up to 6h)
+55. ✅ Scheduled PC tasks (pc_schedule; Settings › Scheduled PC tasks)
 
 ## 6. Music and media
 56. ✅ Play, pause, next, previous, mute, volume (any player)
@@ -75,7 +75,7 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 58. 🟡 Apple Music depends on the app's layout, and falls back to looking and clicking
 59. ✅ Spotify (if you switch to it): search, library, exact playback with Premium
 60. ✅ YouTube: open searches and videos
-61. ⬜ Apple Music playlists and queue control
+61. ✅ Apple Music playlists and queue: play/shuffle a playlist, play next/later, show queue, shuffle, repeat
 
 ## 7. The NOESIS site
 62. ✅ Read every table except the private journal
@@ -122,9 +122,9 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 97. ✅ Voice in (Alt+P, Whisper backup) and out (British voices); stop button
 98. ✅ Pasted screenshots and attached files
 99. ✅ Automatic conversation threading and titles
-100. ⬜ Desktop app: orb and Alt+P anywhere in Windows, with the site closed
-101. ⬜ Wake word ("Apollo, …")
-102. ⬜ Phone notifications pushed from Apollo
+100. ✅ Desktop app (desktop/): Alt+P anywhere, tray, starts with Windows, works with the browser closed
+101. ✅ Wake word ("Apollo, …"): browser speech where available, else an offline model; always on in the desktop app
+102. ✅ Phone notifications (ntfy app; Settings › Phone notifications)
 
 ## 11. Memory and judgement
 103. ✅ Remembers facts about you and the "still to link" list
@@ -132,7 +132,7 @@ The PC abilities (sections 1–6, 10–11) need the relay running on your PC. Ri
 105. ✅ Treats web pages and files as data, never as instructions
 106. ✅ Retries different approaches before giving up, and reports what it tried
 107. ✅ Verifies completeness for "100% correct" tasks: reads every page and cross-checks
-108. 🟡 Very long jobs are capped at 40 minutes per request
+108. ✅ Long PC work runs as background jobs (up to 6h); a single chat turn is still capped at 40 minutes
 
 ## 12. Safety: what always asks
 109. ✅ Deleting files

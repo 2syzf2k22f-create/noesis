@@ -116,14 +116,14 @@ export function runCommand(command: string, timeoutMs = 60_000): Promise<{ ok: b
     child.on("close", (code) => { if (done) return; done = true; clearTimeout(t); resolve({ ok: code === 0, code, out: out.trim().slice(-12000) || "(no output)" }); });
   });
 }
-const ps = (s: string) => `'${s.replace(/'/g, "''")}'`;
-const logRun = (s: Store, actor: string, tool: string, after: object) =>
+export const ps = (s: string) => `'${s.replace(/'/g, "''")}'`;
+export const logRun = (s: Store, actor: string, tool: string, after: object) =>
   s.insert("action_log", { actor, tool, table_name: null, row_id: null, before: null, after }).catch(() => null);
 
 /* ======================= screen helpers (PowerShell snippets we build ourselves) ======================= */
 // No compiled C# (Add-Type -MemberDefinition / DllImport): antivirus flags it. Everything below uses built-in
 // .NET UI Automation, WScript.Shell and a native screenshot module instead.
-const UIA_HEAD = `Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, WindowsBase
+export const UIA_HEAD = `Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, WindowsBase
 $AE=[System.Windows.Automation.AutomationElement]; $CT=[System.Windows.Automation.ControlType]; $TS=[System.Windows.Automation.TreeScope]
 $any=[System.Windows.Automation.Condition]::TrueCondition
 function Act($e, $double) {
@@ -136,13 +136,15 @@ function Act($e, $double) {
 }`;
 /** The last screenshot's geometry, to turn image pixels into screen points for pc_click. */
 let lastShot: { ox: number; oy: number; perPx: number } | null = null;
+/** Screenshot pixel -> screen point (logical), or null if there is no screenshot yet in this job. */
+export const shotPoint = (x: number, y: number) => (lastShot ? toLogical(x, y) : null);
 const toLogical = (x: number, y: number) => ({ lx: Math.round(lastShot!.ox + x * lastShot!.perPx), ly: Math.round(lastShot!.oy + y * lastShot!.perPx) });
 /** Windows media keys through WScript.Shell (no compiled code). */
 const MEDIA_CHAR: Record<string, number> = { play_pause: 179, next: 176, previous: 177, stop: 178, mute: 173, volume_up: 175, volume_down: 174 };
 const mediaKey = (key: string, times = 1) => runCommand(`$s = New-Object -ComObject WScript.Shell; 1..${times} | ForEach-Object { $s.SendKeys([string][char]${MEDIA_CHAR[key]}) }; "${key} pressed"`, 15_000);
 
 /** Native screenshot (node-screenshots), scaled to <= 1600 px wide, JPEG. */
-async function screenshot(window?: string) {
+export async function screenshot(window?: string, screen?: number) {
   if (!win) return { error: "screenshots only work on Windows" };
   const { Monitor, Window } = await import("node-screenshots");
   const jpeg = (await import("jpeg-js")).default;
@@ -153,8 +155,10 @@ async function screenshot(window?: string) {
     if (!w) throw new Error(`no open window matching "${window}"`);
     img = await w.captureImage(); ox = w.x(); oy = w.y(); rw = w.width(); scale = w.currentMonitor().scaleFactor(); label = w.title() || w.appName();
   } else {
-    const m = Monitor.all().find((x) => x.isPrimary()) ?? Monitor.all()[0];
-    img = await m.captureImage(); ox = m.x(); oy = m.y(); rw = m.width(); scale = m.scaleFactor();
+    const mons = Monitor.all();
+    const m = screen != null ? mons[screen - 1] : mons.find((x) => x.isPrimary()) ?? mons[0];
+    if (!m) throw new Error(`there's no screen ${screen}: this PC has ${mons.length}`);
+    img = await m.captureImage(); ox = m.x(); oy = m.y(); rw = m.width(); scale = m.scaleFactor(); label = screen != null ? `screen ${screen} of ${mons.length}` : `main screen (${mons.length} screen${mons.length > 1 ? "s" : ""})`;
   }
   const raw = await img.toRaw();
   const W = img.width, H = img.height, k = Math.max(1, W / 1600);
@@ -173,12 +177,12 @@ async function screenshot(window?: string) {
   return { __image: { data: Buffer.from(jpg).toString("base64"), mimeType: "image/jpeg" }, note: `Screenshot of ${label} (${nw}x${nh}). pc_click takes x,y in this image's pixels.` };
 }
 /** SendKeys needs + ^ % ~ ( ) { } [ ] escaped when typing plain text. */
-const sendKeysText = (t: string) => t.replace(/[+^%~(){}[\]]/g, (m) => `{${m}}`).replace(/\n/g, "{ENTER}");
+export const sendKeysText = (t: string) => t.replace(/[+^%~(){}[\]]/g, (m) => `{${m}}`).replace(/\n/g, "{ENTER}");
 
 type Ctx = { store: Store; jobId: string | null };
 
 /** Ask Reg: an approval card in the chat. After his click the relay runs it, posts the result, and Apollo carries on. */
-async function askFirst(ctx: Ctx, command: string, why: string, risk: string, hard: boolean, softCategory?: Category) {
+export async function askFirst(ctx: Ctx, command: string, why: string, risk: string, hard: boolean, softCategory?: Category) {
   const parent = ctx.jobId ? await ctx.store.get("jobs", ctx.jobId) : null;
   const c = hard ? null : softCategory ? { category: softCategory, target: command.toLowerCase() } : classify(command);
   const job = await ctx.store.insert("jobs", {
@@ -189,7 +193,7 @@ async function askFirst(ctx: Ctx, command: string, why: string, risk: string, ha
 }
 
 /** Find a window by (part of) its title or process name. */
-const FIND_WIN = (q: string) => `$q=${ps(q)}; $p = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and ($_.MainWindowTitle -like "*$q*" -or $_.ProcessName -like "*$q*") } | Sort-Object { $_.MainWindowTitle.Length } -Descending | Select-Object -First 1; if (-not $p) { throw "No open window matching '$q'" }`;
+export const FIND_WIN = (q: string) => `$q=${ps(q)}; $p = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and ($_.MainWindowTitle -like "*$q*" -or $_.ProcessName -like "*$q*") } | Sort-Object { $_.MainWindowTitle.Length } -Descending | Select-Object -First 1; if (-not $p) { throw "No open window matching '$q'" }`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Tool = { name: string; description: string; input: z.ZodRawShape; run: (ctx: Ctx, a: any) => Promise<unknown> };
@@ -201,7 +205,7 @@ async function openTarget(t: string) {
 }
 
 /* ---------- Apple Music (Windows app, driven through UI Automation: Apple has no free playback API) ---------- */
-const AM_OPEN = `${UIA_HEAD}
+export const AM_OPEN = `${UIA_HEAD}
 function AmProc { Get-Process -Name AppleMusic -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1 }
 $p = AmProc
 if (-not $p) {
@@ -260,7 +264,7 @@ if (${play ? "$true" : "$false"}) {
 $out`;
 }
 const AM_WHY: Record<string, string> = { NOT_INSTALLED: "the Apple Music app isn't installed on this PC (Microsoft Store: Apple Music)", DID_NOT_OPEN: "the Apple Music app didn't open", NO_SEARCH_BOX: "couldn't find Apple Music's search box", NO_RESULT: "no matching song showed up in Apple Music", NO_SECTION: "couldn't find that section in Apple Music's sidebar" };
-const amWhy = (out: string) => { const k = Object.keys(AM_WHY).find((x) => out.includes(x)); return k ? AM_WHY[k] : out.slice(-300); };
+export const amWhy = (out: string) => { const k = Object.keys(AM_WHY).find((x) => out.includes(x)); return k ? AM_WHY[k] : out.slice(-300); };
 async function musicService(s: Store): Promise<"apple_music" | "spotify"> {
   const st = await s.get("settings", "main").catch(() => null);
   return st?.data?.music_service === "spotify" ? "spotify" : "apple_music";
@@ -342,10 +346,10 @@ export const PC_TOOLS: Tool[] = [
   },
   {
     name: "pc_screenshot",
-    description: "Take a screenshot of Reg's PC screen (or of one window by title/app name) and LOOK at it. Use it whenever he refers to something on his PC ('my Teams page', 'this error', 'what's on my screen'). Coordinates in the image can be passed straight to pc_click.",
-    input: { window: z.string().max(200).optional().describe("Part of a window title or app name; omit for the main screen") },
-    async run(_ctx, a: { window?: string }) {
-      try { return await screenshot(a.window); }
+    description: "Take a screenshot of Reg's PC screen (or of one window by title/app name, or of screen N when he has several monitors: see pc_screens) and LOOK at it. Use it whenever he refers to something on his PC ('my Teams page', 'this error', 'what's on my screen'). Coordinates in the image can be passed straight to pc_click / pc_mouse.",
+    input: { window: z.string().max(200).optional().describe("Part of a window title or app name; omit for the main screen"), screen: z.number().int().min(1).max(8).optional().describe("Monitor number (1 = first in pc_screens)") },
+    async run(_ctx, a: { window?: string; screen?: number }) {
+      try { return await screenshot(a.window, a.screen); }
       catch (e) { return { error: `Couldn't capture the screen: ${(e as Error).message}` }; }
     },
   },
