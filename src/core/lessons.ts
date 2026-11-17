@@ -98,9 +98,12 @@ export function lessonContext(L: Row) {
 export async function queueScopeMapping(store: Store, batch = 15) {
   const jobs = await store.list("jobs", { order: { col: "created_at", asc: false }, limit: 100 });
   if (jobs.some((j) => j.input?.scope_mapping && ["queued", "running"].includes(j.status))) return 0;
-  const pts = (await store.list("spec_points", { limit: 5000 })).filter((p) => !p.deleted_at && p.level === 4 && !(p.optional && !p.chosen) && !Array.isArray(p.exam_scope));
-  if (!pts.length) return 0;
   const tests = (await store.list("upcoming_tests", { limit: 100 }).catch(() => [] as Row[])).filter((t) => !t.deleted_at && t.status === "upcoming");
+  // the database returns at most 1000 rows a call: read test subjects first, then each subject, so nothing is cut off
+  const subjects = [...new Set([...tests.map((t) => String(t.subject)), "Maths", "Further Maths", "Physics", "Economics"])];
+  const pts: Row[] = [];
+  for (const sj of subjects) pts.push(...(await store.list("spec_points", { eq: { subject: sj, level: 4 }, isNull: ["exam_scope"], limit: 1000 })).filter((p) => !p.deleted_at && !(p.optional && !p.chosen)));
+  if (!pts.length) return 0;
   const topics = await store.list("upcoming_test_topics", { limit: 2000 }).catch(() => [] as Row[]);
   const soon = (p: Row) => { let best = 9e9; for (const t of tests) if (t.subject === p.subject) for (const tp of topics.filter((x) => x.test_id === t.id)) for (const c of tp.spec_codes ?? []) if (String(p.code).startsWith(c)) best = Math.min(best, Date.parse(String(t.date))); return best; };
   const pick = pts.sort((a, b) => soon(a) - soon(b) || Number(a.confidence ?? 3) - Number(b.confidence ?? 3) || String(a.code).localeCompare(String(b.code), undefined, { numeric: true })).slice(0, batch);
