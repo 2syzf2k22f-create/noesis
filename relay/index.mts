@@ -2,6 +2,7 @@
 // through Claude Code on the Pro plan, streams the reply back, and keeps a heartbeat.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { hostname } from "node:os";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { getStore } from "../src/core/getStore";
 import { buildUserPrompt, systemFor } from "../src/core/prompt";
@@ -48,14 +49,29 @@ async function heartbeat() {
   }
 }
 
+/** The tool server, prebuilt once to plain JS (no TypeScript compile on every message: starts seconds faster). */
+let bundled: string | null | undefined;
+function mcpBundle() {
+  if (bundled !== undefined) return bundled;
+  bundled = null;
+  try {
+    const out = join(import.meta.dirname, ".sandbox", "mcp.bundle.mjs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const esbuild = createRequire(import.meta.url)("esbuild");
+    esbuild.buildSync({ entryPoints: [join(import.meta.dirname, "mcp.mts")], bundle: true, platform: "node", format: "esm", target: "node20", outfile: out, packages: "external", tsconfig: join(import.meta.dirname, "..", "tsconfig.json"), logLevel: "silent", banner: { js: "import { createRequire as __cr } from 'module'; const require = __cr(import.meta.url);" } });
+    bundled = out;
+  } catch (e) { console.log("tool server prebuild failed, using tsx:", (e as Error).message.slice(0, 200)); }
+  return bundled;
+}
 function mcpConfigFor(jobId: string) {
   const dir = join(import.meta.dirname, ".sandbox");
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `mcp-${jobId}.json`);
   const tsx = join(import.meta.dirname, "..", "node_modules", "tsx", "dist", "cli.mjs");
+  const bundle = mcpBundle();
   const env: Record<string, string> = { NOESIS_JOB_ID: jobId };
   for (const k of ["SUPABASE_URL", "SUPABASE_SECRET_KEY", "NOESIS_DEV_STORE"]) if (process.env[k]) env[k] = process.env[k]!;
-  writeFileSync(path, JSON.stringify({ mcpServers: { noesis: { command: process.execPath, args: [tsx, join(import.meta.dirname, "mcp.mts")], env } } }));
+  writeFileSync(path, JSON.stringify({ mcpServers: { noesis: { command: process.execPath, args: bundle ? [bundle] : [tsx, join(import.meta.dirname, "mcp.mts")], env } } }));
   return path;
 }
 
@@ -100,7 +116,7 @@ async function runApollo(s: Store, job: Row) {
   // name direct chats from their first messages (same reply, so almost no extra tokens); your own renames stick
   const conv = await s.get("conversations", convId);
   const needsTitle = !!conv && !conv.space && conv.title_set_by !== "user" && (await s.count("messages", { eq: { conversation_id: convId } })) <= 3;
-  let prompt = (await buildUserPrompt(s, convId, text, message_id, typeof job.input?.screen === "string" ? job.input.screen : undefined)) + (needsTitle ? "\n\n<needs_title/>" : "");
+  let prompt = (await buildUserPrompt(s, convId, text, message_id, typeof job.input?.screen === "string" ? job.input.screen : undefined, typeof job.input?.context === "string" ? job.input.context : undefined)) + (needsTitle ? "\n\n<needs_title/>" : "");
   const mcp = mcpConfigFor(job.id);
   const stripTitle = (t: string) => t.replace(/\n*\s*TITLE:[^\n]*\s*$/i, "").replace(/\n+TITLE:?\s*$/i, "").trimEnd();
 
@@ -320,6 +336,10 @@ async function schedule() {
       const n = await ensureRecurring(store!).catch(() => 0);
       if (n) log(`recurring reminders: +${n}`);
       await (await import("../src/core/srStore")).srNudge(store!).catch(() => 0);
+      // revision timetable: tick off / move / thin out, and keep a stash of chess puzzles for blocked networks
+      await (await import("../src/core/revision")).rebalance(store!).catch(() => null);
+      await (await import("../src/core/revision")).dailyBrief(store!).catch(() => null);
+      void (await import("../src/core/puzzles")).topUpPuzzles(store!, 4).then((n) => { if (n) log(`puzzle stash +${n}`); }).catch(() => null);
       await store!.update("settings", "main", { data: { ...((await store!.get("settings", "main"))?.data ?? {}), last_recurring: today } });
     }
     // usage previews are kept 90 days, then cleared (tokens and counts stay)
@@ -351,6 +371,8 @@ log(`NOESIS relay ${VERSION} · ${store.kind} store · ${backend.name}`);
 await heartbeat();
 setInterval(heartbeat, HEARTBEAT_MS);
 setInterval(tick, POLL_MS);
+// new chats start the moment they're sent (Realtime), not on the next poll
+try { store.onJobQueued?.(() => void tick()); } catch (e) { log("realtime off:", (e as Error).message); }
 void schedule();
 setInterval(schedule, 10 * 60_000);
 

@@ -33,7 +33,11 @@ export async function POST(req: Request) {
   }
   // a named thread (e.g. "project:Touchline", "tutor:Physics") keeps its own ongoing chat
   const thread = typeof body.thread === "string" ? body.thread.slice(0, 80) : null;
-  if (thread) {
+  // a page's own chat (tutor room, notes, timetable...): its own saved conversations under that space
+  const space = typeof body.space === "string" && /^(tutor|revise|lesson|notes|plan|doc|study):/.test(body.space) ? body.space.slice(0, 120) : null;
+  if (space && convId) { const c = await s.get("conversations", convId); if (!c || !String(c.space ?? "").startsWith(space.split(":")[0])) convId = null; }
+  if (space && !convId) convId = (await s.insert("conversations", { title: titleFrom(text), space, pinned: false, deleted_at: null, updated_at: nowIso() })).id;
+  if (thread && !space) {
     convId = (await s.list("conversations", { eq: { space: thread }, isNull: ["deleted_at"], order: { col: "updated_at", asc: false }, limit: 1 }))[0]?.id ?? null;
   }
   if (!convId) {
@@ -44,7 +48,7 @@ export async function POST(req: Request) {
   for (const f of files) await s.insert("files", { name: f.name, mime: f.kind, size_bytes: f.text.length, content: f.text, source: "chat" }).catch(() => null);
   const job = await s.insert("jobs", {
     kind: "apollo", status: "queued", conversation_id: convId,
-    input: { conversation_id: convId, text, model_pref: model, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", images, files, screen: typeof body.screen === "string" ? body.screen.slice(0, 10000) : null },
+    input: { conversation_id: convId, text, model_pref: model, context: typeof body.context === "string" ? body.context.slice(0, 12000) : null, message_id: msg.id, mode: isMode(body.mode) ? body.mode : "chat", images, files, screen: typeof body.screen === "string" ? body.screen.slice(0, 10000) : null },
     ui_actions: [], output: null,
   });
   await s.update("conversations", convId, { updated_at: nowIso() });

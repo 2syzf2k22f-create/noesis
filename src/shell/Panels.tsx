@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useSyncExternalStore } from "react";
-import { ORB_STATES } from "@/orb/ApolloOrb";
+import { ORB_STATES } from "@/orb/states";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useApollo } from "./apollo";
 import { ApolloPanel } from "./ApolloPanel";

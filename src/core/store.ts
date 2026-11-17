@@ -28,6 +28,8 @@ export interface Store {
   /** Atomically move the oldest queued (or due rate-limited) job to running. */
   /** Claim the oldest runnable job; `kinds` limits it to those kinds, `notKinds` skips them. */
   claimNextJob(o?: { kinds?: string[]; notKinds?: string[] }): Promise<Row | null>;
+  /** Optional: call back as soon as a job is queued (Supabase Realtime), so the relay needn't wait for its poll. */
+  onJobQueued?(cb: () => void): void;
 }
 
 export const nowIso = () => new Date().toISOString();

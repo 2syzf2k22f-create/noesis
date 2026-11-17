@@ -30,7 +30,7 @@ export async function flushSrOutbox() {
 if (typeof window !== "undefined") { window.addEventListener("online", () => void flushSrOutbox()); setTimeout(() => void flushSrOutbox(), 3000); }
 const RATINGS = [[1, "Again", "#e5484d"], [2, "Hard", "#f5a524"], [3, "Good", "#30a46c"], [4, "Easy", "#5b8def"]] as const;
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const KIND_LABEL: Record<string, string> = { flashcard: "Flashcard", mistake: "Mistake", question: "Question", spec: "Spec point", geo: "Geography", puzzle: "Puzzle", opening: "Opening", palace: "Memory palace", poker: "Poker", coding: "Coding" };
+const KIND_LABEL: Record<string, string> = { flashcard: "Flashcard", mistake: "Mistake", question: "Question", spec: "Spec point", geo: "Geography", puzzle: "Puzzle", opening: "Opening", palace: "Memory palace", poker: "Poker", coding: "Coding", note: "Note" };
 export type SrFilter = { area?: string; kind?: string; deck?: string; direction?: string; region?: string; limit?: number; title?: string; weak?: boolean; ids?: string };
 const nowMs = () => Date.now();
 const Portal = ({ children }: { children: React.ReactNode }) => (typeof document === "undefined" ? null : createPortal(children, document.body));

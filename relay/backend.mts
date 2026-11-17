@@ -71,6 +71,8 @@ export function resolveClaude() {
   return "claude";
 }
 
+/** Defer MCP tool definitions (Claude Code tool search). NOESIS_TOOL_SEARCH=0 turns it off. */
+const TOOL_SEARCH = process.env.NOESIS_TOOL_SEARCH !== "0";
 export const claudeCode = (bin = resolveClaude()): Backend => ({
   name: "claude-code",
   run(o) {
@@ -82,13 +84,14 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
       // via a file: exact text, no quoting problems, and the same file content keeps prompt caching
       "--system-prompt-file", sysFile(o.system),
       // No built-in tools at all (no Bash, no files, no web). Only the site's MCP tools.
-      "--tools", [...new Set([...(o.builtins ?? []), ...(o.web ? ["WebSearch", "WebFetch"] : [])].map((b) => b.replace(/\(.*$/, "")))].join(","),
+      // ToolSearch: the site's ~100 tools are loaded on demand instead of sent with every step (far fewer tokens, faster)
+      "--tools", [...new Set([...(o.builtins ?? []), ...(o.web ? ["WebSearch", "WebFetch"] : []), ...(o.mcpConfig && TOOL_SEARCH ? ["ToolSearch"] : [])].map((b) => b.replace(/\(.*$/, "")))].join(","),
       "--strict-mcp-config",
     ];
     // with images, the question goes in as a structured message (text + pictures) on stdin
     const imgs = (o.images ?? []).map((d) => /^data:(image\/[a-z]+);base64,(.+)$/.exec(d)).filter((m): m is RegExpExecArray => !!m);
     if (imgs.length) args.push("--input-format", "stream-json");
-    const allowed = [...(o.mcpConfig ? ["mcp__noesis"] : []), ...(o.builtins ?? []), ...(o.web ? ["WebSearch", "WebFetch"] : [])];
+    const allowed = [...(o.mcpConfig ? ["mcp__noesis", ...(TOOL_SEARCH ? ["ToolSearch"] : [])] : []), ...(o.builtins ?? []), ...(o.web ? ["WebSearch", "WebFetch"] : [])];
     if (o.mcpConfig) args.push("--mcp-config", o.mcpConfig);
     if (allowed.length) args.push("--allowedTools", ...allowed);
     if (o.permissionMode) args.push("--permission-mode", o.permissionMode);
@@ -97,7 +100,7 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
 
     return new Promise((resolve, reject) => {
       // never through a shell (see resolveClaude)
-      const child = spawn(bin, args, { cwd: o.cwd ?? SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true });
+      const child = spawn(bin, args, { cwd: o.cwd ?? SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true, env: { ...process.env, ...(TOOL_SEARCH ? { ENABLE_TOOL_SEARCH: process.env.ENABLE_TOOL_SEARCH ?? "auto:5" } : {}) } });
       const res: RunResult = { text: "", model: o.model, tokensIn: 0, tokensOut: 0, isError: false, rateLimited: null, plan: null };
       let buf = "", errBuf = "", turnText = "";
       const timer = setTimeout(() => child.kill(), o.timeoutMs ?? 5 * 60_000);

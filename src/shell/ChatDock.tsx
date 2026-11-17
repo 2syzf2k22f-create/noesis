@@ -6,8 +6,9 @@
 import { FxButton, MathPreview } from "@/ui/MathTools";
 import { RichText } from "@/ui/RichText";
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApollo } from "./apollo";
+import { useStickyScroll } from "@/ui/useStickyScroll";
 import { Icon } from "./Icon";
 import { findTarget, uiStore, useUi, type Box } from "./uiStore";
 import { ACCEPT, readAttachment, type Attached } from "./files";
@@ -28,9 +29,9 @@ export function ChatDock() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [tick, setTick] = useState(0);
   const drag = useRef<{ mode: "move" | "size"; sx: number; sy: number; b: Box } | null>(null);
-  const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const open = ui.chat.open;
+  const { ref: list, away, jump } = useStickyScroll<HTMLDivElement>([msgs, reply?.text, open]);
   const box = ui.chat.box ?? DEFAULT_BOX;
   const conv = activeConv ?? chatId;
 
@@ -45,8 +46,8 @@ export function ChatDock() {
   useEffect(() => { if (!open) return; const t = setInterval(() => setTick((n) => n + 1), 6000); return () => clearInterval(t); }, [open]);
 
   // a new answer opens the box
-  useEffect(() => { if (reply?.pending && pathname !== "/") uiStore.setChat({ open: true }); }, [reply?.pending, pathname]);
-  useLayoutEffect(() => { list.current?.scrollTo({ top: 1e9 }); }, [msgs, reply?.text, open]);
+  // only answers to the main chat open it: tutor rooms, notes, ask-boxes answer on their own page
+  useEffect(() => { if (reply?.pending && !reply.origin && pathname !== "/") uiStore.setChat({ open: true }); }, [reply?.pending, reply?.origin, pathname]);
   // "/" focuses the box
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -100,7 +101,7 @@ export function ChatDock() {
       : { ...d.b, w: Math.max(280, Math.min(vw - d.b.x - 8, d.b.w + dx)), h: Math.max(180, Math.min(vh - d.b.y - 8, d.b.h + dy)) } });
   };
   const end = () => { drag.current = null; };
-  const live = reply && (reply.pending || reply.text) ? reply : null;
+  const live = reply && !reply.origin && (reply.pending || reply.text) ? reply : null;
   const shown = msgs.filter((m) => !(live && !live.pending && m.role === "assistant" && m.content === live.text));
 
   const inputRow = (
@@ -178,6 +179,7 @@ export function ChatDock() {
         <PcApprovals />
         {live && <div className={s.msg} data-role="assistant" data-pending={live.pending} data-tone={live.tone}>{live.text ? <RichText text={live.text} /> : "…"}</div>}
       </div>
+      {away && <button className="pill" onClick={jump} style={{ position: "absolute", bottom: 64, left: "50%", transform: "translateX(-50%)", height: 26, fontSize: 12 }}>↓ Jump to latest</button>}
       {inputRow}
       <span className={s.grip} onPointerDown={(e) => begin("size", e)} onPointerMove={move} onPointerUp={end} onPointerCancel={end} aria-hidden />
     </section>

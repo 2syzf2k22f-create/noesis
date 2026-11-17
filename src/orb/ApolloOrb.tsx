@@ -11,8 +11,8 @@ import {
   coreFrag, coreVert, dustFrag, dustVert, floorFrag, ribbonFrag, ribbonVert, ringFrag, ringVert, shellFrag, shellVert,
 } from "./shaders";
 
-export type OrbState = "idle" | "listening" | "thinking" | "speaking" | "acting";
-export const ORB_STATES: OrbState[] = ["idle", "listening", "thinking", "speaking", "acting"];
+import type { OrbState } from "./states";
+export { ORB_STATES, type OrbState } from "./states";
 
 type StateParams = {
   disp: number; speed: number; amp: number; spin: number; twist: number;

@@ -12,6 +12,11 @@ export class SupabaseStore implements Store {
     }) as unknown as SupabaseClient;
   }
 
+  onJobQueued(cb: () => void) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.db as any).channel("noesis-jobs").on("postgres_changes", { event: "INSERT", schema: "noesis", table: "jobs" }, () => cb()).subscribe();
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private apply(q: any, o: ListOpts = {}) {
     if (o.eq) for (const [k, v] of Object.entries(o.eq)) q = v === null ? q.is(k, null) : q.eq(k, v);

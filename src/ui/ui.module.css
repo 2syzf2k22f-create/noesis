@@ -1353,3 +1353,21 @@
   line-height: 1;
 }
 .mathBlock :global(.katex), .mathInline :global(.katex) { color: inherit; }
+
+/* rich text extras (RichText) */
+.mdH { margin: 10px 0 4px; font-weight: 650; line-height: 1.25; }
+h3.mdH { font-size: 1.2em; } h4.mdH { font-size: 1.08em; } h5.mdH, h6.mdH { font-size: 1em; }
+.mdQuote { margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--accent); opacity: .92; }
+.mdTableWrap { overflow-x: auto; margin: 6px 0; }
+.mdTable { border-collapse: collapse; font-size: .95em; min-width: 50%; }
+.mdTable th, .mdTable td { border: 1px solid var(--border); padding: 4px 10px; }
+.mdTable th { background: var(--surface-2); font-weight: 600; }
+.mdFigure { margin: 8px 0; display: grid; justify-items: center; gap: 4px; overflow-x: auto; }
+.mdFigure figcaption { font-size: 12px; opacity: .8; }
+.mdFigure svg { max-width: 100%; height: auto; }
+.mdCode { margin: 6px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: color-mix(in srgb, var(--surface) 70%, black); }
+.mdCodeBar { display: flex; justify-content: space-between; padding: 3px 10px; font-size: 11px; opacity: .8; border-bottom: 1px solid var(--border); }
+.mdCodeBar button { font-size: 11px; background: none; border: 0; color: inherit; cursor: pointer; }
+.mdCode pre { margin: 0; padding: 10px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; }
+.mdQuiz { padding: 10px 12px; border-radius: 10px; background: var(--surface-2); margin: 6px 0; }
+@media (max-width: 820px) { .studyGrid { grid-template-columns: 1fr !important; } }

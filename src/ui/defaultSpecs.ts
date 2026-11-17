@@ -20,6 +20,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Dashboard",
     subtitle: "Today at a glance",
     blocks: [
+      { type: "continue", title: "Pick up where you left off", span: 4 },
       { type: "srdue", title: "Due today (spaced repetition)", span: 4 },
       { type: "timetable", title: "Today", span: 5, bind: { table: "timetable", limit: 200 } },
       { type: "agenda", title: "Coming up", span: 4, props: { days: 14, limit: 8 } },
@@ -55,6 +56,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "School",
     subtitle: "Maths (OCR) · Further Maths (OCR) · Physics (AQA) · Economics (Edexcel)",
     blocks: [
+      { type: "continue", title: "Pick up where you left off", span: 12 },
       { type: "schoolanalysis", title: "Path to A*", span: 12, bind: { table: "school_tests", limit: 1 } },
       { type: "readiness", title: "Exam readiness by subject", span: 12 },
       { type: "weakspec", title: "Weakest spec statements", span: 6, props: { limit: 6 } },
@@ -120,23 +122,13 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     ],
   },
   "school--planner": {
-    title: "Planner",
-    subtitle: "Apollo turns your exams, weak topics and free time into a plan; you tick sessions off.",
+    title: "Revision timetable",
+    subtitle: "Make it yourself or generate it from your weak spots, tests and free time. It adapts: done work ticks off, missed sessions move, and topics you're ahead on get lighter.",
     blocks: [
+      { type: "revisiontimetable", span: 12 },
       { type: "upcomingtests", title: "Tests coming up", span: 4, props: { compact: true, limit: 5 } },
       { type: "planvsdone", title: "This week: planned (grey) vs done", span: 8 },
       { type: "readiness", title: "Readiness and exam runway", span: 12 },
-      { type: "list", title: "Today", span: 4, bind: { table: "plan_items", where: { done: false }, upcoming: { field: "date", days: 1 }, limit: 20 },
-        props: { primary: "topic", secondary: ["subject", "minutes", "kind"], action: { label: "Done", op: "update", data: { done: true } } } },
-      { type: "ring", title: "Plan done this week", span: 4, props: { goal: 100, label: "sessions done" }, bind: { table: "plan_items", where: { done: true }, days: 7, dateField: "date", agg: { fn: "count" } } },
-      { type: "ask", title: "Plan my revision", span: 6, props: { submit: "Make the plan", rows: 3, model: "sonnet",
-        template: "Make me a revision plan from today until {until}. Use my exams (events, kind exam), weakest topics (past_paper_topics with the lowest pct, then spec_topics), and free time around my timetable, about {mins} minutes a day, mixing subjects (interleaving) and putting topics before each exam. Save each session to plan_items (date as ISO date, subject, topic, minutes, kind 'learn'|'practice'|'past paper'|'review', done false). Keep existing done items. Reply with a 2-line summary. {extra}",
-        fields: [{ name: "until", label: "Until (date or 'my last exam')", type: "text" }, { name: "mins", label: "Minutes per day", type: "select", options: ["60", "90", "120", "180", "240"] }, { name: "extra", label: "Anything else", type: "text" }] } },
-      { type: "table", title: "Next 7 days", span: 6, bind: { table: "plan_items", upcoming: { field: "date", days: 7 }, limit: 60 }, props: { columns: ["date", "subject", "topic", "minutes", "done"] } },
-      { type: "form", title: "Add a session yourself", span: 6, props: { table: "plan_items", submit: "Add", defaults: { done: false, kind: "practice" }, fields: [
-        { name: "date", type: "date", required: true }, { name: "subject", type: "select", options: SUBJ }, { name: "topic", required: true }, { name: "minutes", type: "number" },
-      ] } },
-      { type: "list", title: "Overdue", span: 6, bind: { table: "plan_items", where: { done: false }, due: { field: "date" }, limit: 20 }, props: { primary: "topic", secondary: ["subject", "date"], action: { label: "Done", op: "update", data: { done: true } } } },
     ],
   },
   "school--tests": {
@@ -199,13 +191,11 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "school--tutor": {
     title: "Tutor",
-    subtitle: "Goes step by step, prompts you to work things out, cites your notes, aims at full marks.",
+    subtitle: "Lessons that go one chunk at a time (one spec statement, checked before moving on), revision that asks first, exam practice, and tutor chats. Everything is saved here.",
     blocks: [
+      { type: "studyroom", span: 12 },
       { type: "commandwords", title: "Command words: what each one wants", span: 6 },
       { type: "blurt", title: "Blurt practice", span: 6 },
-      { type: "ask", title: "Ask the tutor", span: 8, props: { mode: "tutor", submit: "Teach me", rows: 5, thread: "tutor:{subject}", template: "{subject}: {text}",
-        fields: [{ name: "subject", type: "select", options: SUBJ }, { name: "text", label: "Topic, question, or paste an exam question", type: "textarea" }] } },
-      { type: "text", span: 4, props: { text: "**How it works**\n\n- Each subject keeps its own ongoing tutor chat (see Chats).\n- Say \"I'm stuck\" for a full explanation, or \"just the answer\".\n- It checks your notes and saved sites first and cites them.\n- Add notes on the Notes page to make it better." } },
       { type: "ask", title: "Quiz me", span: 6, props: { mode: "tutor", submit: "Start quiz", thread: "tutor:{subject}", template: "{subject}: quiz me with 5 exam-style questions on {topic}, one at a time, marking each answer like a mark scheme.",
         fields: [{ name: "subject", type: "select", options: SUBJ }, { name: "topic", type: "text" }] } },
       { type: "ask", title: "Mark my answer", span: 6, props: { mode: "tutor", submit: "Mark it", rows: 5, thread: "tutor:{subject}", template: "{subject}: mark this answer out of {marks} like the mark scheme, show where marks were lost and how to get full marks.\nQuestion: {q}\nMy answer: {a}",
@@ -214,17 +204,12 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   },
   "school--notes": {
     title: "Notes",
+    subtitle: "Lesson and topic notes by subject and topic, with maths, diagrams, links and videos. Apollo turns them into flashcards, quizzes you on them and fills the gaps.",
     blocks: [
-      { type: "form", title: "New note", span: 7, props: { table: "notes", submit: "Save note", defaults: { kind: "lesson" }, fields: [
-        { name: "subject", type: "select", options: SUBJ }, { name: "kind", type: "select", options: ["lesson", "topic"] }, { name: "topic" }, { name: "spec_code", label: "Spec code (optional)" },
-        { name: "title", required: true }, { name: "body", label: "Notes", type: "textarea", required: true },
-      ] } },
-      { type: "ask", title: "Turn notes into flashcards", span: 5, props: { mode: "flashcards", submit: "Make cards", rows: 6, template: "Deck: {subject}. Topic: {topic}. Notes:\n{text}",
-        fields: [{ name: "subject", type: "select", options: SUBJ }, { name: "topic", type: "text" }, { name: "text", label: "Paste notes", type: "textarea" }] } },
-      { type: "list", title: "Latest notes", span: 7, bind: { table: "notes", limit: 20 }, props: { primary: "title", secondary: ["subject", "kind", "topic", "created_at"] } },
-      { type: "ask", title: "Learn from a revision website", span: 5, props: { submit: "Read & remember", template: "Ingest this revision page with ingest_url (subject {subject}, board {board}, topic {topic}): {url}",
+      { type: "noteshub", span: 12 },
+      { type: "ask", title: "Learn from a revision website", span: 6, props: { submit: "Read & remember", template: "Ingest this revision page with ingest_url (subject {subject}, board {board}, topic {topic}): {url}",
         fields: [{ name: "url", label: "Page URL", type: "text" }, { name: "subject", type: "select", options: SUBJ }, { name: "board", type: "select", options: ["OCR", "AQA", "Edexcel"] }, { name: "topic", type: "text" }] } },
-      { type: "list", title: "Saved websites", span: 12, bind: { table: "sources", limit: 20 }, props: { primary: "title", secondary: ["subject", "board", "topic"], link: "{url}" } },
+      { type: "list", title: "Saved websites", span: 6, bind: { table: "sources", limit: 20 }, props: { primary: "title", secondary: ["subject", "board", "topic"], link: "{url}" } },
     ],
   },
   "school--homework": {
@@ -699,6 +684,11 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "Workout plan",
     subtitle: "Tell it about you; it builds the plan in seconds (no AI needed), and you can save the days as routines.",
     blocks: [{ type: "workoutplanner", span: 12, bind: { table: "workout_plans", limit: 20 } }],
+  },
+  "library--documents": {
+    title: "Documents",
+    subtitle: "Projects, CVs, reports, essays, posters, slides and revision sheets Apollo makes: real pictures and diagrams, proper layouts, export to PDF or Word.",
+    blocks: [{ type: "documents", span: 12 }],
   },
   "library--files": {
     title: "Files",

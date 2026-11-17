@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useApollo } from "@/shell/apollo";
 import { usePersist } from "./usePersist";
+import { RichText } from "./RichText";
 import u from "./ui.module.css";
 
 type Msg = { id: string; role: string; content: string; at?: string };
@@ -50,10 +51,10 @@ export function LanguageConversation() {
           {!msgs.length && !view && <p className="label">Press the mic (or Alt+P), say something in {lang} (or in English to start), press again to send. Apollo answers out loud, corrects you, and teaches a new word each turn.</p>}
           {msgs.map((m) => (
             <div key={m.id} style={{ justifySelf: m.role === "user" ? "end" : "start", maxWidth: "85%", padding: "8px 12px", borderRadius: 12, background: m.role === "user" ? "var(--accent)" : "var(--surface-2)", color: m.role === "user" ? "var(--on-accent)" : undefined, whiteSpace: "pre-wrap", fontSize: 14.5 }}>
-              {m.role === "user" ? m.content.replace(/^Language: \w+\.\s*/, "") : m.content}
+              <RichText text={m.role === "user" ? m.content.replace(/^Language: \w+\.\s*/, "") : m.content} />
             </div>
           ))}
-          {!view && reply?.pending && <div style={{ padding: "8px 12px", borderRadius: 12, background: "var(--surface-2)", opacity: 0.8 }}>{reply.text || "…"}</div>}
+          {!view && reply?.pending && <div style={{ padding: "8px 12px", borderRadius: 12, background: "var(--surface-2)", opacity: 0.8 }}><RichText text={reply.text || "…"} /></div>}
         </div>
         {view ? <button className="pill" onClick={() => setView(null)}>Back to the current session</button> : (
           <div className={u.row} style={{ justifyContent: "center" }}>

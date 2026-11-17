@@ -54,15 +54,16 @@ function MockExam({ d, pool, onClose }: { d: A; pool: A[]; onClose: () => void }
   const [marks, setMarks] = useState<Record<string, number>>({});
   const [phase, setPhase] = useState<"sit" | "mark" | "done">("sit");
   const [now, setNow] = useState(0);
+  const [t0, setT0] = useState(0);
   const started = useRef(0);
   const testId = useRef<string | null>(null);
   useEffect(() => {
-    started.current = nowMs(); queueMicrotask(() => setNow(nowMs()));
+    started.current = nowMs(); queueMicrotask(() => { setNow(nowMs()); setT0(started.current); });
     void rec("create", "tests", { title: `Mock: ${d.title}`, subject: d.subject, question_ids: qs.map((q) => q.id), total, status: "in progress" }).then((r) => { testId.current = r?.id ?? null; });
     const t = setInterval(() => setNow(nowMs()), 1000);
     return () => clearInterval(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const left = Math.max(0, minutes * 60 - Math.round((now - started.current) / 1000));
+  const left = Math.max(0, minutes * 60 - Math.round((now - t0) / 1000));
   useEffect(() => { if (phase === "sit" && now && left === 0) queueMicrotask(() => { setPhase("mark"); setI(0); }); }, [left, phase, now]);
   const got = Object.values(marks).reduce((a, b) => a + b, 0);
   const save = async () => {

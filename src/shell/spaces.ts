@@ -39,11 +39,11 @@ export const SPACES: Space[] = [
   { id: "school", name: "School", icon: "school", blurb: "Revision hub, tutor, notes, homework, timetable", subs: [
     { id: "flashcards", name: "Flashcards", blurb: "Spaced repetition by subject" },
     { id: "revise", name: "Revise", blurb: "Timer and revision stats" },
-    { id: "planner", name: "Planner", blurb: "Exam countdown and a day-by-day revision plan" },
+    { id: "planner", name: "Revision timetable", blurb: "Your revision timetable: make it or generate it; it adapts to what you actually do" },
     { id: "tests", name: "Tests", blurb: "School tests by topic, mistake log and stats" },
     { id: "questions", name: "Questions", blurb: "Question bank: past-paper and exam-style questions, practice and tests" },
     { id: "papers", name: "Past papers", blurb: "Marks by paper and topic, weak-topic finder" },
-    { id: "tutor", name: "Tutor", blurb: "Step-by-step help aimed at full marks" },
+    { id: "tutor", name: "Tutor", blurb: "Chunk-by-chunk lessons, revise and exam modes, tutor chats (saved here)" },
     { id: "notes", name: "Notes", blurb: "Lesson and topic notes, notes to flashcards, websites" },
     { id: "homework", name: "Homework", blurb: "What's set and when it's due" },
     { id: "timetable", name: "Timetable", blurb: "Lessons, exams and deadlines" },
@@ -96,6 +96,7 @@ export const SPACES: Space[] = [
     { id: "knowledge", name: "Knowledge", blurb: "Websites, files and text Apollo learns from" },
     { id: "journal", name: "Journal", blurb: "Private by default" },
     { id: "files", name: "Files", blurb: "Things made with Apollo or Claude" },
+    { id: "documents", name: "Documents", blurb: "Projects, CVs, reports, posters and slides Apollo makes" },
     { id: "reports", name: "Reports", blurb: "Weekly reports" },
   ] },
   { id: "uni", name: "University", icon: "uni", blurb: "Courses, universities, stats, offers vs your grades", subs: [

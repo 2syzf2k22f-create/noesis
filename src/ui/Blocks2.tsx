@@ -141,7 +141,7 @@ export function AskBlock({ p }: { p: P }) {
         </label>
       ))}
       <button className="pill" data-active="true">{p.submit ?? "Ask Apollo"}</button>
-      {sent && reply && <div className={u.askReply} data-wide="true">{reply.text || "…"}</div>}
+      {sent && reply && <div className={u.askReply} data-wide="true"><RichText text={reply.text || "…"} /></div>}
     </form>
   );
 }

@@ -597,7 +597,14 @@ type Puzzle = { id: string; fen: string; solution: string[]; rating?: number; th
 const THEMES = ["mix", "mateIn1", "mateIn2", "mateIn3", "fork", "pin", "skewer", "discoveredAttack", "sacrifice", "deflection", "attraction", "hangingPiece", "trappedPiece", "endgame", "rookEndgame", "promotion", "defensiveMove", "quietMove", "crushing"];
 const RKEY = "noesis.puzzleRating";
 
+/** Through the site's server first (school networks block lichess.org; the server also keeps a stash for when
+ *  lichess can't be reached at all), then straight from lichess as a fallback. */
 async function lichessPuzzle(theme: string, difficulty: string): Promise<Puzzle> {
+  const viaSite = await fetch(`/api/puzzles?theme=${encodeURIComponent(theme)}&difficulty=${encodeURIComponent(difficulty)}`).then((r) => r.json()).catch(() => null);
+  if (viaSite?.fen) return { id: viaSite.id, fen: viaSite.fen, solution: viaSite.solution, rating: viaSite.rating, themes: viaSite.themes, source: "lichess" };
+  return lichessDirect(theme, difficulty).catch(() => { throw new Error(viaSite?.error ?? "Couldn't get a puzzle (lichess is blocked here and none are saved yet)."); });
+}
+async function lichessDirect(theme: string, difficulty: string): Promise<Puzzle> {
   const r = await fetch(`https://lichess.org/api/puzzle/next?angle=${theme}&difficulty=${difficulty}`, { headers: { accept: "application/json" } });
   if (!r.ok) throw new Error(`lichess answered ${r.status}`);
   const j = await r.json();

@@ -13,6 +13,9 @@ export async function GET(req: Request) {
   const { ensureRecurring } = await import("@/core/recurring");
   const reminders = await ensureRecurring(s).catch((e) => `failed: ${(e as Error).message}`);
   const sr = await (await import("@/core/srStore")).srNudge(s).catch((e) => `failed: ${(e as Error).message}`);
+  const revision = await (await import("@/core/revision")).rebalance(s).catch((e) => `failed: ${(e as Error).message}`);
+  const brief = await (await import("@/core/revision")).dailyBrief(s).catch(() => 0);
+  const puzzles = await (await import("@/core/puzzles")).topUpPuzzles(s, 2).catch(() => 0);
   const ms = await syncMicrosoft(s, undefined, { scheduled: true }).catch((e) => ({ error: (e as Error).message }));
-  return Response.json({ reminders, sr, ms });
+  return Response.json({ reminders, sr, revision, brief, puzzles, ms });
 }

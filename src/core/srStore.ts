@@ -8,7 +8,7 @@ import { autoRating, dayEnd, DEFAULT_SR, schedule, studyDay, type Card, type SrS
 
 type Country = { n: string; c: string; r: string; s: string; k: string; a: number };
 const ALL = COUNTRIES as Country[];
-export const AREA_OF: Record<string, string> = { flashcard: "school", mistake: "school", question: "school", spec: "school", geo: "mind", puzzle: "mind", opening: "mind", palace: "mind", poker: "mind", coding: "mind", vocab: "languages" };
+export const AREA_OF: Record<string, string> = { flashcard: "school", mistake: "school", question: "school", spec: "school", geo: "mind", puzzle: "mind", opening: "mind", palace: "mind", poker: "mind", coding: "mind", vocab: "languages", note: "school" };
 const LANGS = ["Mandarin", "Spanish", "French", "English"];
 const MIND_DECKS = ["Coding", "Poker", "Memory", "Chess"];
 /** Speech-synthesis language for each language deck (listening cards). */
@@ -25,7 +25,11 @@ const card = (r: Row): Card => ({ state: r.state, stability: r.stability, diffic
 const key = (r: Record<string, any>) => `${r.kind}|${r.source_table ?? ""}|${r.source_id ?? ""}|${r.direction ?? ""}`;
 
 /** Create/refresh items from their sources. Cheap enough to run before each queue/status read. */
-export async function syncItems(store: Store, only?: string[]) {
+let lastSync = 0;
+/** Throttled: a full sync runs at most once a minute per server instance (it reads every source table). */
+export async function syncItems(store: Store, only?: string[], force = false) {
+  if (!force && !only && Date.now() - lastSync < 60_000) return 0;
+  if (!only) lastSync = Date.now();
   const want = (k: string) => !only || only.includes(k);
   const existing = await store.list("sr_items", { limit: 20000 });
   const have = new Map(existing.map((r) => [key(r), r]));
@@ -84,6 +88,10 @@ export async function syncItems(store: Store, only?: string[]) {
     ensure({ area: "mind", kind: "puzzle", source_table: "chess_puzzles", source_id: p.id, deck: "my games", payload: { fen: p.fen, solution: p.solution, note: p.note ?? null } });
   if (want("opening")) for (const d of await store.list("opening_drills", { limit: 2000 }))
     ensure({ area: "mind", kind: "opening", source_table: "openings", source_id: String(d.opening), deck: d.side ?? null, payload: { opening: d.opening, name: d.name, side: d.side } });
+  if (want("note")) for (const nt of await store.list("notes", { limit: 3000 }).catch(() => [] as Row[])) {
+    if (nt.deleted_at || !nt.review_at) continue;
+    ensure({ area: "school", kind: "note", source_table: "notes", source_id: nt.id, deck: nt.subject ?? null, topic: nt.topic ?? null, spec_code: nt.spec_code ?? null, payload: { front: `Recall the key points of your note:\n\n**${nt.title}**${nt.topic ? ` (${nt.topic})` : ""}`, back: String(nt.body ?? "").replace(/!\[[^\]]*\]\(data:[^)]+\)/g, "[image]").slice(0, 2500) } });
+  }
   if (want("palace")) for (const l of await store.list("palaces", { limit: 3000 }).catch(() => [] as Row[])) {
     if (!l.image) continue;
     ensure({ area: "mind", kind: "palace", source_table: "palaces", source_id: l.id, deck: l.palace, payload: { front: `**${l.palace}**, stop ${l.position ?? "?"}: *${l.locus}*\n\nWhat's stored here?`, back: l.image } });

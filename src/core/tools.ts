@@ -2,6 +2,7 @@
 // Every write is recorded in action_log with before/after, deletes go to trash,
 // and undo/rollback replay the log backwards. No confirmation prompts by design.
 import { z } from "zod";
+import { TOOLS2 } from "./tools2";
 import { PRESETS } from "../theme/presets";
 import { ALL_PAGE_IDS } from "../shell/spaces";
 import { BlockSchema, parseSpec } from "../ui/spec";
@@ -24,7 +25,7 @@ export const WRITABLE = [
   "timetable", "events", "notes", "recovery_logs", "palaces", "poker_hands",
   "plan_items", "past_papers", "past_paper_topics", "checkins", "opening_drills", "puzzle_attempts", "chess_puzzles",
   "chess_practice", "poker_practice",
-  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items", "blurts", "upcoming_tests", "upcoming_test_topics", "chapter_maps", "test_sessions",
+  "questions", "tests", "question_attempts", "screentime_apps", "habits", "habit_logs", "workout_plans", "school_tests", "mistakes", "water_logs", "goals", "body_metrics", "unis", "courses", "meal_plans", "meal_plan_items", "blurts", "upcoming_tests", "upcoming_test_topics", "chapter_maps", "test_sessions", "lessons",
 ] as const;
 // Apollo can read everything except your private journal and stored sign-in tokens
 const READABLE = [...WRITABLE, "action_log", "trash", "page_versions", "jobs", "usage_log", "relay_status", "messages", "chat_summaries", "reviews", "note_chunks", "spec_topics", "subjects", "spec_points"] as const;
@@ -45,6 +46,7 @@ export type UiAction =
   | { type: "back" }
   | { type: "start_session"; area?: string; kind?: string; deck?: string; weak?: boolean }
   | { type: "end_session" }
+  | { type: "go"; path: string }
   | { type: "highlight"; target: string; label?: string; ms?: number }
   | { type: "chatbox"; x?: number; y?: number; w?: number; h?: number; near?: string; open?: boolean }
   | { type: "open_window"; to: string }
@@ -834,6 +836,7 @@ export const TOOLS: ToolDef[] = [
     },
   },
 ];
+TOOLS.push(...(TOOLS2 as ToolDef[]));
 
 async function revert(ctx: ToolCtx, a: Row): Promise<UiAction | null> {
   const { store } = ctx;

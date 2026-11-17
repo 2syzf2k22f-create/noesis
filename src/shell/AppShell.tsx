@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { ApolloOrb } from "@/orb/ApolloOrb";
+import { OrbHost as ApolloOrb } from "@/orb/OrbHost";
+import { Extras } from "./Extras";
 import { useTheme } from "@/theme/ThemeProvider";
 import { ApolloProvider, useApollo } from "./apollo";
 import { Backdrop } from "./Backdrop";
@@ -60,6 +61,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const panes = useUi().windows.length > 0;
   return (
     <div className={s.shell} data-home={home}>
+      <Extras />
       {home && <Backdrop />}
       {(home || !panes) && <CornerMenus />}
       <div className={s.orbStage} data-docked={!home} ref={stageRef}>

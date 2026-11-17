@@ -122,3 +122,10 @@ option:checked, option:hover {
 }
 
 @keyframes pulse { to { opacity: 0.35; } }
+
+/* printing a document or a note prints only that, not the site around it */
+@media print {
+  body:has(.doc-print-root) * , body:has(.note-print) * { visibility: hidden; }
+  .doc-print-root, .doc-print-root *, .note-print, .note-print * { visibility: visible; }
+  .doc-print-root, .note-print { position: absolute; left: 0; top: 0; width: 100%; background: #fff !important; color: #111 !important; }
+}

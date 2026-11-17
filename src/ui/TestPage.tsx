@@ -10,6 +10,7 @@ import { RichText } from "./RichText";
 import { CONF_COLOR } from "./SpecBlock";
 import u from "./ui.module.css";
 import { MockExamButton } from "./MockExam";
+import { useStickyScroll } from "./useStickyScroll";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type A = any;
@@ -155,7 +156,7 @@ function RevisionPanel({ d, session, onEnd }: { d: A; session: A; onEnd: () => v
   const [text, setText] = useState("");
   const [paused, setPaused] = useState(false);
   const started = useRef(false);
-  const list = useRef<HTMLDivElement>(null);
+  const { ref: list } = useStickyScroll<HTMLDivElement>([msgs, reply?.text]);
   const topics = useMemo(() => {
     const ts = session.topic_id ? d.topics.filter((t: A) => t.id === session.topic_id) : [...d.topics];
     return session.mode === "chapter" ? ts : ts.sort((a: A, b: A) => a.readiness - b.readiness);
@@ -186,7 +187,6 @@ Start with the first topic now.`, { thread });
     const row = s?.[0]?.rows?.[0]; if (row) setState(row);
   }, [thread, session.id]);
   useEffect(() => { queueMicrotask(() => void loadMsgs()); const t = setInterval(loadMsgs, 4000); return () => clearInterval(t); }, [loadMsgs, reply?.pending]);
-  useEffect(() => { list.current?.scrollTo({ top: 1e9 }); }, [msgs, reply?.text]);
   const covered: string[] = state.covered ?? [];
   const scores = state.scores ?? {};
   const earned = Object.values(scores).reduce((a: number, x: A) => a + Number(x.marks ?? 0), 0), of = Object.values(scores).reduce((a: number, x: A) => a + Number(x.out_of ?? 0), 0);

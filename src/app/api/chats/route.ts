@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
   rows.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
   // tokens and jobs per chat (from the usage log), so the biggest chats are visible
   const use = new Map<string, { tokens: number; jobs: number }>();
-  for (const u of await s.list("usage_log", { order: { col: "created_at", asc: false }, limit: 5000 }).catch(() => [])) {
+  // the token totals are only shown on the Chats page; other callers (tutor rooms, language) skip the 5000-row read
+  if (!space) for (const u of await s.list("usage_log", { order: { col: "created_at", asc: false }, limit: 5000 }).catch(() => [])) {
     if (!u.conversation_id) continue;
     const x = use.get(u.conversation_id) ?? { tokens: 0, jobs: 0 };
     x.tokens += Number(u.tokens_total ?? 0); x.jobs += 1; use.set(u.conversation_id, x);

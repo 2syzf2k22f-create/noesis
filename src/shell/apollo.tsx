@@ -3,7 +3,7 @@
 import { BUILD_ON_HOLD, ON_HOLD_NOTE } from "@/core/buildMode";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ORB_STATES, type OrbState } from "@/orb/ApolloOrb";
+import { ORB_STATES, type OrbState } from "@/orb/states";
 import { syntheticSpeech, useOrbAudio } from "@/orb/useOrbAudio";
 import { createSpeaker, listenOnce, pickVoice, startRecorder, sttSupported, ttsSupported, wakeWord, type Listener } from "@/voice/voice";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -29,7 +29,13 @@ export type Reply = {
   ask?: string;
   pending?: boolean;
   tone?: "info" | "error";
+  /** Where the question came from: null = the main chat; otherwise a page's own chat (tutor room, notes...) so
+   *  the floating chat box doesn't pop up for it. */
+  origin?: string | null;
 };
+export type SubmitOpts = { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[]; files?: { name: string; kind: string; text: string }[];
+  /** A page's own conversation (tutor room session etc.): answered there, never in the floating chat. */
+  conversationId?: string | null; space?: string; context?: string };
 
 export type Status = {
   configured: boolean;
@@ -51,7 +57,7 @@ type Ctx = {
   actions: Action[];
   runAction: (a: Action) => void;
   /** Site commands run instantly in the browser; anything else goes to Apollo via the relay. */
-  submit: (text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[]; files?: { name: string; kind: string; text: string }[] }) => void;
+  submit: (text: string, opts?: SubmitOpts) => void;
   toggleMic: () => void;
   /** Push-to-talk: start on press, stop (and send) on release. */
   startListening: () => void;
@@ -74,7 +80,7 @@ type Ctx = {
   /** Stop Apollo talking right now. */
   stopSpeaking: () => void;
   /** Where spoken input goes (e.g. a language practice session) while a page wants it; null = main chat. */
-  setVoiceTarget: (t: { mode?: string; thread?: string } | null) => void;
+  setVoiceTarget: (t: SubmitOpts | null) => void;
   status: Status | null;
   refreshStatus: () => void;
   /** Bumps when Apollo changed something, so undo UI can appear. */
@@ -101,7 +107,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { presets, setTheme, reloadThemes } = useTheme();
   const [orbState, setState] = useState<OrbState>("idle");
-  const [reply, setReply] = useState<Reply | null>(null);
+  const [reply, setReplyRaw] = useState<Reply | null>(null);
+  const originRef = useRef<string | null>(null);
+  const setReply = useCallback((r: Reply | null | ((cur: Reply | null) => Reply | null)) => setReplyRaw(typeof r === "function" ? r : r ? { ...r, origin: r.origin !== undefined ? r.origin : originRef.current } : r), []);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [model, setModelState] = useState<ModelPref>("auto");
   const [chatId, setChatId] = useState<string | null>(null);
@@ -121,8 +129,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const speaker = useRef<ReturnType<typeof createSpeaker> | null>(null);
   const lastWord = useRef(0);
   const submitRef = useRef<Ctx["submit"]>(() => {});
-  const voiceTarget = useRef<{ mode?: string; thread?: string } | null>(null);
-  const setVoiceTarget = useCallback((t: { mode?: string; thread?: string } | null) => { voiceTarget.current = t; }, []);
+  const voiceTarget = useRef<SubmitOpts | null>(null);
+  const setVoiceTarget = useCallback((t: SubmitOpts | null) => { voiceTarget.current = t; }, []);
 
   useEffect(() => {
     const sp = ls.get(SPEAK_KEY) as SpeakPref | null;
@@ -307,6 +315,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     else if (ui.type === "open_panel" && ui.kind === "widget" && ui.widget) panelStore.open("widget", ui.widget);
     else if (ui.type === "open_panel" && (PANEL_KINDS as string[]).includes(ui.kind)) panelStore.open(ui.kind as PanelKind);
     else if (ui.type === "set_theme") setTheme(ui.id);
+    else if (ui.type === "go") { if (/^\/[\w/?=&%.:|-]*$/.test(ui.path)) router.push(ui.path); }
     else if (ui.type === "reload") { void reloadThemes(); setChanges((c) => c + 1); }
     // after a navigation the element may not exist yet, so wait a moment
     else if (ui.type === "highlight") setTimeout(() => uiStore.highlight(ui.target, ui.label, ui.ms), 400);
@@ -373,8 +382,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   ], [openChat, presets, router, setModel, setOrbState, setSpeak, setTheme, setWake]);
 
   const settle = useCallback((r: Reply, ms = 9000) => {
-    setReply(r);
-    later(ms, () => setReply((cur) => (cur === r ? null : cur)));
+    const rr = { ...r, origin: r.origin !== undefined ? r.origin : originRef.current };
+    setReplyRaw(rr);
+    later(ms, () => setReplyRaw((cur) => (cur === rr ? null : cur)));
   }, []);
 
   const undoApollo = useCallback(async (actionId?: string) => {
@@ -402,8 +412,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     settle({ text: a.done }, 4200);
   }, [clearTimers, micOn, settle, stopMic]);
 
-  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string, images: string[] = [], files: { name: string; kind: string; text: string }[] = []) => {
+  const ask = useCallback(async (text: string, m: ModelPref, speak: boolean, mode?: string, thread?: string, images: string[] = [], files: { name: string; kind: string; text: string }[] = [], room?: { conversationId?: string | null; space?: string; context?: string }) => {
     const my = ++runId.current;
+    originRef.current = room?.space ?? thread ?? null;
     clearTimers();
     if (micOn) stopMic();
     speaker.current?.cancel();
@@ -420,7 +431,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setNotice(null);
     setReply({ text: "", pending: true, ask: text });
     // common questions are answered from your data without the relay (no tokens)
-    if (!mode && !thread) {
+    if (!mode && !thread && !room?.space) {
       const quick = await fetch("/api/quick", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
       if (quick?.answer && my === runId.current) {
         setState("speaking");
@@ -433,7 +444,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!images.length && wantsScreenshot(text)) { const shot = await screenshot(); if (shot) images = [shot]; }
     const res = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, model: m, mode, thread, conversationId: thread ? null : ls.get(CHAT_KEY), screen: screenContext.snapshot(), images, files }),
+      body: JSON.stringify({ text, model: m, mode, thread, conversationId: room?.space ? room.conversationId ?? null : thread ? null : ls.get(CHAT_KEY), space: room?.space, context: room?.context, autoThread: room?.space ? false : undefined, screen: screenContext.snapshot(), images, files }),
     }).then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) })).catch(() => null);
 
     if (!res || !res.ok) {
@@ -441,10 +452,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const notConfigured = res?.body?.error === "not_configured";
       return settle({ text: notConfigured ? "My database isn't connected yet, so I can't answer. Site commands still work." : "Couldn't reach the site's server.", tone: "error" });
     }
-    if (!thread) openChat(res.body.conversationId);
+    if (room?.space) window.dispatchEvent(new CustomEvent("noesis:room-conversation", { detail: { space: room.space, id: res.body.conversationId } }));
+    if (!thread && !room?.space) openChat(res.body.conversationId);
     if (res.body.switched) setNotice(res.body.switched === "new" ? "New topic, so I started a new chat." : `Back to your earlier chat${res.body.switchedTitle ? `: ${res.body.switchedTitle}` : ""}.`);
     // only direct chats become the chatbox's conversation; feature runs (meal plans, marking, chess…) don't
-    if (!thread) setActiveConv(res.body.conversationId);
+    if (!thread && !room?.space) setActiveConv(res.body.conversationId);
     if (!res.body.relayOnline) {
       setReply({ text: "Your PC's relay is offline. I've queued this and will answer when it's back.", pending: true, ask: text, tone: "info" });
     }
@@ -492,7 +504,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
   }, [applyUi, clearTimers, micOn, openChat, refreshStatus, settle, stopMic]);
 
-  const submit = useCallback((text: string, opts?: { model?: ModelPref; spoken?: boolean; mode?: string; thread?: string; images?: string[]; files?: { name: string; kind: string; text: string }[] }) => {
+  const submit = useCallback((text: string, opts?: SubmitOpts) => {
     const q = text.toLowerCase().trim().replace(/[.!?]+$/, "");
     if (!q && !opts?.images?.length && !opts?.files?.length) return;
     // Build mode starts only from Reg's own words: "build: <change>"
@@ -505,7 +517,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       router.push("/s/projects/build");
       return;
     }
-    if (!opts?.model && !opts?.mode && !opts?.thread && !opts?.images?.length && !opts?.files?.length) {
+    if (!opts?.model && !opts?.mode && !opts?.thread && !opts?.space && !opts?.images?.length && !opts?.files?.length) {
       const bare = q.replace(VERBS, "").replace(/\s+(panel|space|page|style|theme|preset)$/, (m) => (m.trim() === "panel" ? m : ""));
       const find = (t: string) => actions.find((a) => a.label.toLowerCase() === t || a.keywords.includes(t));
       const hit = find(q) ?? find(bare);
@@ -514,7 +526,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setPaletteOpen(false);
     // language practice is always spoken (unless voice is set to never)
     const speak = speakPref === "always" || (speakPref === "voice" && (!!opts?.spoken || opts?.mode === "conversation"));
-    void ask(text.trim() || "What do you make of this?", opts?.model ?? model, speak, opts?.mode, opts?.thread, opts?.images ?? [], opts?.files ?? []);
+    void ask(text.trim() || "What do you make of this?", opts?.model ?? model, speak, opts?.mode, opts?.thread, opts?.images ?? [], opts?.files ?? [], opts?.space ? { conversationId: opts.conversationId, space: opts.space, context: opts.context } : undefined);
   }, [actions, ask, model, runAction, speakPref, router, settle]);
   useEffect(() => { submitRef.current = submit; }, [submit]);
 
