@@ -12,6 +12,8 @@ export type RunResult = {
   tokensOut: number;
   isError: boolean;
   rateLimited: { resetsAt: number | null } | null;
+  /** Answered on extra-usage credits (plan limit reached). */
+  overage?: boolean;
   plan: Record<string, PlanWindow> | null;
   /** Tools Apollo called in this run, with counts. */
   tools?: Record<string, number>;
@@ -102,6 +104,7 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
       // never through a shell (see resolveClaude)
       const child = spawn(bin, args, { cwd: o.cwd ?? SANDBOX, stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true, env: { ...process.env, ...(TOOL_SEARCH ? { ENABLE_TOOL_SEARCH: process.env.ENABLE_TOOL_SEARCH ?? "auto:5" } : {}) } });
       const res: RunResult = { text: "", model: o.model, tokensIn: 0, tokensOut: 0, isError: false, rateLimited: null, plan: null };
+      let limitSeen: { resetsAt: number | null } | null = null;
       let buf = "", errBuf = "", turnText = "";
       const timer = setTimeout(() => child.kill(), o.timeoutMs ?? 5 * 60_000);
 
@@ -130,7 +133,10 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
           } else if (ev.type === "rate_limit_event") {
             const info = ev.rate_limit_info ?? {};
             res.plan = info.unifiedWindows ?? res.plan;
-            if (info.status && info.status !== "allowed" && info.status !== "allowed_warning") res.rateLimited = { resetsAt: info.resetsAt ?? null };
+            // the plan window can say "rejected" while extra-usage credits still pay for the answer: only count it as
+            // limited if the run actually fails (checked when it ends), never throw away an answer that came back
+            if (info.status && info.status !== "allowed" && info.status !== "allowed_warning") limitSeen = { resetsAt: info.resetsAt ?? null };
+            if (info.isUsingOverage || info.overageStatus === "allowed") res.overage = true;
           } else if (ev.type === "result") {
             res.text = (ev.result ?? turnText).trim();
             res.isError = !!ev.is_error;
@@ -147,6 +153,7 @@ export const claudeCode = (bin = resolveClaude()): Backend => ({
       child.on("error", (e) => { clearTimeout(timer); reject(e); });
       child.on("close", (code) => {
         clearTimeout(timer);
+        if (limitSeen && (res.isError || !res.text.trim())) res.rateLimited = limitSeen;
         if (!res.text && !res.rateLimited && code !== 0) return reject(new Error(errBuf.trim().slice(-500) || `claude exited ${code}`));
         if (!res.rateLimited && /usage limit|rate limit|limit reached/i.test(res.text) && res.isError) res.rateLimited = { resetsAt: null };
         resolve(res);
