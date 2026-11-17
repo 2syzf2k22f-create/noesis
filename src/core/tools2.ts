@@ -19,12 +19,30 @@ export const TOOLS2: Def[] = [
   {
     name: "lesson_step",
     description: "Move Reg's open lesson on: understood (he showed he gets the current chunk -> next chunk), shaky (misconception: stay and re-teach), check (record a check answer: correct true/false), back, skip, note (save a summary line).",
-    input: { lesson_id: z.string(), action: z.enum(["understood", "shaky", "check", "back", "skip", "note"]), correct: z.boolean().optional(), note: z.string().max(1000).optional() },
+    input: { lesson_id: z.string(), action: z.enum(["understood", "shaky", "check", "back", "skip", "note"]), correct: z.boolean().optional(), note: z.string().max(1000).optional(), covered: z.array(z.string()).max(30).optional().describe("exam-scope skills (exact text) he has now shown he can do") },
     async run(ctx, a) {
       const { stepLesson } = await import("./lessons");
-      const L = await stepLesson(ctx.store, a.lesson_id, { action: a.action === "note" ? "check" : a.action, correct: a.correct, note: a.note });
+      const L = await stepLesson(ctx.store, a.lesson_id, { action: a.action === "note" ? "check" : a.action, correct: a.correct, note: a.note, covered: a.covered });
+      if ((L as { blocked?: boolean }).blocked) return { blocked: true, still_to_cover: (L as { uncovered?: string[] }).uncovered, note: "Not moved on: teach and check these exam-scope items first." };
       const cur = (L.chunks ?? [])[L.idx];
       return { idx: L.idx, of: (L.chunks ?? []).length, status: L.status, next_chunk: cur ? { code: cur.code, title: cur.title, text: cur.text } : null };
+    },
+  },
+  {
+    name: "set_exam_scope",
+    description: "Save what exam questions on a spec statement actually ask, beyond its wording: standard follow-on parts, consequences, typical question types, traps (e.g. completing the square -> vertex form, turning point and max/min, line of symmetry, range, solving). 3-8 items, each {skill, example?}. Used by lessons, questions, flashcards and test revision so nothing commonly examined is missed.",
+    input: { subject: z.string(), code: z.string(), items: z.array(z.object({ skill: z.string().max(200), example: z.string().max(300).optional() })).min(1).max(12) },
+    async run(ctx, a) {
+      const p = (await ctx.store.list("spec_points", { eq: { subject: a.subject, code: a.code }, limit: 1 }))[0];
+      if (!p) return { error: "no such statement" };
+      await ctx.store.update("spec_points", p.id, { exam_scope: a.items, exam_scope_at: nowIso() });
+      // open lessons on this statement pick it up straight away
+      for (const L of await ctx.store.list("lessons", { eq: { subject: a.subject, status: "active" }, limit: 50 })) {
+        const ch = (L.chunks ?? []) as { code: string; scope?: unknown }[]; let hit = false;
+        for (const c of ch) if (c.code === a.code) { c.scope = a.items; hit = true; }
+        if (hit) await ctx.store.update("lessons", L.id, { chunks: ch, updated_at: nowIso() });
+      }
+      return { saved: a.items.length };
     },
   },
   {

@@ -4,7 +4,8 @@
 // works through exam-style questions. Progress is saved, so a lesson resumes exactly where it stopped.
 import { nowIso, type Row, type Store } from "./store";
 
-export type Chunk = { code: string | null; title: string; text: string; status: "todo" | "learning" | "understood" | "shaky" | "skipped"; checks: number; right: number; confidence?: number | null };
+export type ScopeItem = { skill: string; example?: string };
+export type Chunk = { code: string | null; title: string; text: string; status: "todo" | "learning" | "understood" | "shaky" | "skipped"; checks: number; right: number; confidence?: number | null; scope?: ScopeItem[]; covered?: string[] };
 export const MODES = ["teach", "revise", "exam"] as const;
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
@@ -23,7 +24,7 @@ export async function chunksFor(store: Store, subject: string, topic: string, co
   }
   return hits.filter((p) => p.level === 4 || !pts.some((q) => q !== p && String(q.code).startsWith(String(p.code)) && q.level > p.level))
     .sort((a, b) => natural(String(a.code), String(b.code))).slice(0, 40)
-    .map((p) => ({ code: p.code, title: p.title ?? p.code, text: String(p.text ?? p.title ?? "").slice(0, 900), status: "todo", checks: 0, right: 0, confidence: p.confidence ?? null }));
+    .map((p) => ({ code: p.code, title: p.title ?? p.code, text: String(p.text ?? p.title ?? "").slice(0, 900), status: "todo", checks: 0, right: 0, confidence: p.confidence ?? null, scope: Array.isArray(p.exam_scope) ? p.exam_scope : undefined, covered: [] }));
 }
 
 export async function createLesson(store: Store, b: { subject: string; topic: string; codes?: string[]; mode?: string; level?: string; plan_item_id?: string | null }) {
@@ -37,13 +38,20 @@ export async function createLesson(store: Store, b: { subject: string; topic: st
 
 /** Move through a lesson. understood -> next chunk (+1 spec confidence after a clean check); shaky -> stays,
  *  marked for revisit; back/skip/goto for navigation. Returns the updated lesson. */
-export async function stepLesson(store: Store, id: string, a: { action: "understood" | "shaky" | "back" | "skip" | "goto" | "check"; idx?: number; correct?: boolean; note?: string; chunks?: Chunk[] }) {
+export async function stepLesson(store: Store, id: string, a: { action: "understood" | "shaky" | "back" | "skip" | "goto" | "check"; idx?: number; correct?: boolean; note?: string; chunks?: Chunk[]; covered?: string[]; force?: boolean }) {
   const L = await store.get("lessons", id);
   if (!L) throw new Error("lesson not found");
   const chunks: Chunk[] = a.chunks ?? (Array.isArray(L.chunks) ? L.chunks : []);
   let idx = Math.min(Number(L.idx ?? 0), Math.max(0, chunks.length - 1));
   const cur = chunks[idx];
   if (a.action === "check" && cur) { cur.checks++; if (a.correct) cur.right++; }
+  if (cur && a.covered?.length) cur.covered = [...new Set([...(cur.covered ?? []), ...a.covered])];
+  // the exam scope must be covered before a chunk counts as understood (Reg's own "Understood" click forces it)
+  const missing = cur?.scope?.filter((x) => !(cur.covered ?? []).includes(x.skill)) ?? [];
+  if (a.action === "understood" && cur && missing.length && !a.force) {
+    await store.update("lessons", id, { chunks, updated_at: nowIso() });
+    return { ...L, chunks, idx, status: String(L.status), blocked: true, uncovered: missing.map((x) => x.skill) };
+  }
   if (a.action === "understood" && cur) {
     cur.status = "understood";
     if (cur.code) {
@@ -77,10 +85,27 @@ export function lessonContext(L: Row) {
       : "TEACH mode: teach ONLY this chunk in small steps: intuition first (an analogy or picture), then the key idea, then ONE worked example (use ```steps). Keep each message short (under ~180 words). End EVERY message with ONE check question for him to answer. Don't continue until he answers.";
   return [
     `LESSON ${L.id} · ${L.subject}: ${L.topic} · ${mode} mode · level ${L.level ?? "A-level"} · chunk ${Math.min(i + 1, chunks.length)} of ${chunks.length}`,
-    cur ? `CURRENT CHUNK [${cur.code ?? "-"}] ${cur.title}\nExact spec wording: "${cur.text}"\nStay inside this wording; this is what he's examined on.` : chunks.length ? "All chunks are done: give a short end-of-topic quiz (```quiz, 4 questions mixing all chunks), then a 5-line summary, then call lesson_step with action \"note\" to save the summary." : `No spec statements were found for this topic. First propose 5-10 chunks (small ideas in a sensible teaching order) and save them with lesson_set_chunks, then start chunk 1.`,
+    cur ? `CURRENT CHUNK [${cur.code ?? "-"}] ${cur.title}\nExact spec wording: "${cur.text}"\n${cur.scope?.length ? `EXAM SCOPE (what exam questions on this actually ask; teach AND check every item, then pass the items he's shown he can do as covered in lesson_step): ${cur.scope.map((x) => `${(cur.covered ?? []).includes(x.skill) ? "✓" : "☐"} ${x.skill}${x.example ? ` (e.g. ${x.example})` : ""}`).join("; ")}` : `No exam scope saved for this statement yet: FIRST list what exam questions on it typically ask, including things that follow from it but aren't in the wording (consequences, standard follow-on parts, common traps), save it with set_exam_scope, then teach and check each item.`}` : chunks.length ? "All chunks are done: give a short end-of-topic quiz (```quiz, 4 questions mixing all chunks), then a 5-line summary, then call lesson_step with action \"note\" to save the summary." : `No spec statements were found for this topic. First propose 5-10 chunks (small ideas in a sensible teaching order) and save them with lesson_set_chunks, then start chunk 1.`,
     done.length ? `Already understood: ${done.join(", ")}` : "",
     shaky.length ? `Shaky (come back to these): ${shaky.join(", ")}` : "",
     how,
     "Always: never dump the whole topic. When his answer shows he understands, call lesson_step(lesson_id, \"understood\") and then introduce the next chunk in one or two lines. If his answer shows a misconception, name it kindly, log it with the create tool on mistakes (subject, spec_code, what, fix), call lesson_step(\"shaky\"), and re-explain a different way (different analogy, a diagram via ```mermaid/```svg/```plot, or a simpler worked example). Use ```quiz for quick multiple-choice checks and ```plot / ```chart / ```mermaid / ```svg for visuals whenever a picture helps. If he sends a photo of his working, mark it line by line. When he asks, make flashcards for the chunk (create on flashcards with deck = subject, spec_code).",
   ].filter(Boolean).join("\n");
+}
+
+/** Queue Apollo to map the exam scope of statements that don't have one yet, in batches: statements on
+ *  upcoming tests first (soonest first), then weakest. One batch at a time; returns how many were queued. */
+export async function queueScopeMapping(store: Store, batch = 15) {
+  const jobs = await store.list("jobs", { order: { col: "created_at", asc: false }, limit: 100 });
+  if (jobs.some((j) => j.input?.scope_mapping && ["queued", "running"].includes(j.status))) return 0;
+  const pts = (await store.list("spec_points", { limit: 5000 })).filter((p) => !p.deleted_at && p.level === 4 && !(p.optional && !p.chosen) && !Array.isArray(p.exam_scope));
+  if (!pts.length) return 0;
+  const tests = (await store.list("upcoming_tests", { limit: 100 }).catch(() => [] as Row[])).filter((t) => !t.deleted_at && t.status === "upcoming");
+  const topics = await store.list("upcoming_test_topics", { limit: 2000 }).catch(() => [] as Row[]);
+  const soon = (p: Row) => { let best = 9e9; for (const t of tests) if (t.subject === p.subject) for (const tp of topics.filter((x) => x.test_id === t.id)) for (const c of tp.spec_codes ?? []) if (String(p.code).startsWith(c)) best = Math.min(best, Date.parse(String(t.date))); return best; };
+  const pick = pts.sort((a, b) => soon(a) - soon(b) || Number(a.confidence ?? 3) - Number(b.confidence ?? 3) || String(a.code).localeCompare(String(b.code), undefined, { numeric: true })).slice(0, batch);
+  const conv = await store.insert("conversations", { title: "Mapping exam scope", space: "study:scope", pinned: false, deleted_at: null, updated_at: nowIso() });
+  await store.insert("jobs", { kind: "apollo", status: "queued", ui_actions: [], output: null, conversation_id: conv.id, input: { conversation_id: conv.id, model_pref: "sonnet", mode: "chat", scope_mapping: true,
+    text: `[Background task, not typed by Reg] For each spec statement below, work out what exam questions on it actually ask (his boards: Maths/Further Maths OCR, Physics AQA, Economics Pearson Edexcel), INCLUDING things that follow from it but aren't in the wording: standard follow-on parts, consequences, typical question types and traps. Example: completing the square -> write in (x+p)^2+q form; turning point and whether max or min; line of symmetry; range of the function; solving by completing the square. Save 3-8 items for each with set_exam_scope (one call per statement). No reply needed beyond one line.\n${pick.map((p) => `- ${p.subject} ${p.code}: ${String(p.text ?? p.title ?? "").slice(0, 300)}`).join("\n")}` } });
+  return pick.length;
 }

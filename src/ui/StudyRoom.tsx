@@ -97,6 +97,7 @@ function Welcome({ onNew }: { onNew: () => void }) {
         <li>Your spec confidence, mistakes, flashcards and revision minutes update as you go.</li>
       </ul>
       <button className="pill" data-active="true" style={{ justifySelf: "start", height: 40 }} onClick={onNew}>＋ Start a lesson</button>
+      <ScopeStatus />
     </div>
   );
 }
@@ -155,14 +156,14 @@ function LessonView({ L, onChange }: { L: A; onChange: (L: A) => void }) {
         <span style={{ flex: 1 }} />
         <button className="pill" disabled={idx <= 0} onClick={() => void step("back")}>◀ Back</button>
         <button className="pill" disabled={done} onClick={() => void step("skip")}>Skip ▶</button>
-        <button className="pill" disabled={done} onClick={() => void step("understood")} title="Mark this chunk understood and move on">✓ Understood</button>
+        <button className="pill" disabled={done} onClick={() => void step("understood", { force: true })} title="Mark this chunk understood and move on">✓ Understood</button>
       </div>
       {chunks.length > 0 && (
         <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4 }}>
           {chunks.map((c, i) => <button key={i} onClick={() => void step("goto", { idx: i })} title={`${c.code ?? ""} ${c.title}: ${c.status}`} style={{ flex: "0 0 auto", minWidth: 54, height: 30, borderRadius: 8, border: i === idx ? "2px solid var(--text)" : "1px solid var(--border)", background: STATUS_COLOR[c.status] ?? "var(--surface-2)", color: c.status === "todo" ? "var(--text)" : "#08101f", fontSize: 11, fontWeight: 600 }}>{c.code ?? i + 1}</button>)}
         </div>
       )}
-      {cur && <div style={{ padding: "8px 12px", borderRadius: 10, background: "var(--surface-2)", fontSize: 13 }}><span className="label">Chunk {idx + 1} of {chunks.length}{cur.code ? ` · spec ${cur.code}` : ""}</span><div>{cur.text || cur.title}</div></div>}
+      {cur && <div style={{ padding: "8px 12px", borderRadius: 10, background: "var(--surface-2)", fontSize: 13 }}><span className="label">Chunk {idx + 1} of {chunks.length}{cur.code ? ` · spec ${cur.code}` : ""}</span><div>{cur.text || cur.title}</div>{cur.scope?.length > 0 && <div style={{ marginTop: 6 }}><span className="label">What exams ask on this</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{cur.scope.map((x: A) => <li key={x.skill} style={{ listStyle: "none", marginLeft: -18 }}>{(cur.covered ?? []).includes(x.skill) ? "✅" : "⬜"} {x.skill}{x.example ? <small className="label"> · {x.example}</small> : null}</li>)}</ul></div>}</div>}
       {done && chunks.length > 0 && <div style={{ padding: "8px 12px", borderRadius: 10, background: "color-mix(in srgb, #30a46c 22%, var(--surface))" }}>Topic complete. Ask for the end-of-topic quiz, save notes, or start a revise lesson on it in a few days.</div>}
       <RoomChat key={space} space={space} conversationId={L.conversation_id ?? null} onConversation={(id) => { void api({ action: "attach", id: L.id, conversation_id: id }); onChange({ ...L, conversation_id: id }); }}
         mode="tutor" context={L.context} quick={quick} height="64vh" onSent={() => setAnswered((n) => n + 1)}
@@ -181,4 +182,19 @@ function RoomStarter({ space, L }: { space: string; L: A }) {
     window.addEventListener("noesis:room-start", f); return () => window.removeEventListener("noesis:room-start", f);
   }, [space, L, submit]);
   return null;
+}
+
+/** How much of the spec has its exam scope mapped (what exams ask beyond the wording), with a button to do more now. */
+function ScopeStatus() {
+  const [st, setSt] = useState<A>(null);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { void api({ action: "scope_status" }).then(setSt); }, []);
+  if (!st?.total) return null;
+  return (
+    <div style={{ padding: 10, borderRadius: 10, background: "var(--surface-2)", fontSize: 13, display: "grid", gap: 6 }}>
+      <span><b>Exam scope mapped: {st.mapped}/{st.total} statements.</b> For each statement Apollo lists what exams actually ask beyond the spec wording (e.g. completing the square → turning point, max/min, line of symmetry), and lessons won&apos;t move on until those are covered. It fills in the rest in the background while your PC is on, tests first.</span>
+      {st.mapped < st.total && <button className="pill" style={{ justifySelf: "start" }} onClick={async () => { const r = await api({ action: "map_scope" }); setMsg(r.queued ? `Mapping ${r.queued} more now.` : "Already working on a batch."); }}>Map the next batch now</button>}
+      {msg && <small className="label">{msg}</small>}
+    </div>
+  );
 }

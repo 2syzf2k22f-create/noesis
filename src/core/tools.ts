@@ -412,7 +412,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "get_spec",
-    description: "The OFFICIAL specification statements (exact wording, code, notes, source document/version/page, verified flag) with Reg's confidence and the evidence linked to each (flashcards, questions, attempts, tests, mistakes, minutes). ALWAYS call this before tutoring, writing questions or flashcards, or planning revision, and stay inside the statements' wording. Filter by code (a statement or a whole topic, e.g. '1.02' or '3.4.1') and/or words. If a statement is missing or unverified, say 'not in the spec as I have it' instead of guessing.",
+    description: "The OFFICIAL specification statements (exact wording, code, notes, source document/version/page, verified flag) with Reg's confidence and the evidence linked to each (flashcards, questions, attempts, tests, mistakes, minutes). ALWAYS call this before tutoring, writing questions or flashcards, or planning revision, and stay inside the statements' wording, but ALSO cover each statement's exam_scope (what exams actually ask about it: follow-on parts, consequences, traps); if exam_scope is empty, work it out and save it with set_exam_scope. Filter by code (a statement or a whole topic, e.g. '1.02' or '3.4.1') and/or words. If a statement is missing or unverified, say 'not in the spec as I have it' instead of guessing.",
     input: { subject: z.enum(["Maths", "Further Maths", "Physics", "Economics"]), code: z.string().max(30).optional(), query: z.string().max(200).optional(), weakest: z.boolean().optional().describe("Return the highest-priority statements to revise"), limit: z.number().int().min(1).max(300).optional() },
     async run(ctx, a) {
       const { specWithEvidence, priority } = await import("./spec");
@@ -422,7 +422,7 @@ export const TOOLS: ToolDef[] = [
       rows = rows.filter((r) => !(r.optional && !r.chosen));
       if (a.weakest) rows = rows.filter((r) => r.level === 4).sort((x, y) => priority(y) - priority(x));
       else rows.sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0) || x.code.localeCompare(y.code, undefined, { numeric: true }));
-      const out = rows.slice(0, a.limit ?? 120).map((r) => ({ code: r.code, level: r.level, title: r.title, text: r.text, notes: r.notes, examples: r.examples, paper: r.paper, optional: r.optional, verified: r.verified, source: r.source_version ? `${r.source_version} p.${r.source_page ?? "?"}` : null, confidence: r.confidence, evidence: r.evidence }));
+      const out = rows.slice(0, a.limit ?? 120).map((r) => ({ code: r.code, level: r.level, title: r.title, text: r.text, notes: r.notes, examples: r.examples, paper: r.paper, optional: r.optional, verified: r.verified, source: r.source_version ? `${r.source_version} p.${r.source_page ?? "?"}` : null, confidence: r.confidence, evidence: r.evidence, exam_scope: r.exam_scope ?? null }));
       return { subject: a.subject, count: rows.length, statements: out, note: rows.some((r) => !r.verified) ? "Some rows are UNVERIFIED (not yet checked against the official PDF): say so if you rely on them." : undefined };
     },
   },

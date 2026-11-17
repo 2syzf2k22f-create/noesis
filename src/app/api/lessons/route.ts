@@ -1,6 +1,6 @@
 import { connection, type NextRequest } from "next/server";
 import { storeOr503 } from "@/core/api";
-import { createLesson, lessonContext, stepLesson } from "@/core/lessons";
+import { createLesson, lessonContext, queueScopeMapping, stepLesson } from "@/core/lessons";
 import { nowIso } from "@/core/store";
 
 /** GET ?id= one lesson (+ context) | list (optionally ?subject=). */
@@ -26,6 +26,8 @@ export async function POST(req: Request) {
       case "step": { const L = await stepLesson(s, b.id, { ...b, action: b.step }); return Response.json({ ...L, context: lessonContext(L) }); }
       case "attach": await s.update("lessons", b.id, { conversation_id: b.conversation_id, updated_at: nowIso() }); return Response.json({ ok: true });
       case "minutes": { const L = await s.get("lessons", b.id); if (L) await s.update("lessons", b.id, { minutes: Number(L.minutes ?? 0) + Number(b.minutes ?? 0) }); if (L && b.minutes >= 1) await s.insert("study_sessions", { subject: L.subject, topic: L.topic, label: `lesson (${L.mode})`, minutes: Number(b.minutes), spec_code: (L.chunks ?? [])[L.idx]?.code ?? null }); return Response.json({ ok: true }); }
+      case "map_scope": return Response.json({ queued: await queueScopeMapping(s, 15) });
+      case "scope_status": { const pts = (await s.list("spec_points", { limit: 5000 })).filter((p) => p.level === 4 && !p.deleted_at); return Response.json({ mapped: pts.filter((p) => Array.isArray(p.exam_scope)).length, total: pts.length }); }
       case "delete": await s.update("lessons", b.id, { status: "archived", updated_at: nowIso() }); return Response.json({ ok: true });
       default: return Response.json({ error: "unknown action" }, { status: 400 });
     }
