@@ -13,8 +13,11 @@ Apollo in a small window that's always running, even with the browser closed.
 ```
 cd C:\noesis\desktop
 npm install
+npm run setup
 npm start
 ```
+
+`npm run setup` downloads Electron itself (newer npm versions block install scripts, so `npm install` alone doesn't).
 
 On first start it asks for your NOESIS address (the one you use in the browser), then log in as usual.
 It starts with Windows from then on (untick it in the tray menu to stop).
