@@ -30,7 +30,7 @@ export const TOOLS2: Def[] = [
   },
   {
     name: "set_exam_scope",
-    description: "Save what exam questions on a spec statement actually ask, beyond its wording: standard follow-on parts, consequences, typical question types, traps (e.g. completing the square -> vertex form, turning point and max/min, line of symmetry, range, solving). 3-8 items, each {skill, example?}. Used by lessons, questions, flashcards and test revision so nothing commonly examined is missed.",
+    description: "Save what exam questions on a spec statement actually ask, beyond its wording: standard follow-on parts, consequences, typical question types, traps (e.g. completing the square -> vertex form, turning point and max/min, line of symmetry, range, solving). 3-8 items, each {skill, example?}. Used by lessons, questions, flashcards and test revision so nothing commonly examined is missed. Stay within this statement on his board's exams: no content from other statements, later topics or beyond A-level.",
     input: { subject: z.string(), code: z.string(), items: z.array(z.object({ skill: z.string().max(200), example: z.string().max(300).optional() })).min(1).max(12) },
     async run(ctx, a) {
       const p = (await ctx.store.list("spec_points", { eq: { subject: a.subject, code: a.code }, limit: 1 }))[0];
