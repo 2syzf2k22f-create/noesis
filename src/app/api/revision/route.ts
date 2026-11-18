@@ -1,7 +1,7 @@
 import { connection, type NextRequest } from "next/server";
 import { storeOr503 } from "@/core/api";
 import { nowIso } from "@/core/store";
-import { candidates, generateRevision, rebalance, revisionHelpers, revisionSettings, revisionWeek } from "@/core/revision";
+import { candidates, decideProposal, generateRevision, rebalance, revisionHelpers, revisionSettings, revisionWeek, whatNow } from "@/core/revision";
 
 /** GET ?from=YYYY-MM-DD (Monday) week view | ?view=ics calendar file | ?view=suggest what to revise next. */
 export async function GET(req: NextRequest) {
@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const s = storeOr503();
   if (s instanceof Response) return s;
   const view = req.nextUrl.searchParams.get("view");
+  if (view === "now") return Response.json(await whatNow(s, Number(req.nextUrl.searchParams.get("minutes") ?? 30)));
   if (view === "suggest") return Response.json((await candidates(s, await revisionSettings(s))).slice(0, 15));
   if (view === "ics") {
     const rows = (await s.list("plan_items", { limit: 3000 })).filter((p) => p.start_time && String(p.date) >= revisionHelpers.addDays(revisionHelpers.today(), -7) && p.status !== "missed");
@@ -34,6 +35,8 @@ export async function POST(req: Request) {
     switch (b.action) {
       case "generate": return Response.json(await generateRevision(s, b.settings ?? {}, { from: b.from, replace: b.replace }));
       case "rebalance": return Response.json(await rebalance(s));
+      case "proposal": return Response.json(await decideProposal(s, !!b.accept));
+      case "propose": return Response.json(await generateRevision(s, b.settings ?? { days_ahead: 7 }, { from: revisionHelpers.addDays(revisionHelpers.today(), 1), proposed: true }));
       case "add": {
         const m = Number(b.minutes ?? 45);
         const end = b.start_time ? revisionHelpers.hm(revisionHelpers.mins(b.start_time) + m) : null;

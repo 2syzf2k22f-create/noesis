@@ -6,7 +6,7 @@ import { nowIso, type Row, type Store } from "./store";
 
 export type ScopeItem = { skill: string; example?: string };
 export type Chunk = { code: string | null; title: string; text: string; status: "todo" | "learning" | "understood" | "shaky" | "skipped"; checks: number; right: number; confidence?: number | null; scope?: ScopeItem[]; covered?: string[] };
-export const MODES = ["teach", "revise", "exam"] as const;
+export const MODES = ["teach", "revise", "exam", "teachback"] as const;
 const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
 /** Spec statements for a topic: by code prefix (e.g. "1.02") or by words in the topic/heading. */
@@ -78,7 +78,9 @@ export function lessonContext(L: Row) {
   const done = chunks.filter((c) => c.status === "understood").map((c) => c.code ?? c.title);
   const shaky = chunks.filter((c) => c.status === "shaky").map((c) => c.code ?? c.title);
   const mode = String(L.mode);
-  const how = mode === "revise"
+  const how = mode === "teachback"
+    ? "TEACH-BACK mode: Reg explains the chunk to YOU (often by voice) as if teaching a classmate. Don't teach first. Grade his explanation against the exact wording AND every exam-scope item: what was right, what was missing or wrong, a score out of 10, then ask him to fix the gaps in one more go. When his explanation covers it, lesson_step understood (with covered)."
+    : mode === "revise"
     ? "REVISE mode: retrieval first. Open the chunk with ONE recall question (no teaching yet). If he gets it right and can explain why, praise briefly and call lesson_step understood. If not, find the exact gap and teach only that, then check again."
     : mode === "exam"
       ? "EXAM mode: one exam-style question at a time on this chunk, with marks [n]. Mark his answer strictly like a mark scheme (say which marking points he got), show the model answer, then lesson_step understood if he scored at least 70%, else shaky and give a similar question."
@@ -89,6 +91,7 @@ export function lessonContext(L: Row) {
     done.length ? `Already understood: ${done.join(", ")}` : "",
     shaky.length ? `Shaky (come back to these): ${shaky.join(", ")}` : "",
     how,
+    "PREREQUISITES: if he struggles because of an earlier idea this chunk depends on (e.g. surds or index laws under quadratics), ASK him first (\"Want a 2-minute check on X first?\") and only do it if he says yes.",
     "Always: never dump the whole topic. When his answer shows he understands, call lesson_step(lesson_id, \"understood\") and then introduce the next chunk in one or two lines. If his answer shows a misconception, name it kindly, log it with the create tool on mistakes (subject, spec_code, what, fix), call lesson_step(\"shaky\"), and re-explain a different way (different analogy, a diagram via ```mermaid/```svg/```plot, or a simpler worked example). Use ```quiz for quick multiple-choice checks and ```plot / ```chart / ```mermaid / ```svg for visuals whenever a picture helps. If he sends a photo of his working, mark it line by line. When he asks, make flashcards for the chunk (create on flashcards with deck = subject, spec_code).",
   ].filter(Boolean).join("\n");
 }
@@ -109,6 +112,6 @@ export async function queueScopeMapping(store: Store, batch = 15) {
   const pick = pts.sort((a, b) => soon(a) - soon(b) || Number(a.confidence ?? 3) - Number(b.confidence ?? 3) || String(a.code).localeCompare(String(b.code), undefined, { numeric: true })).slice(0, batch);
   const conv = await store.insert("conversations", { title: "Mapping exam scope", space: "study:scope", pinned: false, deleted_at: null, updated_at: nowIso() });
   await store.insert("jobs", { kind: "apollo", status: "queued", ui_actions: [], output: null, conversation_id: conv.id, input: { conversation_id: conv.id, model_pref: "sonnet", mode: "chat", scope_mapping: true,
-    text: `[Background task, not typed by Reg] For each spec statement below, work out what exam questions on it actually ask (his boards: Maths/Further Maths OCR, Physics AQA, Economics Pearson Edexcel), INCLUDING things that follow from it but aren't in the wording (standard follow-on parts, typical question types, traps), BUT only what that board's real exams ask about THIS statement: nothing from other statements, later topics, the other board or beyond A-level. If unsure an item is examined, leave it out. Example: completing the square -> write in (x+p)^2+q form; turning point and whether max or min; line of symmetry; range of the function; solving by completing the square. Save 3-8 items for each with set_exam_scope (one call per statement). No reply needed beyond one line.\n${pick.map((p) => `- ${p.subject} ${p.code}: ${String(p.text ?? p.title ?? "").slice(0, 300)}`).join("\n")}` } });
+    text: `[Background task, not typed by Reg] For each spec statement below, work out what exam questions on it actually ask (his boards: Maths/Further Maths OCR, Physics AQA, Economics Pearson Edexcel), INCLUDING things that follow from it but aren't in the wording (standard follow-on parts, typical question types, traps), BUT only what that board's real exams ask about THIS statement: nothing from other statements, later topics, the other board or beyond A-level. If unsure an item is examined, leave it out. Example: completing the square -> write in (x+p)^2+q form; turning point and whether max or min; line of symmetry; range of the function; solving by completing the square. Where examiner reports (search the board's reports with WebSearch when you can) show common ways students lose marks on it, add those as items with trap: true. Save 3-8 items for each with set_exam_scope (one call per statement). No reply needed beyond one line.\n${pick.map((p) => `- ${p.subject} ${p.code}: ${String(p.text ?? p.title ?? "").slice(0, 300)}`).join("\n")}` } });
   return pick.length;
 }

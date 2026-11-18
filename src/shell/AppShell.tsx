@@ -93,6 +93,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  // public share links show only the shared thing, none of the private site around it
+  const path = usePathname();
+  if (path.startsWith("/share/")) return <>{children}</>;
   return (
     <ApolloProvider>
       <Shell>{children}</Shell>

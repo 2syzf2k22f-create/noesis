@@ -23,6 +23,8 @@ const LESSON_QUICK: QuickAction[] = [
   { label: "Simpler", text: "Go simpler: assume I've forgotten the basics this builds on." },
   { label: "Diagram", text: "Show this as a diagram or graph." },
   { label: "Hint", text: "Give me a hint for your question, not the answer." },
+  { label: "🎤 Teach it back", text: "Let me explain this chunk back to you; grade my explanation against the spec and exam scope." },
+  { label: "👀 My screen", text: "Take a pc_screenshot of the question on my PC screen and give me ONE hint, not the answer." },
   { label: "Harder", text: "That was fine: give me a harder, exam-style question on this chunk." },
   { label: "Real-world", text: "Where does this come up in real life or in exam questions?" },
   { label: "Flashcards", text: "Make 3-5 flashcards for this chunk and save them to my deck." },
@@ -32,6 +34,7 @@ const LESSON_QUICK: QuickAction[] = [
 const CHAT_QUICK: QuickAction[] = [
   { label: "I'm stuck", text: "I'm stuck. Give me a full explanation." },
   { label: "Hint only", text: "Just a hint, not the answer." },
+  { label: "👀 Look at my screen", text: "Take a pc_screenshot of the question I'm doing on my PC (Dr Frost, Sparx, a past paper...) and give me ONE hint, not the answer. Only more if I ask." },
   { label: "Mark my working", text: "I'll attach a photo: mark my working line by line against the mark scheme and show where marks were lost." },
   { label: "Similar question", text: "Give me a similar question to practise." },
   { label: "Teach as a lesson", text: "Turn this into a step-by-step lesson." },
@@ -121,7 +124,7 @@ function NewLesson({ onClose, onMade }: { onClose: () => void; onMade: (L: A) =>
         <b style={{ fontSize: 18 }}>New lesson</b>
         <div className={u.row} style={{ gap: 6, flexWrap: "wrap" }}>
           <select value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} style={field}>{SUBJ.map((s) => <option key={s}>{s}</option>)}</select>
-          {[["teach", "Teach me"], ["revise", "Revise"], ["exam", "Exam practice"]].map(([m, l]) => <button key={m} className="pill" data-active={f.mode === m} onClick={() => setF({ ...f, mode: m })}>{l}</button>)}
+          {[["teach", "Teach me"], ["revise", "Revise"], ["exam", "Exam practice"], ["teachback", "Teach it back"]].map(([m, l]) => <button key={m} className="pill" data-active={f.mode === m} onClick={() => setF({ ...f, mode: m })}>{l}</button>)}
           <select value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })} style={field}>{["GCSE refresher", "A-level", "Stretch (beyond the spec)"].map((s) => <option key={s}>{s}</option>)}</select>
         </div>
         <input list="spec-heads" value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} placeholder="Topic or spec code, e.g. 'Proof' or 1.02" style={{ ...field, height: 40 }} autoFocus />
@@ -152,7 +155,7 @@ function LessonView({ L, onChange }: { L: A; onChange: (L: A) => void }) {
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div className={u.row} style={{ gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
-        <b style={{ fontSize: 18 }}>{L.topic}</b><span className="label">{L.subject} · {L.mode === "teach" ? "Teach me" : L.mode === "revise" ? "Revise" : "Exam practice"} · {chunks.filter((c) => c.status === "understood").length}/{chunks.length} understood</span>
+        <b style={{ fontSize: 18 }}>{L.topic}</b><span className="label">{L.subject} · {L.mode === "teach" ? "Teach me" : L.mode === "revise" ? "Revise" : L.mode === "teachback" ? "Teach it back" : "Exam practice"} · {chunks.filter((c) => c.status === "understood").length}/{chunks.length} understood</span>
         <span style={{ flex: 1 }} />
         <button className="pill" disabled={idx <= 0} onClick={() => void step("back")}>◀ Back</button>
         <button className="pill" disabled={done} onClick={() => void step("skip")}>Skip ▶</button>
@@ -163,7 +166,7 @@ function LessonView({ L, onChange }: { L: A; onChange: (L: A) => void }) {
           {chunks.map((c, i) => <button key={i} onClick={() => void step("goto", { idx: i })} title={`${c.code ?? ""} ${c.title}: ${c.status}`} style={{ flex: "0 0 auto", minWidth: 54, height: 30, borderRadius: 8, border: i === idx ? "2px solid var(--text)" : "1px solid var(--border)", background: STATUS_COLOR[c.status] ?? "var(--surface-2)", color: c.status === "todo" ? "var(--text)" : "#08101f", fontSize: 11, fontWeight: 600 }}>{c.code ?? i + 1}</button>)}
         </div>
       )}
-      {cur && <div style={{ padding: "8px 12px", borderRadius: 10, background: "var(--surface-2)", fontSize: 13 }}><span className="label">Chunk {idx + 1} of {chunks.length}{cur.code ? ` · spec ${cur.code}` : ""}</span><div>{cur.text || cur.title}</div>{cur.scope?.length > 0 && <div style={{ marginTop: 6 }}><span className="label">What exams ask on this</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{cur.scope.map((x: A) => <li key={x.skill} style={{ listStyle: "none", marginLeft: -18 }}>{(cur.covered ?? []).includes(x.skill) ? "✅" : "⬜"} {x.skill}{x.example ? <small className="label"> · {x.example}</small> : null}</li>)}</ul></div>}</div>}
+      {cur && <div style={{ padding: "8px 12px", borderRadius: 10, background: "var(--surface-2)", fontSize: 13 }}><span className="label">Chunk {idx + 1} of {chunks.length}{cur.code ? ` · spec ${cur.code}` : ""}</span><div>{cur.text || cur.title}</div>{cur.scope?.length > 0 && <div style={{ marginTop: 6 }}><span className="label">What exams ask on this</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{cur.scope.map((x: A) => <li key={x.skill} style={{ listStyle: "none", marginLeft: -18 }}>{(cur.covered ?? []).includes(x.skill) ? "✅" : "⬜"} {x.trap ? "⚠ " : ""}{x.skill}{x.example ? <small className="label"> · {x.example}</small> : null}</li>)}</ul></div>}</div>}
       {done && chunks.length > 0 && <div style={{ padding: "8px 12px", borderRadius: 10, background: "color-mix(in srgb, #30a46c 22%, var(--surface))" }}>Topic complete. Ask for the end-of-topic quiz, save notes, or start a revise lesson on it in a few days.</div>}
       <RoomChat key={space} space={space} conversationId={L.conversation_id ?? null} onConversation={(id) => { void api({ action: "attach", id: L.id, conversation_id: id }); onChange({ ...L, conversation_id: id }); }}
         mode="tutor" context={L.context} quick={quick} height="64vh" onSent={() => setAnswered((n) => n + 1)}

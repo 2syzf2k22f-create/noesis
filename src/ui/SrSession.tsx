@@ -49,6 +49,7 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
   const [settings, setSettings] = useState<A>({ confirm_end: true, esc_ends: true });
   const [editing, setEditing] = useState<{ front: string; back: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [handsFree, setHandsFree] = useState(false);
   const [offline, setOffline] = useState(0);
   const t0 = useRef(0);
   const started = useRef(0);
@@ -214,7 +215,11 @@ export function SrSession({ filter, onClose }: { filter: SrFilter; onClose: () =
             ) : <button className="pill" data-active="true" onClick={() => setFlipped(true)} style={{ height: 50, display: "grid", placeItems: "center" }}>Show answer (Space)</button>}
           </div>
         )}
-      <small className="label" style={{ textAlign: "center" }}>Space flip · 1-4 rate · Z undo · Esc end</small>
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
+        <button className="pill" data-active={handsFree} onClick={() => setHandsFree(!handsFree)} title="Reads each card aloud, listens to your answer, reads the answer, and you say yes / nearly / no">🎧 Hands-free {handsFree ? "on" : "off"}</button>
+        <small className="label">Space flip · 1-4 rate · Z undo · Esc end</small>
+      </div>
+      {handsFree && !auto && !editing && <HandsFree key={cur.id + "-" + i} front={cur.kind === "opening" ? `Play the main line of ${p.name}` : String(p.listen ?? p.front ?? "")} back={String(p.back ?? "")} lang={p.lang} onFlip={() => setFlipped(true)} onRate={(r) => void grade(r)} onStop={() => setHandsFree(false)} />}
     </div>,
   );
 }
@@ -279,4 +284,44 @@ function GeoItem({ p, typed, setTyped, result, onCheck, onNext }: { p: A; typed:
       )}
     </div>
   );
+}
+
+/** Hands-free review (walking, gym): read the card, listen for the answer, read the answer, hear yes / nearly / no. */
+const speakable = (t: string) => t.replace(/```[\s\S]*?```/g, " ").replace(/\$\$?([^$]+)\$\$?/g, (_, m) => m.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, "$1 over $2").replace(/\^2/g, " squared").replace(/\^3/g, " cubed").replace(/\^/g, " to the power ").replace(/\\sqrt\{([^}]*)\}/g, "root $1").replace(/[\\{}]/g, " ")).replace(/[*_#>|`]/g, " ").replace(/\s+/g, " ").trim();
+function say(text: string, lang = "en-GB") { return new Promise<void>((res) => { try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(speakable(text).slice(0, 600)); u.lang = lang; u.onend = () => res(); u.onerror = () => res(); speechSynthesis.speak(u); } catch { res(); } }); }
+function hear(ms = 8000) {
+  return new Promise<string>((res) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const C = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!C) return res("");
+    const r = new C(); r.lang = "en-GB"; r.interimResults = false; let got = "";
+    r.onresult = (e: A) => { got = e.results[0][0].transcript; }; r.onend = () => res(got); r.onerror = () => res(got);
+    r.start(); setTimeout(() => { try { r.stop(); } catch {} }, ms);
+  });
+}
+function HandsFree({ front, back, lang, onFlip, onRate, onStop }: { front: string; back: string; lang?: string; onFlip: () => void; onRate: (r: number) => void; onStop: () => void }) {
+  const [step, setStep] = useState("Reading the card…");
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      await say(front, lang && /Listen/i.test(front) ? lang : "en-GB"); if (!live) return;
+      setStep("Listening for your answer…");
+      const ans = await hear(9000); if (!live) return;
+      if (/\b(stop|end session|finish)\b/i.test(ans)) { onStop(); return; }
+      onFlip(); setStep(`You said: "${ans || "(nothing)"}". Reading the answer…`);
+      await say(`The answer is: ${back}. Did you get it? Say yes, nearly, or no.`); if (!live) return;
+      setStep("Yes, nearly or no?");
+      for (let k = 0; k < 2 && live; k++) {
+        const v = (await hear(6000)).toLowerCase();
+        if (/\b(yes|yeah|yep|got it|correct|right)\b/.test(v)) return onRate(3);
+        if (/\b(easy)\b/.test(v)) return onRate(4);
+        if (/\b(nearly|almost|sort of|kind of|hard)\b/.test(v)) return onRate(2);
+        if (/\b(no|nope|wrong|didn't|did not)\b/.test(v)) return onRate(1);
+        if (k === 0) await say("Say yes, nearly, or no.");
+      }
+      setStep("Didn't catch that: tap a rating.");
+    })();
+    return () => { live = false; try { speechSynthesis.cancel(); } catch {} };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <div className="label" style={{ textAlign: "center" }}>🎧 {step} (say &ldquo;stop&rdquo; to end hands-free)</div>;
 }

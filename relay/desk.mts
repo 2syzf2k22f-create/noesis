@@ -109,7 +109,7 @@ const AREAS: Record<string, [number, number, number, number]> = {
 const LAYOUTS: Record<string, string[]> = { halves: ["left", "right"], "main+side": ["left-two-thirds", "right-third"], thirds: ["left-third", "middle-third", "right-third"], quarters: ["top-left", "top-right", "bottom-left", "bottom-right"], stacked: ["top", "bottom"] };
 
 /* ---------- background jobs (relay background lane) ---------- */
-export const BG_KINDS = ["pc_bg", "pc_watch"];
+export const BG_KINDS = ["pc_bg", "pc_watch", "focus_track"];
 async function notify(s: Store, title: string, body: string, link: string | null = null) {
   await s.insert("inbox_items", { source: "Apollo (PC)", title: title.slice(0, 200), body: body.slice(0, 4000), link, read_at: null, deleted_at: null, deliver_at: nowIso() }).catch(() => null);
 }
@@ -121,6 +121,7 @@ async function wake(s: Store, job: Row, text: string) {
 /** pc_bg: a safe PowerShell command with a long timeout; pc_watch: poll a window/screen until text appears. */
 export async function runBgJob(s: Store, job: Row) {
   const i = job.input ?? {};
+  if (job.kind === "focus_track") return runFocus(s, job);
   if (job.kind === "pc_bg") {
     const r = await runCommand(String(i.command), Math.min(6 * 3600_000, (i.timeout_min ?? 120) * 60_000));
     if (await cancelled(s, job.id)) return;
@@ -487,3 +488,38 @@ Act $mi $false | Out-Null
     },
   },
 ];
+
+/* ---------- focus tracking (only when Reg switches it on for a session) ---------- */
+const DISTRACT = /(youtube|tiktok|instagram|netflix|twitch|reddit|discord|snapchat|facebook|twitter|\bx\.com|disney\+|prime video|spotify|steam|epic games|roblox|minecraft|fortnite|valorant|league of legends|chess\.com|lichess)/i;
+async function foreground() {
+  if (!win) return null;
+  const r = await runCommand(`${UIA_HEAD}
+$e = $AE::FocusedElement; $w = [System.Windows.Automation.TreeWalker]::ControlViewWalker; $top = $e
+while ($e -and $e -ne $AE::RootElement) { $top = $e; $e = $w.GetParent($e) }
+$p = Get-Process -Id $top.Current.ProcessId -ErrorAction SilentlyContinue
+"FG|" + $p.ProcessName + "|" + $top.Current.Name`, 15_000);
+  const m = /FG\|([^|\n]*)\|(.*)/.exec(r.out);
+  return m ? { app: m[1].trim(), title: m[2].trim().slice(0, 160) } : null;
+}
+async function runFocus(s: Store, job: Row) {
+  const i = job.input ?? {};
+  const allow: string[] = (i.allow ?? []).map((x: string) => x.toLowerCase()).filter(Boolean);
+  const until = Date.now() + Math.min(240, Number(i.minutes ?? 60) + 15) * 60_000;
+  const tally: Record<string, number> = {}; let total = 0, distracted = 0;
+  while (Date.now() < until) {
+    if (await cancelled(s, job.id)) break;
+    const fg = await foreground().catch(() => null);
+    if (fg) {
+      const label = /chrome|msedge|opera|firefox|brave/i.test(fg.app) ? `${fg.app}: ${fg.title.replace(/ [-–|] (Google Chrome|Microsoft Edge|Opera|Mozilla Firefox|Brave).*$/i, "").slice(0, 60)}` : fg.app;
+      const hay = `${fg.app} ${fg.title}`;
+      const bad = DISTRACT.test(hay) && !allow.some((a) => hay.toLowerCase().includes(a));
+      tally[label] = (tally[label] ?? 0) + 20; total += 20; if (bad) distracted += 20;
+    }
+    await s.update("jobs", job.id, { output: { step: "Tracking focus", total_s: total, distracted_s: distracted, top: Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 8) } }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 20_000));
+  }
+  const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => ({ app: k, min: Math.round(v / 6) / 10, distracting: DISTRACT.test(k) && !allow.some((a) => k.toLowerCase().includes(a)) }));
+  const focus = total ? Math.round(((total - distracted) / total) * 100) : null;
+  await s.update("jobs", job.id, { status: "done", finished_at: nowIso(), output: { step: "Done", focus_pct: focus, total_min: Math.round(total / 60), distracted_min: Math.round(distracted / 60), top } }).catch(() => null);
+  if (i.plan_item_id && focus != null) { const p = await s.get("plan_items", i.plan_item_id).catch(() => null); if (p) await s.update("plan_items", p.id, { notes: `${p.notes ? `${p.notes}\n` : ""}Focus ${focus}% (${Math.round(distracted / 60)} min distracted: ${top.filter((x) => x.distracting).map((x) => x.app).join(", ") || "none"})` }).catch(() => null); }
+}

@@ -164,7 +164,10 @@ export async function srQueue(store: Store, f: { area?: string; kind?: string; d
     // a targeted session (e.g. "my weak countries"): these items whether due or not, weakest first
     const pool = (await store.list("sr_items", { limit: 20000 })).filter((i) => !i.suspended && (!f.kind || i.kind === f.kind) && (!f.area || f.area === "all" || i.area === f.area) && (!f.direction || i.direction === f.direction) && (!f.region || f.region === "All" || i.payload?.region === f.region));
     const pick = f.ids?.length ? pool.filter((i) => f.ids!.includes(i.id)) : pool.filter((i) => weakness(i) > 0).sort((a, b) => weakness(b) - weakness(a));
-    return { items: pick.slice(0, f.limit ?? 25).map((i) => ({ ...i, exam: null })), total_due: pick.length, new_available: 0, now: Date.now() };
+    // mixed drill: weakest first, but interleave kinds so it never runs one type in a row
+    let chosen = pick.slice(0, (f.limit ?? 25) * 3);
+    if (!f.kind) { const by = new Map<string, Row[]>(); for (const i of chosen) by.set(i.kind, [...(by.get(i.kind) ?? []), i]); const out: Row[] = []; while ([...by.values()].some((v) => v.length)) for (const v of by.values()) if (v.length) out.push(v.shift()!); chosen = out; }
+    return { items: chosen.slice(0, f.limit ?? 25).map((i) => ({ ...i, exam: null })), total_due: pick.length, new_available: 0, now: Date.now() };
   }
   const st = await srSettings(store);
   const caps = await examCaps(store);

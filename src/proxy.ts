@@ -13,6 +13,8 @@ export async function proxy(req: NextRequest) {
   if (!pw) return NextResponse.next();
   const { pathname } = req.nextUrl;
   if (pathname === "/login" || pathname === "/api/login") return NextResponse.next();
+  // read-only share links (a quiz, deck or document Reg chose to share): only /api/share/<token> is reachable
+  if (pathname.startsWith("/share/") || /^\/api\/share\/[A-Za-z0-9_-]{16,}$/.test(pathname)) return NextResponse.next();
   const cron = process.env.CRON_SECRET;
   if (pathname.startsWith("/api/cron/") && cron && req.headers.get("authorization") === `Bearer ${cron}`) return NextResponse.next();
   if (req.cookies.get(COOKIE)?.value === (await tokenFor(pw))) return NextResponse.next();

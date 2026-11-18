@@ -400,6 +400,9 @@ setInterval(msTick, 15 * 60_000);
 
 // every minute: scheduled PC tasks, folder watches, and phone pushes for inbox items that just became due
 async function minuteTick() {
+  const R = await import("../src/core/revision");
+  await R.weeklyReview(store!).catch(() => 0);
+  await R.examEve(store!).catch(() => 0);
   if (!busy) await (await import("../src/core/lessons")).queueScopeMapping(store!, 15).catch(() => 0);
   await runSchedules(store!).catch((e) => log("schedules failed:", (e as Error).message));
   await syncFolderWatches(store!, log).catch(() => null);

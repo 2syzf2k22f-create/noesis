@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { RichText } from "./RichText";
 import { RoomChat } from "./RoomChat";
 import d from "./doc.module.css";
+import { makeShare } from "./ShareManager";
+import { createSpeaker } from "@/voice/voice";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type A = any;
@@ -17,6 +19,7 @@ export function DocView({ id }: { id: string }) {
   const [edit, setEdit] = useState<number | null>(null);
   const [chat, setChat] = useState<string | null>(null);
   const [present, setPresent] = useState<number | null>(null);
+  const [auto, setAuto] = useState(false);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     fetch(`/api/files/${id}`).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))).then((t) => setDoc(JSON.parse(t))).catch(() => setErr("Couldn't open this document."));
@@ -52,15 +55,16 @@ export function DocView({ id }: { id: string }) {
       {edit === i && <SectionEditor s={s} onCancel={() => setEdit(null)} onSave={(ns) => { const next = { ...doc, sections: sections.map((x, j) => (j === i ? ns : x)) }; setEdit(null); void save(next); }} onDelete={() => { setEdit(null); void save({ ...doc, sections: sections.filter((_, j) => j !== i) }); }} />}
     </section>
   );
-  if (present != null && doc.kind === "slides") return <Presenter doc={doc} i={present} setI={setPresent} accent={accent} />;
+  if (present != null && doc.kind === "slides") return <Presenter doc={doc} i={present} setI={setPresent} accent={accent} auto={auto} />;
   return (
     <div className={d.page}>
       <div className={d.bar}>
         <b style={{ flex: 1 }}>{doc.title}</b>
         <small className="label">{doc.kind} · double-click a section to edit it</small>
-        {doc.kind === "slides" && <button className="pill" data-active="true" onClick={() => setPresent(0)}>▶ Present</button>}
+        {doc.kind === "slides" && <><button className="pill" data-active="true" onClick={() => { setAuto(false); setPresent(0); }}>▶ Present</button><button className="pill" onClick={() => { setAuto(true); setPresent(0); }} title="Narrated: each slide is read aloud and moves on by itself">🎬 Play as video</button></>}
         <button className="pill" onClick={() => window.print()}>⬇ PDF</button>
         <button className="pill" onClick={exportWord}>⬇ Word</button>
+        <button className="pill" onClick={async () => { const url = await makeShare("doc", id, doc.title, 30); alert(url ? `Read-only link copied (30 days):\n${url}` : "Couldn't make a link."); }}>🔗 Share</button>
         <button className="pill" onClick={() => { void save({ ...doc, sections: [...sections, { heading: "New section", body: "Write here." }] }); }}>＋ Section</button>
       </div>
       <div id="doc-root" className={`${d.doc} doc-print-root`} data-kind={doc.kind} data-theme={doc.theme ?? "modern"} style={{ ["--doc-accent" as string]: accent }}>
@@ -112,8 +116,18 @@ function SectionEditor({ s, onSave, onCancel, onDelete }: { s: A; onSave: (s: A)
   );
 }
 
-function Presenter({ doc, i, setI, accent }: { doc: A; i: number; setI: (n: number | null) => void; accent: string }) {
+function Presenter({ doc, i, setI, accent, auto }: { doc: A; i: number; setI: (n: number | null) => void; accent: string; auto?: boolean }) {
   const slides = [{ heading: doc.title, body: doc.subtitle ?? "" }, ...(doc.sections ?? [])];
+  // video mode: narrate (the slide's notes if Apollo wrote any, else its text) with your chosen voice, then advance
+  useEffect(() => {
+    if (!auto) return;
+    const s = slides[i];
+    const text = `${s.heading ?? ""}. ${String(s.notes ?? s.body ?? "").replace(/```[\s\S]*?```/g, " ").replace(/[*#>|`$\\{}]/g, " ")}`;
+    let gone = false;
+    const sp = createSpeaker({ onStart: () => {}, onWord: () => {}, onEnd: () => { if (!gone) setTimeout(() => { if (!gone) setI(i + 1 < slides.length ? i + 1 : null); }, 900); } });
+    sp.feed(text, true);
+    return () => { gone = true; sp.cancel(); };
+  }, [auto, i]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if (["ArrowRight", " ", "PageDown"].includes(e.key)) setI(Math.min(slides.length - 1, i + 1)); if (["ArrowLeft", "PageUp"].includes(e.key)) setI(Math.max(0, i - 1)); if (e.key === "Escape") setI(null); };
     window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);

@@ -56,6 +56,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "School",
     subtitle: "Maths (OCR) · Further Maths (OCR) · Physics (AQA) · Economics (Edexcel)",
     blocks: [
+      { type: "offlinepack", title: "Offline pack for school", span: 12 },
       { type: "continue", title: "Pick up where you left off", span: 12 },
       { type: "schoolanalysis", title: "Path to A*", span: 12, bind: { table: "school_tests", limit: 1 } },
       { type: "readiness", title: "Exam readiness by subject", span: 12 },
@@ -97,6 +98,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "bar", title: "Reviews per day, 14 days", span: 6, bind: { table: "reviews", whereIn: { deck: SUBJ }, days: 14, agg: { fn: "count", by: "day" } } },
       { type: "ask", title: "Flashcard rules (how Apollo writes your cards)", span: 12, props: { submit: "Save rules", template: "Remember this as my flashcard_rules fact, replacing any old one: {text}",
         fields: [{ name: "text", label: "Your instructions", type: "textarea" }] } },
+      { type: "sharemanager", title: "Share with a friend", span: 12, props: { kind: "deck" } },
     ],
   },
   "school--revise": {
@@ -119,6 +121,8 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "table", title: "Recent sessions", span: 12, bind: { table: "study_sessions", limit: 15 }, props: { columns: ["created_at", "subject", "topic", "minutes"] } },
       { type: "heatmap", title: "Revision heatmap, 120 days (min)", span: 12, bind: { table: "study_sessions", days: 120, agg: { fn: "sum", field: "minutes", by: "day" } } },
       { type: "bar", title: "Minutes by topic, 28 days", span: 12, bind: { table: "study_sessions", days: 28, agg: { fn: "sum", field: "minutes", by: { field: "topic" } } } },
+      { type: "masterymap", title: "Mastery map: the whole spec", span: 12 },
+      { type: "offlinepack", title: "Offline pack", span: 12 },
     ],
   },
   "school--planner": {
@@ -167,6 +171,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "bar", title: "Score % by subject", span: 6, bind: { table: "question_attempts", agg: { fn: "avg", field: "pct", by: { field: "subject" } } } },
       { type: "table", title: "Tests", span: 12, bind: { table: "tests", limit: 20 }, props: { columns: ["created_at", "title", "score", "total", "pct", "minutes", "status"] } },
       { type: "deepstats", title: "Question scores in depth", span: 12, props: { table: "question_attempts", field: "pct", groupBy: "subject" } },
+      { type: "sharemanager", title: "Share with a friend", span: 12, props: { kind: "quiz" } },
     ],
   },
   "school--papers": {
@@ -187,6 +192,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
         fields: [{ name: "subject", type: "select", options: SUBJ }] } },
       { type: "table", title: "Papers", span: 12, bind: { table: "past_papers", limit: 30 }, props: { columns: ["created_at", "subject", "paper", "year", "marks", "total", "pct"] } },
       { type: "gradepredictor", title: "Predicted grades", span: 12, bind: { table: "past_papers", limit: 500 } },
+      { type: "pastpaperminer", title: "Mine a past paper into your question bank", span: 12 },
     ],
   },
   "school--tutor": {
@@ -215,6 +221,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
   "school--homework": {
     title: "Homework",
     blocks: [
+      { type: "homeworkchecker", title: "Check my homework (photos or PDF)", span: 12 },
       { type: "microsoft", title: "Teams, Outlook, OneNote & Arbor", span: 12 },
       { type: "form", title: "Add homework", span: 5, props: { table: "homework", defaults: { status: "to do" }, submit: "Add", fields: [
         { name: "title", required: true }, { name: "subject", type: "select", options: SUBJ }, { name: "due_at", label: "Due", type: "date" },
@@ -729,6 +736,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     title: "University",
     subtitle: "Courses and universities researched with sources, checked against your predicted grades.",
     blocks: [
+      { type: "uniapps", title: "Applications", span: 12 },
       { type: "stat", title: "Courses researched", span: 3, bind: { table: "courses", agg: { fn: "count" } } },
       { type: "stat", title: "Universities", span: 3, bind: { table: "unis", agg: { fn: "count" } } },
       { type: "stat", title: "Shortlisted unis", span: 3, bind: { table: "unis", where: { shortlisted: true }, agg: { fn: "count" } } },
@@ -787,6 +795,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
     blocks: [
       { type: "heatmap", title: "Reviews per day (spaced repetition)", span: 12, bind: { table: "sr_reviews", days: 120, dateField: "reviewed_at", agg: { fn: "count", by: "day" } } },
       { type: "srcharts", title: "Spaced repetition: intervals and retention curve", span: 12 },
+      { type: "lifeinsights", title: "Life vs grades: sleep, workouts, screen time, revision", span: 12 },
       { type: "deepstats", title: "School tests: scores in depth", span: 12, props: { table: "school_tests", field: "pct", unit: "%", groupBy: "subject" } },
       { type: "line", title: "School test % over time", span: 6, bind: { table: "school_tests", days: 365, agg: { fn: "avg", field: "pct", by: "week" } } },
       { type: "bar", title: "Upcoming tests per subject", span: 6, bind: { table: "upcoming_tests", where: { status: "upcoming" }, agg: { fn: "count", by: { field: "subject" } } } },
@@ -854,6 +863,7 @@ export const DEFAULT_SPECS: Record<string, PageSpec> = {
       { type: "recurringreminders", title: "Recurring reminders (workouts, study hours)", span: 12 },
       { type: "srsettings", title: "Spaced repetition", span: 12 },
       { type: "desksettings", title: "Phone notifications, scheduled PC tasks and watched folders", span: 12 },
+      { type: "sharemanager", title: "Share links (read-only, for friends)", span: 12 },
       { type: "microsoft", title: "Microsoft 365 & Arbor", span: 12 },
     ],
   },

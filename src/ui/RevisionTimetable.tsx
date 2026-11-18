@@ -80,6 +80,14 @@ export function RevisionTimetable() {
         <button className="pill" onClick={() => window.print()}>🖨 Print</button>
       </div>
       {msg && <small className="label">{msg}</small>}
+      {d.sessions.some((p: A) => p.status === "proposed") && (
+        <div style={{ padding: 10, borderRadius: 12, background: "color-mix(in srgb, var(--accent) 14%, var(--surface))", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ flex: 1 }}><b>Apollo proposed {d.sessions.filter((p: A) => p.status === "proposed").length} sessions this week</b> (dashed). Approve to replace the generated ones from then on; your own and locked sessions stay.</span>
+          <button className="pill" data-active="true" onClick={async () => { await api({ action: "proposal", accept: true }); reload(); }}>Approve</button>
+          <button className="pill" onClick={async () => { await api({ action: "proposal", accept: false }); reload(); }}>Discard</button>
+        </div>
+      )}
+      <WhatNow onGo={(href) => router.push(href)} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
         <Stat k="Planned" v={`${Math.round(d.stats.planned_min / 6) / 10} h`} />
         <Stat k="Done" v={`${Math.round(d.stats.done_min / 6) / 10} h`} />
@@ -114,7 +122,7 @@ export function RevisionTimetable() {
                   const c = COLOR[p.subject] ?? "#8892b0";
                   return (
                     <div key={p.id} draggable={p.status === "planned"} onDragStart={(e) => e.dataTransfer.setData("text/plain", p.id)} onClick={() => setSel(p)} title={`${p.topic}\n${p.reason ?? ""}`}
-                      style={{ position: "absolute", left: 3, right: 3, top, height: h, borderRadius: 7, padding: "2px 6px", fontSize: 11, lineHeight: 1.25, overflow: "hidden", cursor: "pointer", background: `color-mix(in srgb, ${c} ${p.status === "done" ? 55 : 28}%, var(--surface))`, borderLeft: `3px solid ${c}`, opacity: p.status === "missed" ? 0.45 : 1, textDecoration: p.status === "missed" ? "line-through" : undefined }}>
+                      style={{ position: "absolute", left: 3, right: 3, top, height: h, borderRadius: 7, padding: "2px 6px", fontSize: 11, lineHeight: 1.25, overflow: "hidden", cursor: "pointer", background: `color-mix(in srgb, ${c} ${p.status === "done" ? 55 : p.status === "proposed" ? 10 : 28}%, var(--surface))`, borderLeft: `3px solid ${c}`, outline: p.status === "proposed" ? `1.5px dashed ${c}` : undefined, opacity: p.status === "missed" ? 0.45 : 1, textDecoration: p.status === "missed" ? "line-through" : undefined }}>
                       <b>{p.status === "done" ? "✓ " : p.status === "partial" ? "◐ " : p.locked ? "🔒 " : ""}{p.subject ?? ""}</b> {p.start_time}<br />{p.topic}{p.method ? <span style={{ opacity: 0.75 }}> · {p.method}</span> : null}
                     </div>
                   );
@@ -233,6 +241,7 @@ function GeneratePanel({ s, onClose, onDone }: { s: A; onClose: () => void; onDo
       <div className={u.row} style={{ gap: 4, flexWrap: "wrap" }}>{METHODS.filter(([k]) => !["reviews", "homework"].includes(k)).map(([k, l]) => <button key={k} className="pill" data-active={o.methods.includes(k)} onClick={() => toggle("methods", k)}>{l}</button>)}</div>
       <div className={u.row} style={{ gap: 12, flexWrap: "wrap" }}>
         <label className="label" style={{ display: "flex", gap: 4 }}><input type="checkbox" checked={o.include_sr} onChange={(e) => setO({ ...o, include_sr: e.target.checked })} />Daily 15-min reviews</label>
+        <label className="label" style={{ display: "flex", gap: 4 }}><input type="checkbox" checked={o.exam_eve !== false} onChange={(e) => setO({ ...o, exam_eve: e.target.checked })} />Exam-eve recap (18:00 the day before a test)</label>
         <label className="label" style={{ display: "flex", gap: 4 }}><input type="checkbox" checked={o.include_homework} onChange={(e) => setO({ ...o, include_homework: e.target.checked })} />Slots for homework before it&apos;s due</label>
       </div>
       <div className={u.row} style={{ gap: 6 }}>
@@ -250,6 +259,10 @@ function FocusTimer({ p, onDone, onCancel }: { p: A; onDone: (minutes: number) =
   const total = Number(p.minutes ?? 45) * 60;
   const [left, setLeft] = useState(total);
   const [paused, setPaused] = useState(false);
+  const [track, setTrack] = useState<{ on: boolean; allow: string; id: string | null; out: A }>({ on: false, allow: "", id: null, out: null });
+  const startTrack = async () => { const r = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "start", minutes: Math.round(total / 60), allow: track.allow.split(",").map((x) => x.trim()).filter(Boolean), plan_item_id: p.id }) }).then((x) => x.json()); setTrack((t) => ({ ...t, on: true, id: r.id })); };
+  const stopTrack = async () => { if (!track.id) return; await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "stop", id: track.id }) }); };
+  useEffect(() => { if (!track.id) return; const t = setInterval(async () => { const r = await fetch("/api/focus", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "get", id: track.id }) }).then((x) => x.json()); setTrack((x) => ({ ...x, out: r.output })); }, 20000); return () => clearInterval(t); }, [track.id]);
   useEffect(() => { if (paused) return; const t = setInterval(() => setLeft((x) => Math.max(0, x - 1)), 1000); return () => clearInterval(t); }, [paused]);
   useEffect(() => { if (left === 0) { try { new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=").play().catch(() => {}); } catch {} queueMicrotask(() => onDone(Math.round(total / 60))); } }, [left]); // eslint-disable-line react-hooks/exhaustive-deps
   const used = Math.round((total - left) / 60);
@@ -262,11 +275,31 @@ function FocusTimer({ p, onDone, onCancel }: { p: A; onDone: (minutes: number) =
         <div style={{ width: "min(420px, 80vw)", height: 6, borderRadius: 3, background: "var(--surface-2)" }}><div style={{ height: 6, borderRadius: 3, width: `${((total - left) / total) * 100}%`, background: "var(--accent)" }} /></div>
         <div className={u.row} style={{ gap: 8 }}>
           <button className="pill" onClick={() => setPaused(!paused)}>{paused ? "▶ Resume" : "⏸ Pause"}</button>
-          <button className="pill" data-active="true" onClick={() => onDone(Math.max(1, used))}>■ End ({used} min)</button>
+          <button className="pill" data-active="true" onClick={() => { void stopTrack(); onDone(Math.max(1, used)); }}>■ End ({used} min)</button>
           <button className="pill" onClick={onCancel}>Cancel</button>
         </div>
         <small className="label">Phone away. When it ends, the minutes are logged and the session ticks itself off.</small>
+        {!track.on ? (
+          <div className={u.row} style={{ gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+            <input value={track.allow} onChange={(e) => setTrack({ ...track, allow: e.target.value })} placeholder="Allowed for this session, e.g. youtube, desmos" style={{ ...field, width: 280 }} />
+            <button className="pill" onClick={() => void startTrack()} title="Your PC notes which app is in front every 20 s during this session only">Track my PC focus this session</button>
+          </div>
+        ) : <small className="label">Tracking PC focus for this session{track.out?.total_s ? `: ${Math.round(((track.out.total_s - track.out.distracted_s) / track.out.total_s) * 100)}% focused so far${track.out.distracted_s ? ` · ${Math.round(track.out.distracted_s / 60)} min on distractions` : ""}` : "…"}</small>}
       </div>
+    </div>
+  );
+}
+
+/** "I've got N minutes": the single best thing to do now, with one button to start it. */
+function WhatNow({ onGo }: { onGo: (href: string) => void }) {
+  const [m, setM] = useState(30);
+  const [r, setR] = useState<A>(null);
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: 10, borderRadius: 12, background: "var(--surface)" }}>
+      <b>Got a gap?</b>
+      <select value={m} onChange={(e) => setM(Number(e.target.value))} style={field}>{[10, 15, 20, 30, 45, 60, 90].map((x) => <option key={x} value={x}>{x} min free</option>)}</select>
+      <button className="pill" onClick={async () => setR(await fetch(`/api/revision?view=now&minutes=${m}`).then((x) => x.json()))}>What should I do?</button>
+      {r && <><span style={{ flex: 1, minWidth: 200 }}><b>{r.label}</b> <small className="label">· {r.why}</small></span><button className="pill" data-active="true" onClick={() => onGo(r.href)}>▶ Start</button></>}
     </div>
   );
 }

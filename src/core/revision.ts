@@ -129,16 +129,18 @@ const methodFor = (c: Cand, s: RevisionSettings) => {
 };
 
 /** Build sessions from tomorrow (or later today) for `days_ahead` days. Manual and locked sessions stay. */
-export async function generateRevision(store: Store, over: Partial<RevisionSettings> = {}, opts: { from?: string; replace?: boolean } = {}) {
+export async function generateRevision(store: Store, over: Partial<RevisionSettings> = {}, opts: { from?: string; replace?: boolean; proposed?: boolean } = {}) {
   const s = { ...(await revisionSettings(store)), ...over };
   const from = opts.from ?? today(), to = addDays(from, Math.max(1, s.days_ahead) - 1);
   const existing = await store.list("plan_items", { limit: 3000 });
-  if (opts.replace !== false) for (const p of existing) if (p.source === "generated" && !p.locked && p.status === "planned" && String(p.date) >= from) await store.remove("plan_items", p.id);
-  const busy = await busyMap(store, from, to);
+  for (const p of existing) if (p.status === "proposed" && String(p.date) >= from) await store.remove("plan_items", p.id);
+  if (opts.replace !== false && !opts.proposed) for (const p of existing) if (p.source === "generated" && !p.locked && p.status === "planned" && String(p.date) >= from) await store.remove("plan_items", p.id);
+  // a proposal is planned as if the generated sessions it would replace weren't there
+  const busy = await busyMap(store, from, to, opts.proposed ? new Set(existing.filter((p) => p.source === "generated" && !p.locked && p.status === "planned").map((p) => p.id)) : undefined);
   const cands = await candidates(store, s);
   const hw = s.include_homework ? (await store.list("homework", { limit: 300 }).catch(() => [] as Row[])).filter((h) => !h.deleted_at && h.status !== "done" && h.due_at && Date.parse(h.due_at) > Date.now()) : [];
   const used = new Map<string, number>(); // minutes per date
-  for (const p of (await store.list("plan_items", { limit: 3000 })).filter((p) => String(p.date) >= from && p.status !== "missed")) used.set(String(p.date).slice(0, 10), (used.get(String(p.date).slice(0, 10)) ?? 0) + Number(p.minutes ?? 0));
+  for (const p of (await store.list("plan_items", { limit: 3000 })).filter((p) => String(p.date) >= from && p.status !== "missed" && !(opts.proposed && p.source === "generated" && !p.locked))) used.set(String(p.date).slice(0, 10), (used.get(String(p.date).slice(0, 10)) ?? 0) + Number(p.minutes ?? 0));
   const heat = new Map<string, number>(); // repeated picks cool down
   let created = 0, lastSubject = "";
   const rows: Record<string, unknown>[] = [];
@@ -171,7 +173,7 @@ export async function generateRevision(store: Store, over: Partial<RevisionSetti
       used.set(d, (used.get(d) ?? 0) + s.session_min);
     }
   }
-  for (const r of rows) { const { homework_id: _h, ...row } = r; void _h; await store.insert("plan_items", row); created++; }
+  for (const r of rows) { const { homework_id: _h, ...row } = r; void _h; await store.insert("plan_items", opts.proposed ? { ...row, status: "proposed" } : row); created++; }
   const st = await store.get("settings", "main");
   await store.update("settings", "main", { data: { ...(st?.data ?? {}), revision: { ...s, ...(over ?? {}) }, revision_generated_at: nowIso() } });
   return { created, from, to, top: cands.slice(0, 8).map((c) => ({ subject: c.subject, topic: c.topic, code: c.code, why: c.why })) };
@@ -277,4 +279,70 @@ export async function dailyBrief(store: Store) {
     body: [...plan.map((p) => `${p.start_time ?? "any time"} ${p.subject ? `${p.subject}: ` : ""}${p.topic} (${p.method ?? "revise"}, ${p.minutes} min)`), ...tests.map((t) => `📝 ${t.title} on ${new Date(`${String(t.date).slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "long" })}${t.start_time ? ` at ${t.start_time}` : ""}`), due ? `🔁 ${due} reviews due` : ""].filter(Boolean).join("\n"),
   });
   return 1;
+}
+
+/** Accept or throw away Apollo's proposed sessions (from the Thursday/Sunday review). */
+export async function decideProposal(store: Store, accept: boolean) {
+  const all = await store.list("plan_items", { limit: 3000 });
+  const prop = all.filter((p) => p.status === "proposed");
+  if (accept && prop.length) {
+    const from = prop.map((p) => String(p.date)).sort()[0];
+    for (const p of all) if (p.status === "planned" && p.source === "generated" && !p.locked && String(p.date) >= from) await store.remove("plan_items", p.id);
+    for (const p of prop) await store.update("plan_items", p.id, { status: "planned" });
+  } else for (const p of prop) await store.remove("plan_items", p.id);
+  return { [accept ? "accepted" : "discarded"]: prop.length };
+}
+
+/** Thursday and Sunday evenings: how the last days went vs the plan, and a proposed plan for the next 7 days to approve. */
+export async function weeklyReview(store: Store) {
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+  if (![0, 4].includes(now.getDay()) || now.getHours() < 18) return 0;
+  const d = today(), id = `review:${d}`;
+  if ((await store.list("inbox_items", { eq: { external_id: id }, limit: 1 })).length) return 0;
+  await rebalance(store).catch(() => null);
+  const since = addDays(d, now.getDay() === 0 ? -3 : -4);
+  const past = (await store.list("plan_items", { limit: 3000 })).filter((p) => String(p.date) >= since && String(p.date) <= d && p.status !== "proposed");
+  const done = past.filter((p) => p.status === "done"), missed = past.filter((p) => p.status === "missed");
+  const mins = (r: Row[]) => r.reduce((a, p) => a + Number(p.done_minutes ?? p.minutes ?? 0), 0);
+  const subj: Record<string, [number, number]> = {};
+  for (const p of past) { const k = p.subject ?? "Reviews"; subj[k] ??= [0, 0]; subj[k][1] += Number(p.minutes ?? 0); if (p.status === "done") subj[k][0] += Number(p.done_minutes ?? p.minutes ?? 0); }
+  const r = await generateRevision(store, { days_ahead: 7 }, { from: addDays(d, 1), proposed: true });
+  await store.insert("inbox_items", { external_id: id, source: "Apollo", link: "/s/school/planner", deliver_at: nowIso(), read_at: null, deleted_at: null,
+    title: `${now.getDay() === 0 ? "Sunday" : "Thursday"} review: ${done.length}/${past.length} sessions done · next week proposed (${r.created})`,
+    body: [`Done ${Math.round(mins(done) / 6) / 10} h of ${Math.round(past.reduce((a, p) => a + Number(p.minutes ?? 0), 0) / 6) / 10} h planned; ${missed.length} missed (moved).`, ...Object.entries(subj).map(([k, [a, b]]) => `${k}: ${a}/${b} min`), `Proposed: ${r.created} sessions for the next 7 days. Top priorities: ${r.top.slice(0, 3).map((t) => `${t.subject} ${t.topic}`).join(", ")}. Open the timetable to approve or discard.`].join("\n") });
+  return 1;
+}
+
+/** Optional (on by default; settings.data.revision.exam_eve = false turns it off): 18:00 the day before a test, a recap
+ *  of the weakest statements and their exam-scope items on it. */
+export async function examEve(store: Store) {
+  const st = (await store.get("settings", "main").catch(() => null))?.data ?? {};
+  if (st.revision?.exam_eve === false) return 0;
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/London" }));
+  if (now.getHours() < 18) return 0;
+  const tomorrow = addDays(today(), 1);
+  let n = 0;
+  for (const t of (await store.list("upcoming_tests", { limit: 100 }).catch(() => [] as Row[])).filter((x) => !x.deleted_at && x.status === "upcoming" && String(x.date).slice(0, 10) === tomorrow)) {
+    const id = `eve:${t.id}`;
+    if ((await store.list("inbox_items", { eq: { external_id: id }, limit: 1 })).length) continue;
+    const codes = (await store.list("upcoming_test_topics", { eq: { test_id: t.id }, limit: 200 }).catch(() => [] as Row[])).flatMap((x) => x.spec_codes ?? []);
+    const pts = (await store.list("spec_points", { eq: { subject: t.subject, level: 4 }, limit: 1000 })).filter((p) => codes.some((c: string) => String(p.code).startsWith(c))).sort((a, b) => Number(a.confidence ?? 3) - Number(b.confidence ?? 3)).slice(0, 6);
+    await store.insert("inbox_items", { external_id: id, source: "Apollo", link: `/s/school/tests/${t.id}`, deliver_at: nowIso(), read_at: null, deleted_at: null,
+      title: `Tomorrow: ${t.title}. 20-minute recap`,
+      body: [`Weakest on this test (do these, then sleep):`, ...pts.map((p) => `• ${p.code} ${String(p.title ?? p.text ?? "").slice(0, 80)}${Array.isArray(p.exam_scope) ? `: ${p.exam_scope.slice(0, 3).map((x: { skill: string }) => x.skill).join("; ")}` : ""}`), `Open the test page for a quick revise lesson and the formula sheet. Aim for bed by 22:30.`].join("\n") });
+    n++;
+  }
+  return n;
+}
+
+/** "I've got N minutes": the single best thing to do right now. */
+export async function whatNow(store: Store, minutes: number) {
+  const due = (await store.list("sr_items", { limit: 20000 }).catch(() => [] as Row[])).filter((i) => !i.suspended && i.state !== "new" && i.due_at && Date.parse(i.due_at) < Date.now()).length;
+  const d = today();
+  const next = (await store.list("plan_items", { limit: 3000 })).filter((p) => String(p.date).slice(0, 10) === d && p.status === "planned" && Number(p.minutes ?? 45) <= minutes + 10).sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")))[0];
+  if (minutes <= 15 || (due >= 30 && minutes <= 30)) return { kind: "reviews", label: `${due} reviews due: clear the oldest`, why: "short gap: reviews give the most per minute", href: "/s/review?review=all" };
+  if (next) return { kind: "session", label: `${next.subject ? `${next.subject}: ` : ""}${next.topic} (${next.method})`, why: `already in today's plan${next.reason ? ` · ${next.reason}` : ""}`, href: "/s/school/planner", id: next.id };
+  const c = (await candidates(store, await revisionSettings(store)))[0];
+  if (!c) return { kind: "reviews", label: "Due reviews", why: "nothing else stands out", href: "/s/review?review=all" };
+  return { kind: "lesson", label: `${c.subject}: ${c.topic}`, why: c.why.join(" · ") || "highest priority", href: `/s/school/tutor?new=${encodeURIComponent(`${c.subject}|${c.code ?? c.topic}|${(c.confidence ?? 3) <= 2.2 ? "teach" : "revise"}`)}` };
 }

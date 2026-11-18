@@ -10,6 +10,13 @@ import { useOptions } from "./useOptions";
 import { Agenda, CardMemory, Countdown, InboxList, Insights, ScoreHistory, Streaks, Tile, Timetable } from "./Blocks3";
 import dynamic from "next/dynamic";
 // Heavy blocks load only on the pages that use them (chess, geography, poker... are no longer in every page's download).
+const PastPaperMiner = dynamic(() => import("./StudyTools").then((m) => m.PastPaperMiner), { loading: () => <div className="label">Loading…</div> });
+const HomeworkChecker = dynamic(() => import("./StudyTools").then((m) => m.HomeworkChecker), { loading: () => <div className="label">Loading…</div> });
+const MasteryMap = dynamic(() => import("./StudyTools").then((m) => m.MasteryMap), { loading: () => <div className="label">Loading…</div> });
+const LifeInsights = dynamic(() => import("./StudyTools").then((m) => m.LifeInsights), { loading: () => <div className="label">Loading…</div> });
+const UniApps = dynamic(() => import("./StudyTools").then((m) => m.UniApps), { loading: () => <div className="label">Loading…</div> });
+const OfflinePack = dynamic(() => import("./StudyTools").then((m) => m.OfflinePack), { loading: () => <div className="label">Loading…</div> });
+const ShareManager = dynamic(() => import("./ShareManager").then((m) => m.ShareManager), { loading: () => <div className="label">Loading…</div> });
 const ContinueBlock = dynamic(() => import("./ContinueBlock").then((m) => m.ContinueBlock), { loading: () => <div className="label">Loading…</div> });
 const StudyRoom = dynamic(() => import("./StudyRoom").then((m) => m.StudyRoom), { loading: () => <div className="label">Loading…</div> });
 const RevisionTimetable = dynamic(() => import("./RevisionTimetable").then((m) => m.RevisionTimetable), { loading: () => <div className="label">Loading…</div> });
@@ -551,6 +558,13 @@ export function BlockView({ block, ctx }: { block: Block; ctx: BlockCtx }) {
     case "desksettings": return <DeskSettings />;
     case "studyroom": return <StudyRoom />;
     case "continue": return <ContinueBlock />;
+    case "sharemanager": return <ShareManager p={p} />;
+    case "pastpaperminer": return <PastPaperMiner />;
+    case "homeworkchecker": return <HomeworkChecker />;
+    case "masterymap": return <MasteryMap />;
+    case "lifeinsights": return <LifeInsights />;
+    case "uniapps": return <UniApps />;
+    case "offlinepack": return <OfflinePack />;
     case "revisiontimetable": return <RevisionTimetable />;
     case "noteshub": return <NotesHub />;
     case "documents": return <DocumentsBlock />;

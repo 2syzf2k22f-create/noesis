@@ -50,6 +50,7 @@ export function SrQueue() {
       {el}
       <div className={u.row} style={{ flexWrap: "wrap", gap: 12 }}>
         <button className="pill" data-active="true" style={{ height: 48, fontSize: 16, padding: "0 22px" }} disabled={!total} onClick={() => start({ area: "all", title: "All due (mixed)", limit: 50 })}>▶ Start all due ({total})</button>
+        <button className="pill" style={{ height: 48 }} title="15 of your weakest items from every subject and area, mixed together (interleaving), whether due or not" onClick={() => start({ area: "all", weak: true, limit: 15, title: "10-minute mixed drill" })}>🔀 10-min mixed drill</button>
         <span><b style={{ fontSize: 20 }}>{d.reviews_today}</b> <small className="label">reviews today</small></span>
         <span><b style={{ fontSize: 20 }}>{d.streak}</b> <small className="label">day streak</small></span>
         <span><b style={{ fontSize: 20 }}>{d.retention_30d ?? "–"}{d.retention_30d != null ? "%" : ""}</b> <small className="label">retention, 30 days (target {Math.round(d.settings.retention * 100)}%)</small></span>

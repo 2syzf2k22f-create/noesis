@@ -13,7 +13,7 @@ async function ui(ctx: Ctx, action: object) {
 const logIt = (ctx: Ctx, tool: string, table: string | null, id: string | null, after: object | null) => ctx.store.insert("action_log", { job_id: ctx.jobId ?? null, actor: ctx.actor ?? "apollo", tool, table_name: table, row_id: id, before: null, after, undone_at: null }).catch(() => null);
 
 const figure = z.object({ query: z.string().max(200).optional().describe("search words for a real picture/diagram"), url: z.string().max(2000).optional(), caption: z.string().max(300).optional(), credit: z.string().max(300).optional(), width: z.enum(["small", "medium", "full"]).optional(), side: z.enum(["left", "right", "center"]).optional() });
-const section = z.object({ heading: z.string().max(200).optional(), body: z.string().max(20000).optional().describe("Markdown: lists, tables, $maths$, ```mermaid/```chart/```plot diagrams"), figure: figure.nullable().optional(), layout: z.enum(["text", "two-column", "figure-left", "figure-right", "callout"]).optional(), level: z.number().int().min(1).max(3).optional(), page_break: z.boolean().optional() });
+const section = z.object({ heading: z.string().max(200).optional(), body: z.string().max(20000).optional().describe("Markdown: lists, tables, $maths$, ```mermaid/```chart/```plot diagrams"), figure: figure.nullable().optional(), layout: z.enum(["text", "two-column", "figure-left", "figure-right", "callout"]).optional(), notes: z.string().max(4000).optional().describe("slides: narration read aloud in Play as video"), level: z.number().int().min(1).max(3).optional(), page_break: z.boolean().optional() });
 
 export const TOOLS2: Def[] = [
   {
@@ -31,7 +31,7 @@ export const TOOLS2: Def[] = [
   {
     name: "set_exam_scope",
     description: "Save what exam questions on a spec statement actually ask, beyond its wording: standard follow-on parts, consequences, typical question types, traps (e.g. completing the square -> vertex form, turning point and max/min, line of symmetry, range, solving). 3-8 items, each {skill, example?}. Used by lessons, questions, flashcards and test revision so nothing commonly examined is missed. Stay within this statement on his board's exams: no content from other statements, later topics or beyond A-level.",
-    input: { subject: z.string(), code: z.string(), items: z.array(z.object({ skill: z.string().max(200), example: z.string().max(300).optional() })).min(1).max(12) },
+    input: { subject: z.string(), code: z.string(), items: z.array(z.object({ skill: z.string().max(200), example: z.string().max(300).optional(), trap: z.boolean().optional().describe("a common way students lose marks (examiner reports)") })).min(1).max(12) },
     async run(ctx, a) {
       const p = (await ctx.store.list("spec_points", { eq: { subject: a.subject, code: a.code }, limit: 1 }))[0];
       if (!p) return { error: "no such statement" };

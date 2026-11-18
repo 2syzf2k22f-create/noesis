@@ -16,6 +16,10 @@ type A = any;
 const rec = (op: "create" | "update", table: string, data: object, id?: string) => fetch("/api/records", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, table, data, id }) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 const nowMs = () => Date.now();
 const pct = (m: number, t: number) => (t ? Math.round((m / t) * 1000) / 10 : 0);
+// typical A-level boundaries as % (they move each year; School › Grade boundaries has the real ones per paper)
+const BOUNDS: [string, number][] = [["A*", 80], ["A", 70], ["B", 60], ["C", 50], ["D", 40], ["E", 30]];
+const gradeAt = (p: number) => BOUNDS.find(([, b]) => p >= b)?.[0] ?? "U";
+const nextUp = (p: number) => { const n = [...BOUNDS].reverse().find(([, b]) => b > p); return n ? { grade: n[0], at: n[1] } : null; };
 
 export function MockExamButton({ d }: { d: A }) {
   const [pool, setPool] = useState<A[] | null>(null);
@@ -88,7 +92,8 @@ function MockExam({ d, pool, onClose }: { d: A; pool: A[]; onClose: () => void }
 
   if (phase === "done") return shell(
     <div style={{ display: "grid", gap: 12, width: "min(640px, 100%)" }}>
-      <b style={{ fontSize: 24 }}>{got}/{total} ({pct(got, total)}%)</b>
+      <b style={{ fontSize: 24 }}>{got}/{total} ({pct(got, total)}%) · grade {gradeAt(pct(got, total))}</b>
+      {nextUp(pct(got, total)) && <span className="label">To {nextUp(pct(got, total))!.grade}: {Math.ceil((nextUp(pct(got, total))!.at / 100) * total) - got} more mark{Math.ceil((nextUp(pct(got, total))!.at / 100) * total) - got === 1 ? "" : "s"} needed (typical A-level boundaries)</span>}
       <span className="label">Saved to your question attempts and tests: readiness, spec evidence and stats now include it.</span>
       <ul style={{ margin: 0, paddingLeft: 18 }}>{qs.map((x) => <li key={x.id} style={{ fontSize: 13 }}>{x.spec_code ?? x.topic}: {marks[x.id] ?? 0}/{x.marks}</li>)}</ul>
       <div className={u.row}><button className="pill" data-active="true" onClick={() => { submit(`I just sat a timed mock for "${d.title}": ${got}/${total}. Per question: ${qs.map((x) => `${x.spec_code ?? x.topic} ${marks[x.id] ?? 0}/${x.marks}`).join(", ")}. Tell me what to revise first before the real test and update the plan.`, { mode: "tutor" }); onClose(); }}>Debrief with Apollo</button><button className="pill" onClick={onClose}>Close</button></div>
