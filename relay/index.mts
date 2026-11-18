@@ -1,6 +1,7 @@
 // NOESIS relay: runs on the home PC. Picks Apollo jobs from the database, runs them
 // through Claude Code on the Pro plan, streams the reply back, and keeps a heartbeat.
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { hostname } from "node:os";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -22,11 +23,30 @@ import { BG_KINDS, runBgJob, runSchedules, syncFolderWatches } from "./desk.mts"
 import { indexFiles } from "./files.mts";
 import { pushDue } from "../src/core/push";
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 const HEARTBEAT_MS = 15_000;
 const POLL_MS = 1_500;
 const SUMMARY_EVERY = 20; // messages
 
+// Only one relay at a time: a second copy (another window, a double start) would answer chats twice.
+{
+  const lock = join(import.meta.dirname, ".sandbox", "relay.pid");
+  mkdirSync(join(import.meta.dirname, ".sandbox"), { recursive: true });
+  try {
+    const old = Number(readFileSync(lock, "utf8"));
+    if (old && old !== process.pid) { process.kill(old, 0); console.error(`Another relay is already running (process ${old}). Close the other relay window first, or end that process in Task Manager.`); process.exit(1); }
+  } catch { /* no lock, or that process is gone */ }
+  writeFileSync(lock, String(process.pid));
+  const free = () => { try { if (Number(readFileSync(lock, "utf8")) === process.pid) unlinkSync(lock); } catch {} };
+  process.on("exit", free); process.on("SIGINT", () => { free(); process.exit(0); });
+}
+// Keep the PC awake while the relay runs (the screen can still turn off), so Apollo answers while you're out.
+if (process.platform === "win32" && process.env.NOESIS_KEEP_AWAKE !== "0") {
+  const ps = `$ab=[AppDomain]::CurrentDomain.DefineDynamicAssembly((New-Object Reflection.AssemblyName('NoesisAwake')),[Reflection.Emit.AssemblyBuilderAccess]::Run);$tb=$ab.DefineDynamicModule('a').DefineType('K','Public,Class');$m=$tb.DefinePInvokeMethod('SetThreadExecutionState','kernel32.dll','Public,Static,PinvokeImpl','Standard',[uint32],[Type[]]@([uint32]),'Winapi','Auto');$m.SetImplementationFlags('PreserveSig');$t=$tb.CreateType();while($true){[void]$t::SetThreadExecutionState([uint32]2147483649);Start-Sleep -Seconds 50}`;
+  const keep = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps], { windowsHide: true, stdio: "ignore" });
+  keep.on("error", () => console.log("couldn't keep the PC awake: set Windows sleep to Never while the relay runs"));
+  process.on("exit", () => { try { keep.kill(); } catch {} });
+}
 const store = getStore();
 if (!store) {
   console.error("Set SUPABASE_URL and SUPABASE_SECRET_KEY (see relay/README.md).");
@@ -202,7 +222,7 @@ let buildBusy = false;
 async function runJob(job: Row) {
   log(`job ${job.id.slice(0, 8)} ${job.kind}`);
   try {
-    if (job.kind === "apollo") await runApollo(store!, job);
+    if (job.kind === "apollo" || job.kind === "apollo_bg") await runApollo(store!, job);
     else if (job.kind === "report") await runReport(store!, job);
     else if (job.kind === "research") await runResearch(store!, job);
     else if (job.kind === "stt") await runStt(store!, job);
@@ -220,8 +240,16 @@ async function runJob(job: Row) {
 
 /** Two lanes: chats/reports/research/speech never wait behind a long build, and builds run one at a time. */
 let bgRunning = 0;
+let apolloBgBusy = false;
 async function tick() {
   // background lane: screen watches and long PC commands, up to 4 at once, never blocking chats
+  // Apollo's own background work (e.g. mapping exam scope): one at a time, never in the way of your chats
+  if (!apolloBgBusy) {
+    try {
+      const job = await store!.claimNextJob({ kinds: ["apollo_bg"] });
+      if (job) { apolloBgBusy = true; void runJob(job).finally(() => { apolloBgBusy = false; }); }
+    } catch { /* next tick */ }
+  }
   if (bgRunning < 4) {
     try {
       const job = await store!.claimNextJob({ kinds: BG_KINDS });
@@ -230,7 +258,7 @@ async function tick() {
   }
   if (!busy) {
     try {
-      const job = await store!.claimNextJob({ notKinds: [...BUILD_KINDS, ...BG_KINDS] });
+      const job = await store!.claimNextJob({ notKinds: [...BUILD_KINDS, ...BG_KINDS, "apollo_bg"] });
       if (job) { busy = true; void runJob(job).finally(() => { busy = false; }); }
     } catch (e) { log("claim failed:", (e as Error).message); }
   }
@@ -252,7 +280,7 @@ async function recoverStale() {
         if (j.kind === "build" && !j.input?.resumed && !BUILD_ON_HOLD) await store!.update("jobs", j.id, { status: "queued", started_at: null, input: { ...j.input, resumed: true }, output: { ...(j.output ?? {}), step: "Queued: restarting after the relay restarted" } });
         else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay stopped while this was running. Press Retry.", finished_at: nowIso() });
       }
-      else if (j.kind === "apollo" || j.kind === "stt" || j.kind === "pc_watch") await store!.update("jobs", j.id, { status: "queued", started_at: null });
+      else if (j.kind === "apollo" || j.kind === "apollo_bg" || j.kind === "stt" || j.kind === "pc_watch") await store!.update("jobs", j.id, { status: "queued", started_at: null });
       else await store!.update("jobs", j.id, { status: "error", error: "Interrupted: the relay restarted.", finished_at: nowIso() });
     }
     if (stale.length) log(`recovered ${stale.length} interrupted job(s)`);
@@ -403,7 +431,7 @@ async function minuteTick() {
   const R = await import("../src/core/revision");
   await R.weeklyReview(store!).catch(() => 0);
   await R.examEve(store!).catch(() => 0);
-  if (!busy) await (await import("../src/core/lessons")).queueScopeMapping(store!, 15).catch(() => 0);
+  if (!apolloBgBusy) await (await import("../src/core/lessons")).queueScopeMapping(store!, 15).catch(() => 0);
   await runSchedules(store!).catch((e) => log("schedules failed:", (e as Error).message));
   await syncFolderWatches(store!, log).catch(() => null);
   await pushDue(store!).catch(() => null);

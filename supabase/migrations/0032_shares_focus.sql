@@ -7,3 +7,5 @@ alter table noesis.shares enable row level security;
 alter table noesis.jobs drop constraint if exists jobs_kind_check;
 alter table noesis.jobs add constraint jobs_kind_check check (kind = any (array['apollo','build','report','research','ship','rollback','stt','pc','pc_bg','pc_watch','focus_track']));
 alter table noesis.shares add column if not exists id text unique;
+alter table noesis.jobs drop constraint if exists jobs_kind_check;
+alter table noesis.jobs add constraint jobs_kind_check check (kind = any (array['apollo','apollo_bg','build','report','research','ship','rollback','stt','pc','pc_bg','pc_watch','focus_track']));
